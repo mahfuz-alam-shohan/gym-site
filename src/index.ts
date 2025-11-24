@@ -1094,7 +1094,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         </div>
       </header>
       <main>
-        <div class="shell" style="display:flex; gap:16px; min-height:520px;">
+        <div class="shell">
           <style>
             .sidebar {
               width: 220px;
@@ -1244,11 +1244,118 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               .sidebar{ width:100%; max-width:none; flex-direction:row; overflow-x:auto; }
               .nav-item{ flex:1; justify-content:center; }
             }
+            .attendance-card {
+              background: var(--surface);
+              border: 1px solid rgba(148,163,184,0.35);
+              border-radius: 16px;
+              padding: 12px;
+              box-shadow: var(--shadow-soft);
+              margin-bottom: 14px;
+            }
+            .attendance-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+              gap: 10px;
+              align-items: start;
+            }
+            .attendance-search { display:flex; flex-direction:column; gap:8px; }
+            .search-results { display:grid; gap:8px; max-height:240px; overflow:auto; padding-right:4px; }
+            .search-item {
+              display:flex;
+              gap:10px;
+              align-items:center;
+              padding:8px 10px;
+              border:1px solid var(--border);
+              border-radius:12px;
+              background:#f8fafc;
+              cursor:pointer;
+              transition: border-color 0.12s ease, background 0.12s ease;
+            }
+            .search-item:hover { border-color: var(--primary); background: #eef2ff; }
+            .search-avatar {
+              width:42px;
+              height:42px;
+              border-radius:12px;
+              object-fit:cover;
+              background:#e5e7eb;
+            }
+            .search-lines { flex:1; min-width:0; }
+            .search-lines strong { display:block; font-size:14px; }
+            .search-lines small { display:block; color:#475569; font-size:12px; line-height:1.3; }
+            .attendance-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+            .pill-outline {
+              display:inline-flex;
+              align-items:center;
+              padding:4px 8px;
+              border-radius:999px;
+              border:1px dashed var(--border);
+              font-size:11px;
+              color:#475569;
+              background:#f8fafc;
+            }
+            .table-simple { width:100%; border-collapse:collapse; font-size:12px; }
+            .table-simple th, .table-simple td { padding:8px 6px; border-bottom:1px solid var(--border); text-align:left; }
+            .avatar-small { width:28px; height:28px; border-radius:9px; object-fit:cover; background:#e5e7eb; }
+            .badge-due { background:#fef2f2; color:#b91c1c; padding:3px 7px; border-radius:999px; font-weight:600; font-size:11px; }
+            .badge-clear { background:#ecfdf3; color:#166534; padding:3px 7px; border-radius:999px; font-weight:600; font-size:11px; }
+            .member-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+            .member-card { border:1px solid var(--border); border-radius:12px; padding:8px; background:#f8fafc; font-size:12px; display:flex; gap:8px; align-items:center; }
+            .member-actions { display:flex; gap:6px; flex-wrap:wrap; }
+            .ghost-danger { background:transparent; color:var(--danger); border:1px dashed var(--danger); }
+            .member-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
+            .member-form .field { font-size:12px; }
+            .member-form input[type="file"] { padding:8px 6px; }
+            .layout-row { display:flex; gap:16px; min-height:520px; }
+            @media(max-width:768px){
+              .attendance-grid{ grid-template-columns:1fr; }
+              .layout-row{ flex-direction:column; }
+            }
           </style>
+
+          ${role !== "admin" ? `<div class="attendance-card">
+            <div class="attendance-grid">
+              <div class="attendance-search">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <div>
+                    <div class="panel-title" style="margin:0;">Quick attendance</div>
+                    <div class="panel-subtitle">Search member by ID and mark present</div>
+                  </div>
+                  <span class="pill-outline">Visible to manager / owner / worker</span>
+                </div>
+                <input id="attendanceId" placeholder="Type member ID or name" />
+                <div class="search-results" id="attendanceResults"></div>
+                <div class="attendance-actions">
+                  <span id="attendanceSelected" class="pill-outline">No member selected</span>
+                  <button class="primary" id="submitAttendance">Submit attendance</button>
+                </div>
+                <div class="status-bar" id="attendanceStatus"></div>
+              </div>
+              <div class="section" style="margin:0;">
+                <h3 style="margin:0 0 6px; font-size:14px;">Today’s attendance</h3>
+                <div class="section-inner" style="background:var(--surface); border-radius:12px;">
+                  <div style="overflow-x:auto;">
+                    <table class="table-simple" id="attendanceTable">
+                      <thead>
+                        <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
+                      </thead>
+                      <tbody id="attendanceTbody">
+                        <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>` : ""}
+
+          <div class="layout-row">
 
           <aside class="sidebar">
             <div class="nav-item active" data-tab="overview">
               <span>Overview</span><span>●</span>
+            </div>
+            <div class="nav-item" data-tab="members">
+              <span>Members</span><span>●</span>
             </div>
             <div class="nav-item" data-tab="memberships">
               <span>Memberships</span><span>●</span>
@@ -1293,12 +1400,64 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               </div>
 
               <div class="section">
-                <h3>Today’s attendance (placeholder)</h3>
-                <div class="section-inner">
-                  <div class="list-row">
-                    <span>Attendance tracking</span>
-                    <span class="pill-soft orange">Will be implemented later</span>
+                <h3>Today’s attendance</h3>
+                <div class="section-inner" style="background:#fdfdfd;">
+                  <div style="overflow-x:auto;">
+                    <table class="table-simple" id="attendanceTableOverview">
+                      <thead>
+                        <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
+                      </thead>
+                      <tbody id="attendanceOverviewBody">
+                        <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
+                      </tbody>
+                    </table>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="tab-members" style="display:none;">
+              <div class="section">
+                <h3>Members</h3>
+                <div class="section-inner" id="memberList" style="background:#fdfdfd;">
+                  <div class="list-row"><span>Loading members...</span></div>
+                </div>
+              </div>
+              <div class="section" style="margin-top:12px;">
+                <h3>Add or update member</h3>
+                <div class="section-inner">
+                  <div class="member-form">
+                    <div class="field">
+                      <label for="member-name">Full name</label>
+                      <input id="member-name" placeholder="e.g. Rahim Uddin" />
+                    </div>
+                    <div class="field">
+                      <label for="member-phone">Phone number</label>
+                      <input id="member-phone" placeholder="01XXXXXXXXX" />
+                    </div>
+                    <div class="field">
+                      <label for="member-due">Due months</label>
+                      <input id="member-due" type="number" min="0" value="0" />
+                      <small>Auto-tracked per member</small>
+                    </div>
+                    <div class="field">
+                      <label for="member-status">Payment status</label>
+                      <select id="member-status">
+                        <option value="clear">Clear</option>
+                        <option value="due">Due</option>
+                        <option value="partial">Partial</option>
+                      </select>
+                    </div>
+                    <div class="field">
+                      <label for="member-photo">Photo</label>
+                      <input id="member-photo" type="file" accept="image/*" />
+                      <small>Small avatar used in search</small>
+                    </div>
+                  </div>
+                  <div class="btn-row" style="margin-top:10px;">
+                    <button class="primary" id="btnAddMember">Save member</button>
+                  </div>
+                  <div class="status-bar" id="memberStatus"></div>
                 </div>
               </div>
             </div>
@@ -1453,6 +1612,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var navItems = document.querySelectorAll(".nav-item");
         var tabs = {
           overview: document.getElementById("tab-overview"),
+          members: document.getElementById("tab-members"),
           memberships: document.getElementById("tab-memberships"),
           workers: document.getElementById("tab-workers"),
           accounts: document.getElementById("tab-accounts"),
@@ -1460,6 +1620,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         };
         var titles = {
           overview: "Overview",
+          members: "Members",
           memberships: "Memberships",
           workers: "Workers",
           accounts: "Accounts",
@@ -1467,6 +1628,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         };
         var subtitles = {
           overview: "Quick snapshot of your gym",
+          members: "Member list, photos and due status",
           memberships: "Configure plans and pricing",
           workers: "Manage trainers and staff",
           accounts: "Who can log in and manage",
@@ -1475,6 +1637,217 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var panelTitle = document.getElementById("panelTitle");
         var panelSubtitle = document.getElementById("panelSubtitle");
         var gymLabel = document.getElementById("gymLabel");
+        var attendanceResults = document.getElementById("attendanceResults");
+        var attendanceSelected = document.getElementById("attendanceSelected");
+        var attendanceStatus = document.getElementById("attendanceStatus");
+        var attendanceInput = document.getElementById("attendanceId");
+        var attendanceBody = document.getElementById("attendanceTbody");
+        var attendanceOverviewBody = document.getElementById("attendanceOverviewBody");
+        var attendanceButton = document.getElementById("submitAttendance");
+        var memberListEl = document.getElementById("memberList");
+        var memberStatusEl = document.getElementById("memberStatus");
+        var memberPhotoInput = document.getElementById("member-photo");
+
+        function createAvatar(name) {
+          var initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
+          var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">' +
+            '<rect width="72" height="72" rx="14" fill="%23e0e7ff" />' +
+            '<text x="50%" y="56%" text-anchor="middle" fill="%233b82f6" font-family="Arial" font-size="32" font-weight="700">' + initial + '</text>' +
+            '</svg>';
+          return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+        }
+
+        var membersData = [
+          { id: 1, name: "Arif Rahman", phone: "01711-000111", dueMonths: 0, status: "clear", avatar: createAvatar("Arif"), paymentNote: "Paid this month" },
+          { id: 2, name: "Sadia Akter", phone: "01822-234567", dueMonths: 1, status: "due", avatar: createAvatar("Sadia"), paymentNote: "1 month due" },
+          { id: 3, name: "Mahin Chowdhury", phone: "01689-445566", dueMonths: 0, status: "partial", avatar: createAvatar("Mahin"), paymentNote: "Half paid" },
+          { id: 4, name: "Nadia Karim", phone: "01933-778899", dueMonths: 2, status: "due", avatar: createAvatar("Nadia"), paymentNote: "2 months pending" },
+        ];
+        var nextMemberId = membersData.length + 1;
+        var attendanceRecords = [];
+        var selectedMemberId = null;
+        var pendingPhotoData = null;
+
+        function dueSummary(member) {
+          var dueLine = member.dueMonths > 0 ? member.dueMonths + " month(s) due" : "No dues";
+          var statusLine = member.status === "clear" ? "Payment clear" : member.status === "partial" ? "Partial payment" : "Payment pending";
+          return { dueLine: dueLine, statusLine: statusLine };
+        }
+
+        function renderMemberList() {
+          if (!memberListEl) return;
+          if (!membersData.length) {
+            memberListEl.innerHTML = '<div class="list-row"><span>No members yet</span></div>';
+            return;
+          }
+          var html = '<div class="member-grid">' +
+            membersData.map(function(m) {
+              var summary = dueSummary(m);
+              return (
+                '<div class="member-card">' +
+                  '<img class="avatar-small" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
+                  '<div style="flex:1; min-width:0;">' +
+                    '<div style="font-weight:700; font-size:13px;">#' + m.id + ' · ' + m.name + '</div>' +
+                    '<div style="color:#475569; font-size:12px;">' + m.phone + '</div>' +
+                    '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">' +
+                      '<span class="pill-soft ' + (m.dueMonths > 0 ? 'orange' : 'green') + '">' + summary.dueLine + '</span>' +
+                      '<span class="pill-soft blue">' + summary.statusLine + '</span>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="member-actions">' +
+                    '<button class="ghost-danger" data-remove-member="' + m.id + '">Delete</button>' +
+                  '</div>' +
+                '</div>'
+              );
+            }).join("") +
+          '</div>';
+          memberListEl.innerHTML = html;
+          var removeButtons = memberListEl.querySelectorAll('[data-remove-member]');
+          removeButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = Number(btn.getAttribute('data-remove-member'));
+              membersData = membersData.filter(function(m) { return m.id !== id; });
+              attendanceRecords = attendanceRecords.filter(function(a) { return a.memberId !== id; });
+              renderMemberList();
+              renderAttendanceTables();
+              updateSearchResults(attendanceInput ? attendanceInput.value : "");
+            });
+          });
+        }
+
+        function renderAttendanceTables() {
+          var bodies = [attendanceBody, attendanceOverviewBody];
+          bodies.forEach(function(body) {
+            if (!body) return;
+            if (!attendanceRecords.length) {
+              body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>';
+              return;
+            }
+            body.innerHTML = attendanceRecords.map(function(row) {
+              var badge = row.dueMonths > 0 ? '<span class="badge-due">' + row.dueMonths + ' due</span>' : '<span class="badge-clear">Clear</span>';
+              return '<tr>' +
+                '<td>#' + row.memberId + '</td>' +
+                '<td style="display:flex; align-items:center; gap:8px;">' +
+                  '<img class="avatar-small" src="' + row.avatar + '" alt="" />' +
+                  '<div>' + row.name + '<div style="color:#475569; font-size:11px;">' + row.note + '</div></div>' +
+                '</td>' +
+                '<td>' + badge + '</td>' +
+                '<td>' + row.time + '</td>' +
+              '</tr>';
+            }).join("");
+          });
+        }
+
+        function updateSearchResults(query) {
+          if (!attendanceResults) return;
+          var term = (query || "").toString().toLowerCase();
+          var filtered = membersData.filter(function(m) {
+            return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
+          }).slice(0, 8);
+          if (!filtered.length) {
+            attendanceResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
+            return;
+          }
+          attendanceResults.innerHTML = filtered.map(function(m) {
+            var summary = dueSummary(m);
+            return (
+              '<div class="search-item" data-member-id="' + m.id + '">' +
+                '<img class="search-avatar" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
+                '<div class="search-lines">' +
+                  '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+                  '<small>' + summary.dueLine + ' • ' + summary.statusLine + '<br />' + (m.paymentNote || m.phone || '') + '</small>' +
+                '</div>' +
+              '</div>'
+            );
+          }).join("");
+          var items = attendanceResults.querySelectorAll('[data-member-id]');
+          items.forEach(function(item) {
+            item.addEventListener('click', function() {
+              var id = Number(item.getAttribute('data-member-id'));
+              selectedMemberId = id;
+              var m = membersData.find(function(mem) { return mem.id === id; });
+              if (attendanceSelected && m) {
+                attendanceSelected.textContent = 'Selected #' + m.id + ' • ' + m.name;
+              }
+            });
+          });
+        }
+
+        if (attendanceInput) {
+          updateSearchResults(attendanceInput.value);
+          attendanceInput.addEventListener('input', function(e) {
+            updateSearchResults(e.target.value || "");
+          });
+        }
+
+        if (attendanceButton) {
+          attendanceButton.addEventListener('click', function() {
+            if (!selectedMemberId) {
+              if (attendanceStatus) attendanceStatus.textContent = "Select a member first.";
+              return;
+            }
+            var member = membersData.find(function(m) { return m.id === selectedMemberId; });
+            if (!member) {
+              if (attendanceStatus) attendanceStatus.textContent = "Member not found.";
+              return;
+            }
+            var now = new Date();
+            var time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            attendanceRecords.unshift({
+              memberId: member.id,
+              name: member.name,
+              dueMonths: member.dueMonths,
+              status: member.status,
+              avatar: member.avatar || createAvatar(member.name),
+              note: member.dueMonths > 0 ? member.dueMonths + ' month(s) pending' : 'Up to date',
+              time: time
+            });
+            if (attendanceStatus) attendanceStatus.textContent = "Attendance recorded for #" + member.id + ".";
+            renderAttendanceTables();
+          });
+        }
+
+        if (memberPhotoInput) {
+          memberPhotoInput.addEventListener('change', function(event) {
+            var file = event.target.files && event.target.files[0];
+            if (!file) { pendingPhotoData = null; return; }
+            var reader = new FileReader();
+            reader.onload = function(ev) { pendingPhotoData = ev.target && ev.target.result ? String(ev.target.result) : null; };
+            reader.readAsDataURL(file);
+          });
+        }
+
+        var addMemberBtn = document.getElementById("btnAddMember");
+        if (addMemberBtn) {
+          addMemberBtn.addEventListener('click', function() {
+            var name = (document.getElementById('member-name').value || '').trim();
+            var phone = (document.getElementById('member-phone').value || '').trim();
+            var dueMonths = Number(document.getElementById('member-due').value || 0);
+            var status = (document.getElementById('member-status').value || 'clear');
+            if (!name) {
+              if (memberStatusEl) memberStatusEl.textContent = 'Name is required.';
+              return;
+            }
+            var member = {
+              id: nextMemberId++,
+              name: name,
+              phone: phone,
+              dueMonths: dueMonths,
+              status: status,
+              avatar: pendingPhotoData || createAvatar(name),
+              paymentNote: dueMonths > 0 ? dueMonths + ' month(s) due' : 'Paid'
+            };
+            membersData.push(member);
+            if (memberStatusEl) memberStatusEl.textContent = 'Member saved (#' + member.id + ').';
+            if (memberPhotoInput) memberPhotoInput.value = '';
+            pendingPhotoData = null;
+            renderMemberList();
+            updateSearchResults(attendanceInput ? attendanceInput.value : "");
+          });
+        }
+
+        renderMemberList();
+        renderAttendanceTables();
 
         navItems.forEach(function(item) {
           var tab = item.getAttribute("data-tab");
@@ -1534,14 +1907,15 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   data.gym.closing_time;
               }
 
-              document.getElementById("metricMembers").textContent = data.memberCount || 0;
+              var memberCount = data.memberCount || membersData.length;
+              document.getElementById("metricMembers").textContent = memberCount;
               document.getElementById("metricPlans").textContent = data.plans.length || 0;
               document.getElementById("metricWorkers").textContent = data.workers.length || 0;
               var note = document.getElementById("metricMembersNote");
-              if ((data.memberCount || 0) === 0) {
+              if (memberCount === 0) {
                 note.textContent = "No members yet";
               } else {
-                note.textContent = data.memberCount + " active member(s)";
+                note.textContent = memberCount + " active member(s)";
               }
 
               var membershipList = document.getElementById("membershipList");
