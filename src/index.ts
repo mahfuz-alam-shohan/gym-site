@@ -675,6 +675,51 @@ async function hashPassword(password: string): Promise<string> {
     .join("");
 }
 
+function safeText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") {
+    return value.trim() || fallback;
+  }
+  return fallback;
+}
+
+function safeTime(value: unknown, fallback = "00:00"): string {
+  return safeText(value, fallback) || fallback;
+}
+
+function safeNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function sanitizePayload(raw: any) {
+  const workerCount = safeNumber(raw.workerCount, 0);
+  const workers = Array.isArray(raw.workers) ? raw.workers.slice(0, 50) : [];
+  const memberships = Array.isArray(raw.memberships) ? raw.memberships.slice(0, 50) : [];
+
+  return {
+    gymName: safeText(raw.gymName, "Gym"),
+    email: safeText(raw.email),
+    password: safeText(raw.password),
+    gymType: safeText(raw.gymType, "combined"),
+    openingTime: safeTime(raw.openingTime),
+    closingTime: safeTime(raw.closingTime),
+    workerCount,
+    workers: workers.map((worker, index) => ({
+      name: safeText(worker?.name, `Worker ${index + 1}`),
+      role: safeText(worker?.role, "trainer"),
+      dutyStart: safeTime(worker?.dutyStart),
+      dutyEnd: safeTime(worker?.dutyEnd),
+    })),
+    memberships: memberships.map((plan, index) => ({
+      name: safeText(plan?.name, `Plan ${index + 1}`),
+      price: safeNumber(plan?.price, 0),
+      billing: safeText(plan?.billing, "monthly"),
+      access: safeText(plan?.access, "full"),
+      perks: safeText(plan?.perks, ""),
+    })),
+  };
+}
+
 async function setupDatabase(env: Env) {
   const statements = [
     `CREATE TABLE IF NOT EXISTS gyms (
@@ -790,12 +835,14 @@ export default {
     if (request.method === "POST" && url.pathname === "/api/setup") {
       try {
         const payload = await request.json();
-        if (!payload.gymName || !payload.email || !payload.password) {
+        const sanitizedPayload = sanitizePayload(payload);
+
+        if (!sanitizedPayload.gymName || !sanitizedPayload.email || !sanitizedPayload.password) {
           return new Response(JSON.stringify({ error: "Gym name, email, and password are required." }), { status: 400 });
         }
 
         await setupDatabase(env);
-        await insertGym(env, payload);
+        await insertGym(env, sanitizedPayload);
 
         return new Response(JSON.stringify({
           message: "D1 tables are ready and the initial gym profile has been saved.",
