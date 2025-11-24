@@ -1,11 +1,12 @@
-
-
+name = "gym-site"
+main = "src/index.ts"
+compatibility_date = "2024-06-20"
 
 [[d1_databases]]
 binding = "DB"
 database_name = "gym"
-database_id = "622270f0-f68d-4ebd-b15a-0d68a8bc9b75"   
+database_id = "622270f0-f68d-4ebd-b15a-0d68a8bc9b75"
 
 [[r2_buckets]]
-binding = "BUCKET"       
+binding = "BUCKET"
 bucket_name = "gym"
