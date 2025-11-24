@@ -1302,45 +1302,12 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             .setting-panel h4 { margin:0 0 6px; }
           </style>
 
-          ${role !== "admin" ? `<div class="attendance-card">
-            <div class="attendance-grid">
-              <div class="attendance-search">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <div>
-                    <div class="panel-title" style="margin:0;">Quick attendance</div>
-                    <div class="panel-subtitle">Search member by ID and mark present</div>
-                  </div>
-                  <span class="pill-outline">Visible to manager / owner / worker</span>
-                </div>
-                <input id="attendanceId" placeholder="Type member ID or name" />
-                <div class="search-results" id="attendanceResults"></div>
-                <div class="attendance-actions">
-                  <span id="attendanceSelected" class="pill-outline">No member selected</span>
-                  <button class="primary" id="submitAttendance">Submit attendance</button>
-                </div>
-                <div class="status-bar" id="attendanceStatus"></div>
-              </div>
-              <div class="section" style="margin:0;">
-                <h3 style="margin:0 0 6px; font-size:14px;">Today’s attendance</h3>
-                <div class="section-inner" style="background:var(--surface); border-radius:12px;">
-                  <div style="overflow-x:auto;">
-                    <table class="table-simple" id="attendanceTable">
-                      <thead>
-                        <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
-                      </thead>
-                      <tbody id="attendanceTbody">
-                        <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>` : ""}
-
           <div class="layout-row">
 
           <aside class="sidebar">
+            <div class="nav-item" data-tab="attendance">
+              <span>Attendance</span><span>●</span>
+            </div>
             <div class="nav-item active" data-tab="overview">
               <span>Overview</span><span>●</span>
             </div>
@@ -1368,6 +1335,44 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                 <div class="panel-subtitle" id="panelSubtitle">Quick snapshot of your gym</div>
               </div>
               <div style="font-size:11px; color:#6b7280;" id="gymLabel"></div>
+            </div>
+
+            <div id="tab-attendance" style="display:none;">
+              <div class="attendance-card">
+                <div class="attendance-grid">
+                  <div class="attendance-search">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                      <div>
+                        <div class="panel-title" style="margin:0;">Quick attendance</div>
+                        <div class="panel-subtitle">Search member by ID and mark present</div>
+                      </div>
+                      <span class="pill-outline">Available to all roles</span>
+                    </div>
+                    <input id="attendanceId" placeholder="Type member ID or name" />
+                    <div class="search-results" id="attendanceResults"></div>
+                    <div class="attendance-actions">
+                      <span id="attendanceSelected" class="pill-outline">No member selected</span>
+                      <button class="primary" id="submitAttendance">Submit attendance</button>
+                    </div>
+                    <div class="status-bar" id="attendanceStatus"></div>
+                  </div>
+                  <div class="section" style="margin:0;">
+                    <h3 style="margin:0 0 6px; font-size:14px;">Today’s attendance</h3>
+                    <div class="section-inner" style="background:var(--surface); border-radius:12px;">
+                      <div style="overflow-x:auto;">
+                        <table class="table-simple" id="attendanceTable">
+                          <thead>
+                            <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
+                          </thead>
+                          <tbody id="attendanceTbody">
+                            <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div id="tab-overview">
@@ -1668,6 +1673,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var CURRENT_ROLE = "${role}";
         var navItems = document.querySelectorAll(".nav-item");
         var tabs = {
+          attendance: document.getElementById("tab-attendance"),
           overview: document.getElementById("tab-overview"),
           members: document.getElementById("tab-members"),
           memberships: document.getElementById("tab-memberships"),
@@ -1676,6 +1682,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           settings: document.getElementById("tab-settings")
         };
         var titles = {
+          attendance: "Attendance",
           overview: "Overview",
           members: "Members",
           memberships: "Memberships",
@@ -1684,6 +1691,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           settings: "Settings"
         };
         var subtitles = {
+          attendance: "Check in members and view daily attendance",
           overview: "Quick snapshot of your gym",
           members: "Member list, photos and due status",
           memberships: "Configure plans and pricing",
@@ -1691,6 +1699,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           accounts: "Who can log in and manage",
           settings: "Basic gym configuration"
         };
+        var initialTab = CURRENT_ROLE === "admin" ? "overview" : "attendance";
         var panelTitle = document.getElementById("panelTitle");
         var panelSubtitle = document.getElementById("panelSubtitle");
         var gymLabel = document.getElementById("gymLabel");
@@ -1956,9 +1965,15 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         function updateSearchResults(query) {
           if (!attendanceResults) return;
           var term = (query || "").toString().toLowerCase();
+          if (!term.trim()) {
+            attendanceResults.innerHTML = "";
+            attendanceResults.style.display = "none";
+            return;
+          }
           var filtered = membersData.filter(function(m) {
             return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
           }).slice(0, 8);
+          attendanceResults.style.display = "";
           if (!filtered.length) {
             attendanceResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
             return;
@@ -2153,6 +2168,8 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             switchTab(tab);
           });
         });
+
+        switchTab(initialTab);
 
         document.getElementById("logoutBtn").addEventListener("click", function() {
           fetch("/api/logout", { method: "POST" }).finally(function() {
