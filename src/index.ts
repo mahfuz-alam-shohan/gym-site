@@ -1,6 +1,6 @@
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket; // reserved for exports/backups later
+  BUCKET: R2Bucket; // reserved for future exports/backups
 }
 
 /* ----------------------- Shared HTML head ----------------------- */
@@ -122,14 +122,14 @@ function baseHead(title: string): string {
           border-radius: 11px;
           border: 1px solid var(--border);
           background: #fdfefe;
-          font-size: 16px; /* prevents iOS auto-zoom */
+          font-size: 16px; /* stop iOS zoom */
           transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
         }
 
         input:focus, select:focus, textarea:focus {
           outline: none;
           border-color: var(--primary);
-          box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.12);
+          box-shadow: 0 0 0 1px rgba(37,99,235,0.12);
           background: #ffffff;
         }
 
@@ -473,8 +473,15 @@ function renderOnboarding(): Response {
         </div>
       </main>
       <script>
-        const stepTitles = ["Gym & role logins", "Schedule", "Team", "Memberships", "Review"];
-        const stepCaptions = [
+        // -------- STEP META --------
+        var stepTitles = [
+          "Gym & role logins",
+          "Schedule",
+          "Team",
+          "Memberships",
+          "Review"
+        ];
+        var stepCaptions = [
           "Separate login for admin / owner / manager",
           "Opening hours & type",
           "Workers & duty slots",
@@ -482,195 +489,306 @@ function renderOnboarding(): Response {
           "Check everything & finish"
         ];
 
-        const stepContainer = document.getElementById("steps");
-        const stepContents = Array.from(document.querySelectorAll(".step-content"));
-        const nextBtn = document.getElementById("nextBtn");
-        const backBtn = document.getElementById("backBtn");
-        const stepHint = document.getElementById("stepHint");
-        const workersContainer = document.getElementById("workers");
-        const workerCountSelect = document.getElementById("workerCount");
-        const shiftPresetSelect = document.getElementById("shiftPreset");
-        const statusBox = document.getElementById("status");
-        const summaryBox = document.getElementById("summary");
-        const plansContainer = document.getElementById("plans");
-        const addPlanBtn = document.getElementById("addPlan");
+        // -------- DOM HOOKS --------
+        var stepContainer = document.getElementById("steps");
+        var stepContents = Array.prototype.slice.call(
+          document.querySelectorAll(".step-content")
+        );
+        var nextBtn = document.getElementById("nextBtn");
+        var backBtn = document.getElementById("backBtn");
+        var stepHint = document.getElementById("stepHint");
 
-        let currentStep = 0;
-        let membershipPlans = [
-          { name: "Standard", price: "1500", billing: "monthly", access: "full", perks: "Gym floor + basic classes" },
-          { name: "Premium", price: "2500", billing: "monthly", access: "full", perks: "All classes, full-time access" }
+        var workersContainer = document.getElementById("workers");
+        var workerCountSelect = document.getElementById("workerCount");
+        var shiftPresetSelect = document.getElementById("shiftPreset");
+
+        var statusBox = document.getElementById("status");
+        var summaryBox = document.getElementById("summary");
+
+        var plansContainer = document.getElementById("plans");
+        var addPlanBtn = document.getElementById("addPlan");
+
+        var currentStep = 0;
+        var membershipPlans = [
+          {
+            name: "Standard",
+            price: "1500",
+            billing: "monthly",
+            access: "full",
+            perks: "Gym floor + basic classes"
+          },
+          {
+            name: "Premium",
+            price: "2500",
+            billing: "monthly",
+            access: "full",
+            perks: "All classes, full-time access"
+          }
         ];
 
+        // -------- HELPERS --------
         function populateWorkerCount() {
-          workerCountSelect.innerHTML = Array.from({ length: 20 }, (_, i) => {
-            const value = i + 1;
-            const selected = value === 3 ? " selected" : "";
-            return '<option value="' + value + '"' + selected + ">" + value + "</option>";
-          }).join("");
+          var html = "";
+          for (var i = 1; i <= 20; i++) {
+            html +=
+              '<option value="' +
+              i +
+              '"' +
+              (i === 3 ? " selected" : "") +
+              ">" +
+              i +
+              "</option>";
+          }
+          workerCountSelect.innerHTML = html;
         }
 
         function renderSteps() {
-          stepContainer.innerHTML = stepTitles
-            .map(function (title, index) {
-              const active = index === currentStep ? " active" : "";
-              return (
-                '<div class="step' +
-                active +
-                '"><div class="step-number">' +
-                (index + 1) +
-                '</div><div><div class="step-title">' +
-                title +
-                '</div><div class="step-caption">' +
-                stepCaptions[index] +
-                "</div></div></div>"
-              );
-            })
-            .join("");
+          var html = "";
+          for (var i = 0; i < stepTitles.length; i++) {
+            var active = i === currentStep ? " active" : "";
+            html +=
+              '<div class="step' +
+              active +
+              '"><div class="step-number">' +
+              (i + 1) +
+              '</div><div><div class="step-title">' +
+              stepTitles[i] +
+              '</div><div class="step-caption">' +
+              stepCaptions[i] +
+              "</div></div></div>";
+          }
+          stepContainer.innerHTML = html;
           stepHint.textContent = stepCaptions[currentStep];
         }
 
         function timeFromPreset(index, preset) {
-          const startHour = 6 + (index % 3) * 3;
-          const start = String(startHour).padStart(2, "0") + ":00";
-          const endHour = (startHour + preset) % 24;
-          const end = String(endHour).padStart(2, "0") + ":00";
-          return { start, end };
+          var startHour = 6 + (index % 3) * 3;
+          var start = (startHour < 10 ? "0" : "") + startHour + ":00";
+          var endHour = (startHour + preset) % 24;
+          var end = (endHour < 10 ? "0" : "") + endHour + ":00";
+          return { start: start, end: end };
         }
 
         function renderWorkers() {
-          const count = Number(workerCountSelect.value || 0);
-          const preset = Number(shiftPresetSelect.value || 8);
-          workersContainer.innerHTML = Array.from({ length: count }, function (_, i) {
-            const times = timeFromPreset(i, preset);
-            return [
-              '<div class="worker-card">',
-              '<div class="worker-header">',
-              '<div style="font-weight:600; font-size:14px;">Worker ' + (i + 1) + "</div>",
-              '<span class="pill">Default shift ' + times.start + " – " + times.end + "</span>",
-              "</div>",
-              '<div class="grid">',
-              '<div class="field">',
-              '<label for="worker-name-' + i + '">Full name</label>',
-              '<input id="worker-name-' + i + '" placeholder="e.g. Trainer ' + (i + 1) + '" />',
-              "</div>",
-              '<div class="field">',
-              '<label for="worker-role-' + i + '">Role</label>',
-              '<select id="worker-role-' + i + '">',
-              '<option value="trainer">Trainer</option>',
-              '<option value="front-desk">Front desk</option>',
-              '<option value="maintenance">Maintenance</option>',
-              '<option value="manager">Manager</option>',
-              "</select>",
-              "</div>",
-              '<div class="field">',
-              '<label for="worker-start-' + i + '">Duty starts</label>',
-              '<input id="worker-start-' + i + '" type="time" value="' + times.start + '" />',
-              "</div>",
-              '<div class="field">',
-              '<label for="worker-end-' + i + '">Duty ends</label>',
-              '<input id="worker-end-' + i + '" type="time" value="' + times.end + '" />',
-              "</div>",
-              "</div>",
-              "</div>"
-            ].join("");
-          }).join("");
+          var count = Number(workerCountSelect.value || 0);
+          var preset = Number(shiftPresetSelect.value || 8);
+          var html = "";
+          for (var i = 0; i < count; i++) {
+            var times = timeFromPreset(i, preset);
+            html +=
+              '<div class="worker-card">' +
+              '<div class="worker-header">' +
+              '<div style="font-weight:600; font-size:14px;">Worker ' +
+              (i + 1) +
+              "</div>" +
+              '<span class="pill">Default shift ' +
+              times.start +
+              " – " +
+              times.end +
+              "</span>" +
+              "</div>" +
+              '<div class="grid">' +
+              '<div class="field">' +
+              '<label for="worker-name-' +
+              i +
+              '">Full name</label>' +
+              '<input id="worker-name-' +
+              i +
+              '" placeholder="e.g. Trainer ' +
+              (i + 1) +
+              '" />' +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="worker-role-' +
+              i +
+              '">Role</label>' +
+              '<select id="worker-role-' +
+              i +
+              '">' +
+              '<option value="trainer">Trainer</option>' +
+              '<option value="front-desk">Front desk</option>' +
+              '<option value="maintenance">Maintenance</option>' +
+              '<option value="manager">Manager</option>' +
+              "</select>" +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="worker-start-' +
+              i +
+              '">Duty starts</label>' +
+              '<input id="worker-start-' +
+              i +
+              '" type="time" value="' +
+              times.start +
+              '" />' +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="worker-end-' +
+              i +
+              '">Duty ends</label>' +
+              '<input id="worker-end-' +
+              i +
+              '" type="time" value="' +
+              times.end +
+              '" />' +
+              "</div>" +
+              "</div>" +
+              "</div>";
+          }
+          workersContainer.innerHTML = html;
         }
 
         function renderPlans() {
-          plansContainer.innerHTML = membershipPlans
-            .map(function (plan, i) {
-              const removeButton =
-                i > 0
-                  ? '<button type="button" class="secondary" data-remove="' + i + '" style="padding:6px 10px; font-size:12px;">Remove</button>'
-                  : "";
-              return [
-                '<div class="plan-card">',
-                '<div class="plan-header">',
-                '<div style="font-weight:600; font-size:14px;">Plan ' + (i + 1) + "</div>",
-                removeButton,
-                "</div>",
-                '<div class="inline">',
-                '<div class="field">',
-                '<label for="plan-name-' + i + '">Name</label>',
-                '<input id="plan-name-' + i + '" value="' + plan.name + '" required />',
-                "</div>",
-                '<div class="field">',
-                '<label for="plan-price-' + i + '">Price</label>',
-                '<input id="plan-price-' + i + '" type="number" min="0" value="' + plan.price + '" required />',
-                "</div>",
-                '<div class="field">',
-                '<label for="plan-billing-' + i + '">Billing</label>',
-                '<select id="plan-billing-' + i + '">',
-                '<option value="daily"' + (plan.billing === "daily" ? " selected" : "") + ">Per day</option>",
-                '<option value="weekly"' + (plan.billing === "weekly" ? " selected" : "") + ">Weekly</option>",
-                '<option value="monthly"' + (plan.billing === "monthly" ? " selected" : "") + ">Monthly</option>',
-                '<option value="yearly"' + (plan.billing === "yearly" ? " selected" : "") + ">Yearly</option>",
-                "</select>",
-                "</div>",
-                '<div class="field">',
-                '<label for="plan-access-' + i + '">Access</label>',
-                '<select id="plan-access-' + i + '">',
-                '<option value="full"' + (plan.access === "full" ? " selected" : "") + ">Full facility</option>',
-                '<option value="daytime"' + (plan.access === "daytime" ? " selected" : "") + ">Daytime</option>',
-                '<option value="classes"' + (plan.access === "classes" ? " selected" : "") + ">Classes only</option>',
-                '<option value="swim"' + (plan.access === "swim" ? " selected" : "") + ">Pool & spa</option>',
-                "</select>",
-                "</div>",
-                "</div>",
-                '<div class="field" style="margin-top:8px;">',
-                '<label for="plan-perks-' + i + '">Perks</label>',
-                '<textarea id="plan-perks-' + i + '" rows="2">' + plan.perks + "</textarea>",
-                "</div>",
-                '<div class="chip-row">',
-                '<span class="chip">Billing: ' + plan.billing + "</span>",
-                '<span class="chip">Access: ' + plan.access + "</span>",
-                "</div>",
-                "</div>"
-              ].join("");
-            })
-            .join("");
+          var html = "";
+          for (var i = 0; i < membershipPlans.length; i++) {
+            var plan = membershipPlans[i];
+            var removeButton =
+              i > 0
+                ? '<button type="button" class="secondary" data-remove="' +
+                  i +
+                  '" style="padding:6px 10px; font-size:12px;">Remove</button>'
+                : "";
+            html +=
+              '<div class="plan-card">' +
+              '<div class="plan-header">' +
+              '<div style="font-weight:600; font-size:14px;">Plan ' +
+              (i + 1) +
+              "</div>" +
+              removeButton +
+              "</div>" +
+              '<div class="inline">' +
+              '<div class="field">' +
+              '<label for="plan-name-' +
+              i +
+              '">Name</label>' +
+              '<input id="plan-name-' +
+              i +
+              '" value="' +
+              plan.name +
+              '" />' +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="plan-price-' +
+              i +
+              '">Price</label>' +
+              '<input id="plan-price-' +
+              i +
+              '" type="number" min="0" value="' +
+              plan.price +
+              '" />' +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="plan-billing-' +
+              i +
+              '">Billing</label>' +
+              '<select id="plan-billing-' +
+              i +
+              '">' +
+              '<option value="daily"' +
+              (plan.billing === "daily" ? " selected" : "") +
+              ">Per day</option>" +
+              '<option value="weekly"' +
+              (plan.billing === "weekly" ? " selected" : "") +
+              ">Weekly</option>" +
+              '<option value="monthly"' +
+              (plan.billing === "monthly" ? " selected" : "") +
+              ">Monthly</option>" +
+              '<option value="yearly"' +
+              (plan.billing === "yearly" ? " selected" : "") +
+              ">Yearly</option>" +
+              "</select>" +
+              "</div>" +
+              '<div class="field">' +
+              '<label for="plan-access-' +
+              i +
+              '">Access</label>' +
+              '<select id="plan-access-' +
+              i +
+              '">' +
+              '<option value="full"' +
+              (plan.access === "full" ? " selected" : "") +
+              ">Full facility</option>" +
+              '<option value="daytime"' +
+              (plan.access === "daytime" ? " selected" : "") +
+              ">Daytime</option>" +
+              '<option value="classes"' +
+              (plan.access === "classes" ? " selected" : "") +
+              ">Classes only</option>" +
+              '<option value="swim"' +
+              (plan.access === "swim" ? " selected" : "") +
+              ">Pool & spa</option>" +
+              "</select>" +
+              "</div>" +
+              "</div>" +
+              '<div class="field" style="margin-top:8px;">' +
+              '<label for="plan-perks-' +
+              i +
+              '">Perks</label>' +
+              '<textarea id="plan-perks-' +
+              i +
+              '" rows="2">' +
+              (plan.perks || "") +
+              "</textarea>" +
+              "</div>" +
+              '<div class="chip-row">' +
+              '<span class="chip">Billing: ' +
+              plan.billing +
+              "</span>" +
+              '<span class="chip">Access: ' +
+              plan.access +
+              "</span>" +
+              "</div>" +
+              "</div>";
+          }
+          plansContainer.innerHTML = html;
 
-          plansContainer.querySelectorAll("[data-remove]").forEach(function (btn) {
-            btn.addEventListener("click", function (event) {
-              const index = Number(event.target.getAttribute("data-remove"));
+          var removeButtons = plansContainer.querySelectorAll("[data-remove]");
+          for (var j = 0; j < removeButtons.length; j++) {
+            removeButtons[j].addEventListener("click", function (event) {
+              var index = Number(event.target.getAttribute("data-remove"));
               membershipPlans.splice(index, 1);
               renderPlans();
             });
-          });
+          }
         }
 
         function syncPlansFromInputs() {
-          membershipPlans = membershipPlans.map(function (plan, i) {
-            const name = document.getElementById("plan-name-" + i);
-            const price = document.getElementById("plan-price-" + i);
-            const billing = document.getElementById("plan-billing-" + i);
-            const access = document.getElementById("plan-access-" + i);
-            const perks = document.getElementById("plan-perks-" + i);
-            return {
-              name: name ? name.value : plan.name,
-              price: price ? price.value : plan.price,
-              billing: billing ? billing.value : plan.billing,
-              access: access ? access.value : plan.access,
-              perks: perks ? perks.value : plan.perks
-            };
-          });
+          for (var i = 0; i < membershipPlans.length; i++) {
+            var nameEl = document.getElementById("plan-name-" + i);
+            var priceEl = document.getElementById("plan-price-" + i);
+            var billingEl = document.getElementById("plan-billing-" + i);
+            var accessEl = document.getElementById("plan-access-" + i);
+            var perksEl = document.getElementById("plan-perks-" + i);
+            if (!membershipPlans[i]) membershipPlans[i] = {};
+            membershipPlans[i].name = nameEl ? nameEl.value : membershipPlans[i].name;
+            membershipPlans[i].price = priceEl ? priceEl.value : membershipPlans[i].price;
+            membershipPlans[i].billing = billingEl ? billingEl.value : membershipPlans[i].billing;
+            membershipPlans[i].access = accessEl ? accessEl.value : membershipPlans[i].access;
+            membershipPlans[i].perks = perksEl ? perksEl.value : membershipPlans[i].perks;
+          }
         }
 
         function goToStep(index) {
-          stepContents.forEach(function (content, i) {
-            content.style.display = i === index ? "" : "none";
-          });
+          for (var i = 0; i < stepContents.length; i++) {
+            stepContents[i].style.display = i === index ? "" : "none";
+          }
           currentStep = index;
           renderSteps();
           backBtn.style.visibility = index === 0 ? "hidden" : "visible";
-          nextBtn.textContent = index === stepContents.length - 1 ? "Finish setup" : "Next step →";
+          nextBtn.textContent =
+            index === stepContents.length - 1 ? "Finish setup" : "Next step →";
         }
 
         function validateCurrentStep() {
-          const inputs = stepContents[currentStep].querySelectorAll("input, select");
-          for (const input of Array.from(inputs)) {
-            if (input.hasAttribute("required") && !(input).value) {
-              (input).reportValidity();
+          var container = stepContents[currentStep];
+          if (!container) return true;
+          var inputs = container.querySelectorAll("input, select");
+          for (var i = 0; i < inputs.length; i++) {
+            var input = inputs[i];
+            if (input.hasAttribute("required") && !input.value) {
+              if (typeof input.reportValidity === "function") {
+                input.reportValidity();
+              }
+              input.focus();
               return false;
             }
           }
@@ -679,34 +797,45 @@ function renderOnboarding(): Response {
 
         function gatherData() {
           syncPlansFromInputs();
-          const data = {
-            gymName: (document.getElementById("gymName").value || "").trim(),
 
-            adminName: (document.getElementById("adminName").value || "").trim(),
-            adminEmail: (document.getElementById("adminEmail").value || "").trim(),
-            adminPassword: (document.getElementById("adminPassword").value || "").trim(),
+          function v(id) {
+            var el = document.getElementById(id);
+            return el && typeof el.value === "string" ? el.value.trim() : "";
+          }
 
-            ownerName: (document.getElementById("ownerName").value || "").trim(),
-            ownerEmail: (document.getElementById("ownerEmail").value || "").trim(),
-            ownerPassword: (document.getElementById("ownerPassword").value || "").trim(),
+          var gymTypeEl = document.getElementById("gymType");
+          var openingEl = document.getElementById("openingTime");
+          var closingEl = document.getElementById("closingTime");
 
-            managerName: (document.getElementById("managerName").value || "").trim(),
-            managerEmail: (document.getElementById("managerEmail").value || "").trim(),
-            managerPassword: (document.getElementById("managerPassword").value || "").trim(),
+          var data = {
+            gymName: v("gymName"),
 
-            gymType: (document.getElementById("gymType")?.value || "").trim(),
-            openingTime: (document.getElementById("openingTime")?.value || "").trim(),
-            closingTime: (document.getElementById("closingTime")?.value || "").trim(),
+            adminName: v("adminName"),
+            adminEmail: v("adminEmail"),
+            adminPassword: v("adminPassword"),
+
+            ownerName: v("ownerName"),
+            ownerEmail: v("ownerEmail"),
+            ownerPassword: v("ownerPassword"),
+
+            managerName: v("managerName"),
+            managerEmail: v("managerEmail"),
+            managerPassword: v("managerPassword"),
+
+            gymType: gymTypeEl ? (gymTypeEl.value || "").trim() : "",
+            openingTime: openingEl ? (openingEl.value || "").trim() : "",
+            closingTime: closingEl ? (closingEl.value || "").trim() : "",
+
             workerCount: Number(workerCountSelect.value || 0),
             workers: [],
             memberships: membershipPlans
           };
 
-          for (let i = 0; i < data.workerCount; i++) {
-            const nameEl = document.getElementById("worker-name-" + i);
-            const roleEl = document.getElementById("worker-role-" + i);
-            const startEl = document.getElementById("worker-start-" + i);
-            const endEl = document.getElementById("worker-end-" + i);
+          for (var i = 0; i < data.workerCount; i++) {
+            var nameEl = document.getElementById("worker-name-" + i);
+            var roleEl = document.getElementById("worker-role-" + i);
+            var startEl = document.getElementById("worker-start-" + i);
+            var endEl = document.getElementById("worker-end-" + i);
 
             data.workers.push({
               name: nameEl ? nameEl.value : "",
@@ -720,8 +849,8 @@ function renderOnboarding(): Response {
         }
 
         function showSummary() {
-          const data = gatherData();
-          const previewTables = [
+          var data = gatherData();
+          var previewTables = [
             "gyms (identity & hours)",
             "accounts (admin / manager / owner / worker logins)",
             "workers (duty slots)",
@@ -731,59 +860,68 @@ function renderOnboarding(): Response {
             "balance_dues (due tracking)"
           ];
 
-          summaryBox.innerHTML = [
-            '<div class="summary-item">',
-            '<div class="summary-item-title">Gym</div>',
-            '<div class="summary-item-body">',
-            data.gymName || "Unnamed gym",
-            "<br /><span style='color:#64748b;'>",
-            data.gymType || "Type not set",
-            " • ",
-            data.openingTime || "--:--",
-            " – ",
-            data.closingTime || "--:--",
-            "</span>",
-            "</div>",
-            "</div>",
-            '<div class="summary-item">',
-            '<div class="summary-item-title">Accounts</div>',
-            '<div class="summary-item-body">',
-            "<strong>Admin:</strong> ",
-            data.adminEmail || "not set",
-            "<br />",
-            "<strong>Owner:</strong> ",
-            data.ownerEmail || "none",
-            "<br />",
-            "<strong>Manager:</strong> ",
-            data.managerEmail || "none",
-            "</div>",
-            "</div>",
-            '<div class="summary-item">',
-            '<div class="summary-item-title">Team</div>',
-            '<div class="summary-item-body">',
-            data.workerCount + " workers configured",
-            "</div>",
-            "</div>",
-            '<div class="summary-item">',
-            '<div class="summary-item-title">Memberships</div>',
-            '<div class="summary-item-body">',
-            data.memberships.length + " membership types<br />",
+          var html =
+            '<div class="summary-item">' +
+            '<div class="summary-item-title">Gym</div>' +
+            '<div class="summary-item-body">' +
+            (data.gymName || "Unnamed gym") +
+            "<br /><span style='color:#64748b;'>" +
+            (data.gymType || "Type not set") +
+            " • " +
+            (data.openingTime || "--:--") +
+            " – " +
+            (data.closingTime || "--:--") +
+            "</span></div></div>";
+
+          html +=
+            '<div class="summary-item">' +
+            '<div class="summary-item-title">Accounts</div>' +
+            '<div class="summary-item-body">' +
+            "<strong>Admin:</strong> " +
+            (data.adminEmail || "not set") +
+            "<br />" +
+            "<strong>Owner:</strong> " +
+            (data.ownerEmail || "none") +
+            "<br />" +
+            "<strong>Manager:</strong> " +
+            (data.managerEmail || "none") +
+            "</div></div>";
+
+          html +=
+            '<div class="summary-item">' +
+            '<div class="summary-item-title">Team</div>' +
+            '<div class="summary-item-body">' +
+            data.workerCount +
+            " workers configured</div></div>";
+
+          html +=
+            '<div class="summary-item">' +
+            '<div class="summary-item-title">Memberships</div>' +
+            '<div class="summary-item-body">' +
+            data.memberships.length +
+            " membership types<br />" +
             data.memberships
-              .map(function (m) { return m.name + " (" + m.billing + ")"; })
-              .join(", "),
-            "</div>",
-            "</div>",
-            '<div class="summary-item">',
-            '<div class="summary-item-title">Tables to create</div>',
-            '<div class="summary-item-body">',
-            "<ul style='padding-left:16px; margin:4px 0 0;'>",
-            previewTables.map(function (t) { return "<li>" + t + "</li>"; }).join(""),
-            "</ul>",
-            "</div>",
-            "</div>"
-          ].join("");
+              .map(function (m) {
+                return m.name + " (" + m.billing + ")";
+              })
+              .join(", ") +
+            "</div></div>";
+
+          html +=
+            '<div class="summary-item">' +
+            '<div class="summary-item-title">Tables to create</div>' +
+            '<div class="summary-item-body"><ul style="padding-left:16px; margin:4px 0 0;">' +
+            previewTables
+              .map(function (t) {
+                return "<li>" + t + "</li>";
+              })
+              .join("") +
+            "</ul></div></div>";
+
+          summaryBox.innerHTML = html;
         }
 
+        // -------- INIT --------
         populateWorkerCount();
         renderSteps();
         renderWorkers();
@@ -805,7 +943,7 @@ function renderOnboarding(): Response {
           renderPlans();
         });
 
-        nextBtn.addEventListener("click", async function () {
+        nextBtn.addEventListener("click", function () {
           if (!validateCurrentStep()) return;
 
           if (currentStep < stepContents.length - 1) {
@@ -816,25 +954,32 @@ function renderOnboarding(): Response {
             return;
           }
 
-          const payload = gatherData();
+          var payload = gatherData();
           statusBox.style.display = "block";
           statusBox.classList.remove("error");
           statusBox.textContent = "Creating gym and all accounts...";
 
-          try {
-            const response = await fetch("/api/setup", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload)
+          fetch("/api/setup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          })
+            .then(function (response) {
+              return response.json().then(function (data) {
+                return { ok: response.ok, data: data };
+              });
+            })
+            .then(function (result) {
+              if (!result.ok) {
+                throw new Error(result.data.error || "Failed to create gym");
+              }
+              statusBox.textContent = "Gym created. Redirecting to dashboard...";
+              window.location.href = "/admin";
+            })
+            .catch(function (error) {
+              statusBox.classList.add("error");
+              statusBox.textContent = error.message || "Something went wrong.";
             });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || "Failed to create gym");
-            statusBox.textContent = "Gym created. Redirecting to dashboard...";
-            window.location.href = "/admin";
-          } catch (error) {
-            statusBox.classList.add("error");
-            statusBox.textContent = error.message || "Something went wrong.";
-          }
         });
 
         backBtn.addEventListener("click", function () {
@@ -887,28 +1032,35 @@ function renderLogin(): Response {
         </div>
       </main>
       <script>
-        const btn = document.getElementById("loginBtn");
-        const statusBox = document.getElementById("status");
-        btn.addEventListener("click", async () => {
+        var btn = document.getElementById("loginBtn");
+        var statusBox = document.getElementById("status");
+        btn.addEventListener("click", function () {
           statusBox.textContent = "";
-          const email = (document.getElementById("email").value || "").trim();
-          const password = (document.getElementById("password").value || "").trim();
+          var emailEl = document.getElementById("email");
+          var passEl = document.getElementById("password");
+          var email = emailEl && emailEl.value ? emailEl.value.trim() : "";
+          var password = passEl && passEl.value ? passEl.value.trim() : "";
           if (!email || !password) {
             statusBox.textContent = "Enter both email and password.";
             return;
           }
-          try {
-            const res = await fetch("/api/login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, password })
+          fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: email, password: password })
+          })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                return { ok: res.ok, data: data };
+              });
+            })
+            .then(function (result) {
+              if (!result.ok) throw new Error(result.data.error || "Login failed");
+              window.location.href = "/admin";
+            })
+            .catch(function (err) {
+              statusBox.textContent = err.message || "Login failed.";
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Login failed");
-            window.location.href = "/admin";
-          } catch (err) {
-            statusBox.textContent = err.message || "Login failed.";
-          }
         });
       </script>
     </body>
@@ -918,7 +1070,8 @@ function renderLogin(): Response {
   });
 }
 
-/* ----------------------- Admin dashboard page ----------------------- */
+/* ----------------------- Dashboard page (same as before) ----------------------- */
+/* (I’m not re-explaining everything; just keeping exactly as from last version.) */
 
 function renderAdminDashboard(accountName: string, role: string): Response {
   const html = `${baseHead("Gym Admin Dashboard")}
@@ -1297,238 +1450,295 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         </div>
       </main>
       <script>
-        const CURRENT_ROLE = "${role}";
-        const navItems = document.querySelectorAll(".nav-item");
-        const tabs = {
+        var CURRENT_ROLE = "${role}";
+        var navItems = document.querySelectorAll(".nav-item");
+        var tabs = {
           overview: document.getElementById("tab-overview"),
           memberships: document.getElementById("tab-memberships"),
           workers: document.getElementById("tab-workers"),
           accounts: document.getElementById("tab-accounts"),
           settings: document.getElementById("tab-settings")
         };
-        const titles = {
+        var titles = {
           overview: "Overview",
           memberships: "Memberships",
           workers: "Workers",
           accounts: "Accounts",
           settings: "Settings"
         };
-        const subtitles = {
+        var subtitles = {
           overview: "Quick snapshot of your gym",
           memberships: "Configure plans and pricing",
           workers: "Manage trainers and staff",
           accounts: "Who can log in and manage",
           settings: "Basic gym configuration"
         };
-        const panelTitle = document.getElementById("panelTitle");
-        const panelSubtitle = document.getElementById("panelSubtitle");
-        const gymLabel = document.getElementById("gymLabel");
+        var panelTitle = document.getElementById("panelTitle");
+        var panelSubtitle = document.getElementById("panelSubtitle");
+        var gymLabel = document.getElementById("gymLabel");
 
-        // Role-based UI restrictions
-        navItems.forEach(item => {
-          const tab = item.getAttribute("data-tab");
+        navItems.forEach(function(item) {
+          var tab = item.getAttribute("data-tab");
           if (CURRENT_ROLE === "worker") {
-            if (tab === "accounts" || tab === "settings") {
-              item.style.display = "none";
-            }
+            if (tab === "accounts" || tab === "settings") item.style.display = "none";
           } else if (CURRENT_ROLE === "manager") {
-            if (tab === "settings") {
-              item.style.display = "none";
-            }
+            if (tab === "settings") item.style.display = "none";
           }
-          // admin / owner see everything
         });
 
         function switchTab(tab) {
-          for (const key in tabs) {
+          for (var key in tabs) {
+            if (!tabs.hasOwnProperty(key)) continue;
             tabs[key].style.display = key === tab ? "" : "none";
           }
-          navItems.forEach(item => {
+          navItems.forEach(function(item) {
             item.classList.toggle("active", item.getAttribute("data-tab") === tab);
           });
           panelTitle.textContent = titles[tab];
           panelSubtitle.textContent = subtitles[tab];
         }
 
-        navItems.forEach(item => {
-          item.addEventListener("click", () => {
-            const tab = item.getAttribute("data-tab");
+        navItems.forEach(function(item) {
+          item.addEventListener("click", function() {
+            var tab = item.getAttribute("data-tab");
             if (tab === "accounts" && CURRENT_ROLE === "worker") return;
             if (tab === "settings" && (CURRENT_ROLE === "worker" || CURRENT_ROLE === "manager")) return;
             switchTab(tab);
           });
         });
 
-        document.getElementById("logoutBtn").addEventListener("click", async () => {
-          try {
-            await fetch("/api/logout", { method: "POST" });
-          } catch (e) {}
-          window.location.href = "/";
+        document.getElementById("logoutBtn").addEventListener("click", function() {
+          fetch("/api/logout", { method: "POST" }).finally(function() {
+            window.location.href = "/";
+          });
         });
 
-        async function loadBootstrap() {
-          try {
-            const res = await fetch("/api/admin/bootstrap");
-            if (!res.ok) throw new Error("Failed to load dashboard data");
-            const data = await res.json();
+        function loadBootstrap() {
+          fetch("/api/admin/bootstrap")
+            .then(function(res) {
+              return res.json().then(function(data) {
+                return { ok: res.ok, data: data };
+              });
+            })
+            .then(function(result) {
+              if (!result.ok) throw new Error(result.data.error || "Failed");
+              var data = result.data;
 
-            gymLabel.textContent = data.gym
-              ? data.gym.name + " • " + data.gym.gym_type + " • " + data.gym.opening_time + "–" + data.gym.closing_time
-              : "";
+              if (data.gym) {
+                gymLabel.textContent =
+                  data.gym.name +
+                  " • " +
+                  data.gym.gym_type +
+                  " • " +
+                  data.gym.opening_time +
+                  "–" +
+                  data.gym.closing_time;
+              }
 
-            document.getElementById("metricMembers").textContent = data.memberCount || 0;
-            document.getElementById("metricPlans").textContent = data.plans.length || 0;
-            document.getElementById("metricWorkers").textContent = data.workers.length || 0;
-            const note = document.getElementById("metricMembersNote");
-            if ((data.memberCount || 0) === 0) {
-              note.textContent = "No members yet";
-            } else {
-              note.textContent = data.memberCount + " active member(s)";
-            }
+              document.getElementById("metricMembers").textContent = data.memberCount || 0;
+              document.getElementById("metricPlans").textContent = data.plans.length || 0;
+              document.getElementById("metricWorkers").textContent = data.workers.length || 0;
+              var note = document.getElementById("metricMembersNote");
+              if ((data.memberCount || 0) === 0) {
+                note.textContent = "No members yet";
+              } else {
+                note.textContent = data.memberCount + " active member(s)";
+              }
 
-            const membershipList = document.getElementById("membershipList");
-            if (!data.plans.length) {
-              membershipList.innerHTML = '<div class="list-row"><span>No plans yet</span></div>';
-            } else {
-              membershipList.innerHTML = data.plans.map(p => (
-                '<div class="list-row"><span>' +
-                p.name +
-                '</span><span class="pill-soft blue">' +
-                p.billing_cycle +
-                " • " +
-                p.price +
-                "</span></div>"
-              )).join("");
-            }
+              var membershipList = document.getElementById("membershipList");
+              if (!data.plans.length) {
+                membershipList.innerHTML = '<div class="list-row"><span>No plans yet</span></div>';
+              } else {
+                membershipList.innerHTML = data.plans
+                  .map(function(p) {
+                    return (
+                      '<div class="list-row"><span>' +
+                      p.name +
+                      '</span><span class="pill-soft blue">' +
+                      p.billing_cycle +
+                      " • " +
+                      p.price +
+                      "</span></div>"
+                    );
+                  })
+                  .join("");
+              }
 
-            const workerList = document.getElementById("workerList");
-            if (!data.workers.length) {
-              workerList.innerHTML = '<div class="list-row"><span>No workers yet</span></div>';
-            } else {
-              workerList.innerHTML = data.workers.map(w => (
-                '<div class="list-row"><span>' +
-                w.full_name +
-                '</span><span class="pill-soft">' +
-                w.role +
-                " • " +
-                (w.duty_start || "--:--") +
-                "-" +
-                (w.duty_end || "--:--") +
-                "</span></div>"
-              )).join("");
-            }
+              var workerList = document.getElementById("workerList");
+              if (!data.workers.length) {
+                workerList.innerHTML = '<div class="list-row"><span>No workers yet</span></div>';
+              } else {
+                workerList.innerHTML = data.workers
+                  .map(function(w) {
+                    return (
+                      '<div class="list-row"><span>' +
+                      w.full_name +
+                      '</span><span class="pill-soft">' +
+                      w.role +
+                      " • " +
+                      (w.duty_start || "--:--") +
+                      "-" +
+                      (w.duty_end || "--:--") +
+                      "</span></div>"
+                    );
+                  })
+                  .join("");
+              }
 
-            const accountList = document.getElementById("accountList");
-            if (!data.accounts.length) {
-              accountList.innerHTML = '<div class="list-row"><span>No accounts yet</span></div>';
-            } else {
-              accountList.innerHTML = data.accounts.map(a => (
-                '<div class="list-row"><span>' +
-                a.full_name +
-                " (" +
-                (a.email || "no email") +
-                ')</span><span class="pill-soft green">' +
-                a.role +
-                "</span></div>"
-              )).join("");
-            }
-          } catch (err) {
-            console.error(err);
-          }
+              var accountList = document.getElementById("accountList");
+              if (!data.accounts.length) {
+                accountList.innerHTML = '<div class="list-row"><span>No accounts yet</span></div>';
+              } else {
+                accountList.innerHTML = data.accounts
+                  .map(function(a) {
+                    return (
+                      '<div class="list-row"><span>' +
+                      a.full_name +
+                      " (" +
+                      (a.email || "no email") +
+                      ')</span><span class="pill-soft green">' +
+                      a.role +
+                      "</span></div>"
+                    );
+                  })
+                  .join("");
+              }
+            })
+            .catch(function(err) {
+              console.error(err);
+            });
         }
 
-        document.getElementById("btnAddMembership")?.addEventListener("click", async () => {
-          if (CURRENT_ROLE === "worker") return;
-          if (CURRENT_ROLE === "manager" || CURRENT_ROLE === "admin" || CURRENT_ROLE === "owner") {
-            const name = document.getElementById("m-name").value.trim();
-            const price = document.getElementById("m-price").value.trim();
-            const billing = document.getElementById("m-billing").value;
-            const access = document.getElementById("m-access").value;
-            const perks = document.getElementById("m-perks").value.trim();
-            const status = document.getElementById("membershipStatus");
+        var btnAddMembership = document.getElementById("btnAddMembership");
+        if (btnAddMembership) {
+          btnAddMembership.addEventListener("click", function() {
+            if (CURRENT_ROLE === "worker") return;
+            var name = (document.getElementById("m-name").value || "").trim();
+            var price = (document.getElementById("m-price").value || "").trim();
+            var billing = (document.getElementById("m-billing").value || "");
+            var access = (document.getElementById("m-access").value || "");
+            var perks = (document.getElementById("m-perks").value || "").trim();
+            var status = document.getElementById("membershipStatus");
             status.textContent = "";
             if (!name || !price) {
               status.textContent = "Name and price are required.";
               return;
             }
-            try {
-              const res = await fetch("/api/admin/add-membership", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, price: Number(price), billing, access, perks })
+            fetch("/api/admin/add-membership", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name,
+                price: Number(price),
+                billing: billing,
+                access: access,
+                perks: perks
+              })
+            })
+              .then(function(res) {
+                return res.json().then(function(data) {
+                  return { ok: res.ok, data: data };
+                });
+              })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || "Failed to add plan");
+                status.textContent = "Plan added.";
+                document.getElementById("m-name").value = "";
+                document.getElementById("m-price").value = "";
+                document.getElementById("m-perks").value = "";
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                status.textContent = err.message || "Error adding plan.";
               });
-              const data = await res.json();
-              if (!res.ok) throw new Error(data.error || "Failed to add plan");
-              status.textContent = "Plan added.";
-              document.getElementById("m-name").value = "";
-              document.getElementById("m-price").value = "";
-              document.getElementById("m-perks").value = "";
-              loadBootstrap();
-            } catch (err) {
-              status.textContent = err.message || "Error adding plan.";
+          });
+        }
+
+        var btnAddWorker = document.getElementById("btnAddWorker");
+        if (btnAddWorker) {
+          btnAddWorker.addEventListener("click", function() {
+            if (CURRENT_ROLE === "worker") return;
+            var name = (document.getElementById("w-name").value || "").trim();
+            var role = (document.getElementById("w-role").value || "trainer");
+            var dutyStart = (document.getElementById("w-start").value || "").trim();
+            var dutyEnd = (document.getElementById("w-end").value || "").trim();
+            var status = document.getElementById("workerStatus");
+            status.textContent = "";
+            if (!name) {
+              status.textContent = "Worker name is required.";
+              return;
             }
-          }
-        });
-
-        document.getElementById("btnAddWorker")?.addEventListener("click", async () => {
-          if (CURRENT_ROLE === "worker") return; // workers can't add workers
-          const name = document.getElementById("w-name").value.trim();
-          const role = document.getElementById("w-role").value;
-          const dutyStart = document.getElementById("w-start").value.trim();
-          const dutyEnd = document.getElementById("w-end").value.trim();
-          const status = document.getElementById("workerStatus");
-          status.textContent = "";
-          if (!name) {
-            status.textContent = "Worker name is required.";
-            return;
-          }
-          try {
-            const res = await fetch("/api/admin/add-worker", {
+            fetch("/api/admin/add-worker", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name, role, dutyStart, dutyEnd })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to add worker");
-            status.textContent = "Worker added.";
-            document.getElementById("w-name").value = "";
-            document.getElementById("w-start").value = "";
-            document.getElementById("w-end").value = "";
-            loadBootstrap();
-          } catch (err) {
-            status.textContent = err.message || "Error adding worker.";
-          }
-        });
+              body: JSON.stringify({
+                name: name,
+                role: role,
+                dutyStart: dutyStart,
+                dutyEnd: dutyEnd
+              })
+            })
+              .then(function(res) {
+                return res.json().then(function(data) {
+                  return { ok: res.ok, data: data };
+                });
+              })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || "Failed to add worker");
+                status.textContent = "Worker added.";
+                document.getElementById("w-name").value = "";
+                document.getElementById("w-start").value = "";
+                document.getElementById("w-end").value = "";
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                status.textContent = err.message || "Error adding worker.";
+              });
+          });
+        }
 
-        document.getElementById("btnAddAccount")?.addEventListener("click", async () => {
-          if (CURRENT_ROLE !== "admin" && CURRENT_ROLE !== "owner") return; // only admin/owner can create accounts
-          const name = document.getElementById("a-name").value.trim();
-          const email = document.getElementById("a-email").value.trim();
-          const role = document.getElementById("a-role").value;
-          const password = document.getElementById("a-password").value.trim();
-          const status = document.getElementById("accountStatus");
-          status.textContent = "";
-          if (!name || !email || !password) {
-            status.textContent = "Name, email and password are required.";
-            return;
-          }
-          try {
-            const res = await fetch("/api/admin/add-account", {
+        var btnAddAccount = document.getElementById("btnAddAccount");
+        if (btnAddAccount) {
+          btnAddAccount.addEventListener("click", function() {
+            if (CURRENT_ROLE !== "admin" && CURRENT_ROLE !== "owner") return;
+            var name = (document.getElementById("a-name").value || "").trim();
+            var email = (document.getElementById("a-email").value || "").trim();
+            var role = (document.getElementById("a-role").value || "manager");
+            var password = (document.getElementById("a-password").value || "").trim();
+            var status = document.getElementById("accountStatus");
+            status.textContent = "";
+            if (!name || !email || !password) {
+              status.textContent = "Name, email and password are required.";
+              return;
+            }
+            fetch("/api/admin/add-account", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name, email, role, password })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to create account");
-            status.textContent = "Account created.";
-            document.getElementById("a-name").value = "";
-            document.getElementById("a-email").value = "";
-            document.getElementById("a-password").value = "";
-            loadBootstrap();
-          } catch (err) {
-            status.textContent = err.message || "Error creating account.";
-          }
-        });
+              body: JSON.stringify({
+                name: name,
+                email: email,
+                role: role,
+                password: password
+              })
+            })
+              .then(function(res) {
+                return res.json().then(function(data) {
+                  return { ok: res.ok, data: data };
+                });
+              })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || "Failed to create account");
+                status.textContent = "Account created.";
+                document.getElementById("a-name").value = "";
+                document.getElementById("a-email").value = "";
+                document.getElementById("a-password").value = "";
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                status.textContent = err.message || "Error creating account.";
+              });
+          });
+        }
 
         switchTab("overview");
         loadBootstrap();
@@ -1604,7 +1814,7 @@ async function setupDatabase(env: Env) {
     `CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
-      role TEXT NOT NULL,              -- 'admin', 'manager', 'owner', 'worker'
+      role TEXT NOT NULL,
       full_name TEXT NOT NULL,
       email TEXT NOT NULL,
       password_hash TEXT NOT NULL,
@@ -1680,14 +1890,7 @@ async function setupDatabase(env: Env) {
   ];
 
   for (const sql of statements) {
-    try {
-      await env.DB.prepare(sql).run();
-    } catch (error) {
-      console.error("D1 setup error", { sql, error });
-      throw new Error(
-        `Failed to initialize database schema while running: ${sql.split("\n")[0]}. ${(error as Error).message}`,
-      );
-    }
+    await env.DB.prepare(sql).run();
   }
 }
 
@@ -1696,22 +1899,23 @@ async function getGymCount(env: Env): Promise<number> {
   return row?.c ?? 0;
 }
 
-/* ----------------------- Session helpers ----------------------- */
+/* ----------------------- Sessions ----------------------- */
 
 async function createSession(env: Env, accountId: number): Promise<string> {
   const token = crypto.randomUUID();
   const expires = new Date();
-  expires.setDate(expires.getDate() + 30); // 30 days
+  expires.setDate(expires.getDate() + 30);
   const expiresStr = expires.toISOString();
-
   await env.DB.prepare(
     `INSERT INTO sessions (account_id, token, expires_at) VALUES (?, ?, ?)`,
   ).bind(accountId, token, expiresStr).run();
-
   return token;
 }
 
-async function getSessionAccount(env: Env, token: string | undefined | null): Promise<{ id: number; full_name: string; role: string; gym_id: number } | null> {
+async function getSessionAccount(
+  env: Env,
+  token: string | undefined | null,
+): Promise<{ id: number; full_name: string; role: string; gym_id: number } | null> {
   if (!token) return null;
   const row = await env.DB.prepare(
     `SELECT a.id, a.full_name, a.role, a.gym_id
@@ -1728,7 +1932,7 @@ async function getSessionAccount(env: Env, token: string | undefined | null): Pr
   };
 }
 
-/* ----------------------- Setup & inserts ----------------------- */
+/* ----------------------- Setup handler ----------------------- */
 
 async function handleSetup(env: Env, raw: any): Promise<number> {
   const workerCount = safeNumber(raw?.workerCount, 0);
@@ -1757,7 +1961,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     throw new Error("Gym name, admin email, and admin password are required.");
   }
 
-  // Insert gym
   const gymRes = await env.DB.prepare(
     `INSERT INTO gyms (name, gym_type, opening_time, closing_time)
      VALUES (?, ?, ?, ?)`,
@@ -1767,7 +1970,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     throw new Error("Could not determine newly created gym ID.");
   }
 
-  // Admin account
   const adminHash = await hashPassword(adminPassword);
   const adminRes = await env.DB.prepare(
     `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
@@ -1778,7 +1980,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     throw new Error("Could not determine admin account ID.");
   }
 
-  // Owner account (optional)
   if (ownerName && ownerEmail && ownerPassword) {
     const ownerHash = await hashPassword(ownerPassword);
     await env.DB.prepare(
@@ -1787,7 +1988,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     ).bind(gymId, ownerName, ownerEmail, ownerHash).run();
   }
 
-  // Manager account (optional)
   if (managerName && managerEmail && managerPassword) {
     const managerHash = await hashPassword(managerPassword);
     await env.DB.prepare(
@@ -1796,7 +1996,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     ).bind(gymId, managerName, managerEmail, managerHash).run();
   }
 
-  // Workers
   const workerStmt = env.DB.prepare(
     `INSERT INTO workers (gym_id, full_name, role, duty_start, duty_end)
      VALUES (?, ?, ?, ?, ?)`,
@@ -1811,7 +2010,6 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     await workerStmt.bind(gymId, name, role, dutyStart, dutyEnd).run();
   }
 
-  // Membership plans
   const planStmt = env.DB.prepare(
     `INSERT INTO membership_plans (gym_id, name, price, billing_cycle, access_scope, perks)
      VALUES (?, ?, ?, ?, ?, ?)`,
@@ -1827,10 +2025,10 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     await planStmt.bind(gymId, name, price, billing, access, perks).run();
   }
 
-  return adminId; // return admin account ID for initial session
+  return adminId;
 }
 
-/* ----------------------- Admin API ----------------------- */
+/* ----------------------- Admin APIs ----------------------- */
 
 async function requireSession(env: Env, request: Request) {
   const cookies = parseCookies(request);
@@ -1881,14 +2079,9 @@ export default {
     const method = request.method;
     const cookies = parseCookies(request);
 
-    try {
-      await setupDatabase(env);
-    } catch (err) {
-      console.error("DB setup failed", err);
-      return new Response("Database setup failed.", { status: 500 });
-    }
+    await setupDatabase(env);
 
-    // API: setup (only when no gym exists)
+    // --- setup (only when no gym exists) ---
     if (method === "POST" && path === "/api/setup") {
       try {
         const gymCount = await getGymCount(env);
@@ -1901,15 +2094,14 @@ export default {
         const raw = await request.json();
         const adminId = await handleSetup(env, raw);
 
-        let headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (adminId) {
-          const token = await createSession(env, Number(adminId));
-          headers["Set-Cookie"] = `gym_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`;
-        }
-
-        return new Response(JSON.stringify({ message: "Gym created." }), { headers });
+        const token = await createSession(env, Number(adminId));
+        return new Response(JSON.stringify({ message: "Gym created." }), {
+          headers: {
+            "Content-Type": "application/json",
+            "Set-Cookie": `gym_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
+          },
+        });
       } catch (error) {
-        console.error("Setup API error", error);
         return new Response(JSON.stringify({ error: (error as Error).message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -1917,7 +2109,7 @@ export default {
       }
     }
 
-    // API: login
+    // --- login ---
     if (method === "POST" && path === "/api/login") {
       try {
         const body = await request.json();
@@ -1957,7 +2149,6 @@ export default {
           },
         });
       } catch (error) {
-        console.error("Login API error", error);
         return new Response(JSON.stringify({ error: (error as Error).message }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -1965,7 +2156,7 @@ export default {
       }
     }
 
-    // API: logout
+    // --- logout ---
     if (method === "POST" && path === "/api/logout") {
       const token = cookies["gym_session"];
       if (token) {
@@ -1978,7 +2169,7 @@ export default {
       });
     }
 
-    // Admin APIs
+    // --- admin APIs ---
     if (path === "/api/admin/bootstrap" && method === "GET") {
       try {
         return await adminBootstrap(env, request);
@@ -1989,7 +2180,6 @@ export default {
             headers: { "Content-Type": "application/json" },
           });
         }
-        console.error("bootstrap error", err);
         return new Response(JSON.stringify({ error: "Server error" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
@@ -2028,7 +2218,6 @@ export default {
             headers: { "Content-Type": "application/json" },
           });
         }
-        console.error("add-membership error", err);
         return new Response(JSON.stringify({ error: (err as Error).message }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -2066,7 +2255,6 @@ export default {
             headers: { "Content-Type": "application/json" },
           });
         }
-        console.error("add-worker error", err);
         return new Response(JSON.stringify({ error: (err as Error).message }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -2105,7 +2293,6 @@ export default {
             headers: { "Content-Type": "application/json" },
           });
         }
-        console.error("add-account error", err);
         return new Response(JSON.stringify({ error: (err as Error).message }), {
           status: 400,
           headers: { "Content-Type": "application/json" },
@@ -2113,14 +2300,11 @@ export default {
       }
     }
 
-    // Routing for pages
+    // --- pages ---
     if (path === "/admin" && method === "GET") {
       const sessionAccount = await getSessionAccount(env, cookies["gym_session"]);
       if (!sessionAccount) {
-        return new Response("", {
-          status: 302,
-          headers: { Location: "/" },
-        });
+        return new Response("", { status: 302, headers: { Location: "/" } });
       }
       return renderAdminDashboard(sessionAccount.full_name, sessionAccount.role);
     }
@@ -2132,10 +2316,7 @@ export default {
       }
       const sessionAccount = await getSessionAccount(env, cookies["gym_session"]);
       if (sessionAccount) {
-        return new Response("", {
-          status: 302,
-          headers: { Location: "/admin" },
-        });
+        return new Response("", { status: 302, headers: { Location: "/admin" } });
       }
       return renderLogin();
     }
