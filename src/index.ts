@@ -1,9 +1,9 @@
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket; // reserved for future file exports/backups
+  BUCKET: R2Bucket; // reserved for exports/backups later
 }
 
-/* ----------------------- Shared HTML head bits ----------------------- */
+/* ----------------------- Shared HTML head ----------------------- */
 
 function baseHead(title: string): string {
   return `<!doctype html>
@@ -41,6 +41,7 @@ function baseHead(title: string): string {
           min-height: 100vh;
           display: flex;
           flex-direction: column;
+          -webkit-text-size-adjust: 100%;
         }
 
         .brand-mark {
@@ -121,7 +122,7 @@ function baseHead(title: string): string {
           border-radius: 11px;
           border: 1px solid var(--border);
           background: #fdfefe;
-          font-size: 14px;
+          font-size: 16px; /* prevents iOS auto-zoom */
           transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
         }
 
@@ -189,7 +190,7 @@ function renderOnboarding(): Response {
             <div class="brand-mark">G</div>
             <div class="brand-text">
               <h1>Gym setup assistant</h1>
-              <p>First-time setup: create your gym, roles and membership types.</p>
+              <p>First-time setup: gym, roles and membership types.</p>
             </div>
           </div>
           <div class="tagline">Step 1 · Onboarding</div>
@@ -358,7 +359,7 @@ function renderOnboarding(): Response {
                 }
               </style>
 
-              <!-- step contents (same as before, omitted for brevity here in comments) -->
+              <!-- STEP 0: Gym + role accounts -->
               <div class="step-content" data-step="0">
                 <div class="grid">
                   <div class="field">
@@ -366,34 +367,38 @@ function renderOnboarding(): Response {
                     <input id="gymName" required placeholder="e.g. Skyline Fitness" />
                     <div class="hint">This name will appear on dashboards and exports.</div>
                   </div>
-                  <div class="field">
-                    <label for="adminName">Admin full name</label>
-                    <input id="adminName" required placeholder="Person managing the dashboard" />
-                  </div>
-                  <div class="field">
-                    <label for="adminEmail">Admin email</label>
-                    <input id="adminEmail" type="email" required placeholder="admin@example.com" />
-                    <div class="hint">Use an email you actually check for login and recovery.</div>
-                  </div>
-                  <div class="field">
-                    <label for="adminPassword">Admin password</label>
-                    <input id="adminPassword" type="password" required minlength="6" placeholder="Create a strong password" />
-                  </div>
                 </div>
-                <div class="grid" style="margin-top: 10px;">
+
+                <div class="notice" style="margin-top:10px;">
+                  Define separate login accounts for each role. Each email + password is independent.
+                </div>
+
+                <div class="grid" style="margin-top:10px;">
                   <div class="field">
-                    <label for="ownerName">Owner name (optional)</label>
-                    <input id="ownerName" placeholder="Gym owner full name" />
-                    <div class="hint">Owner can be different from the admin.</div>
+                    <label>Admin account (required)</label>
+                    <input id="adminName" required placeholder="Admin full name" />
+                    <input id="adminEmail" type="email" required placeholder="admin@example.com" style="margin-top:6px;" />
+                    <input id="adminPassword" type="password" required minlength="6" placeholder="Admin password" style="margin-top:6px;" />
+                    <div class="hint">Admin has full control of this gym’s dashboard.</div>
                   </div>
                   <div class="field">
-                    <label for="managerName">Manager name (optional)</label>
-                    <input id="managerName" placeholder="Primary floor manager" />
-                    <div class="hint">Person supervising daily operations.</div>
+                    <label>Owner account (optional)</label>
+                    <input id="ownerName" placeholder="Owner full name" />
+                    <input id="ownerEmail" type="email" placeholder="owner@example.com" style="margin-top:6px;" />
+                    <input id="ownerPassword" type="password" placeholder="Owner password" style="margin-top:6px;" />
+                    <div class="hint">If set, owner login can view everything.</div>
+                  </div>
+                  <div class="field">
+                    <label>Manager account (optional)</label>
+                    <input id="managerName" placeholder="Manager full name" />
+                    <input id="managerEmail" type="email" placeholder="manager@example.com" style="margin-top:6px;" />
+                    <input id="managerPassword" type="password" placeholder="Manager password" style="margin-top:6px;" />
+                    <div class="hint">Manager handles daily operations and staff.</div>
                   </div>
                 </div>
               </div>
 
+              <!-- STEP 1: schedule -->
               <div class="step-content" data-step="1" style="display:none;">
                 <div class="grid">
                   <div class="field">
@@ -416,9 +421,10 @@ function renderOnboarding(): Response {
                 </div>
               </div>
 
+              <!-- STEP 2: workers -->
               <div class="step-content" data-step="2" style="display:none;">
                 <div class="notice">
-                  Set how many workers you have. Duty slots will be generated and can be adjusted.
+                  Set how many workers you have. Duty slots will be generated and can be adjusted. Login accounts for trainers can be added later.
                 </div>
                 <div class="grid" style="margin-top:8px;">
                   <div class="field">
@@ -438,6 +444,7 @@ function renderOnboarding(): Response {
                 <div class="workers" id="workers"></div>
               </div>
 
+              <!-- STEP 3: memberships -->
               <div class="step-content" data-step="3" style="display:none;">
                 <div class="notice">
                   Add membership styles you offer. You can change prices and details any time.
@@ -448,6 +455,7 @@ function renderOnboarding(): Response {
                 </div>
               </div>
 
+              <!-- STEP 4: summary -->
               <div class="step-content" data-step="4" style="display:none;">
                 <div class="summary" id="summary"></div>
                 <div id="status" class="status"></div>
@@ -465,9 +473,9 @@ function renderOnboarding(): Response {
         </div>
       </main>
       <script>
-        const stepTitles = ["Gym & roles", "Schedule", "Team", "Memberships", "Review"];
+        const stepTitles = ["Gym & role logins", "Schedule", "Team", "Memberships", "Review"];
         const stepCaptions = [
-          "Owner, admin, manager",
+          "Separate login for admin / owner / manager",
           "Opening hours & type",
           "Workers & duty slots",
           "Packages & pricing",
@@ -488,7 +496,6 @@ function renderOnboarding(): Response {
         const addPlanBtn = document.getElementById("addPlan");
 
         let currentStep = 0;
-
         let membershipPlans = [
           { name: "Standard", price: "1500", billing: "monthly", access: "full", perks: "Gym floor + basic classes" },
           { name: "Premium", price: "2500", billing: "monthly", access: "full", perks: "All classes, full-time access" }
@@ -596,7 +603,7 @@ function renderOnboarding(): Response {
                 '<select id="plan-billing-' + i + '">',
                 '<option value="daily"' + (plan.billing === "daily" ? " selected" : "") + ">Per day</option>",
                 '<option value="weekly"' + (plan.billing === "weekly" ? " selected" : "") + ">Weekly</option>",
-                '<option value="monthly"' + (plan.billing === "monthly" ? " selected" : "") + ">Monthly</option>",
+                '<option value="monthly"' + (plan.billing === "monthly" ? " selected" : "") + ">Monthly</option>',
                 '<option value="yearly"' + (plan.billing === "yearly" ? " selected" : "") + ">Yearly</option>",
                 "</select>",
                 "</div>",
@@ -674,14 +681,22 @@ function renderOnboarding(): Response {
           syncPlansFromInputs();
           const data = {
             gymName: (document.getElementById("gymName").value || "").trim(),
+
             adminName: (document.getElementById("adminName").value || "").trim(),
             adminEmail: (document.getElementById("adminEmail").value || "").trim(),
             adminPassword: (document.getElementById("adminPassword").value || "").trim(),
+
             ownerName: (document.getElementById("ownerName").value || "").trim(),
+            ownerEmail: (document.getElementById("ownerEmail").value || "").trim(),
+            ownerPassword: (document.getElementById("ownerPassword").value || "").trim(),
+
             managerName: (document.getElementById("managerName").value || "").trim(),
-            gymType: (document.getElementById("gymType").value || "").trim(),
-            openingTime: (document.getElementById("openingTime").value || "").trim(),
-            closingTime: (document.getElementById("closingTime").value || "").trim(),
+            managerEmail: (document.getElementById("managerEmail").value || "").trim(),
+            managerPassword: (document.getElementById("managerPassword").value || "").trim(),
+
+            gymType: (document.getElementById("gymType")?.value || "").trim(),
+            openingTime: (document.getElementById("openingTime")?.value || "").trim(),
+            closingTime: (document.getElementById("closingTime")?.value || "").trim(),
             workerCount: Number(workerCountSelect.value || 0),
             workers: [],
             memberships: membershipPlans
@@ -731,18 +746,16 @@ function renderOnboarding(): Response {
             "</div>",
             "</div>",
             '<div class="summary-item">',
-            '<div class="summary-item-title">Roles</div>',
+            '<div class="summary-item-title">Accounts</div>',
             '<div class="summary-item-body">',
             "<strong>Admin:</strong> ",
-            data.adminName || "Not specified",
-            " (",
-            data.adminEmail || "no email",
-            ")<br />",
+            data.adminEmail || "not set",
+            "<br />",
             "<strong>Owner:</strong> ",
-            data.ownerName || "Not set",
+            data.ownerEmail || "none",
             "<br />",
             "<strong>Manager:</strong> ",
-            data.managerName || "Not set",
+            data.managerEmail || "none",
             "</div>",
             "</div>",
             '<div class="summary-item">',
@@ -806,7 +819,7 @@ function renderOnboarding(): Response {
           const payload = gatherData();
           statusBox.style.display = "block";
           statusBox.classList.remove("error");
-          statusBox.textContent = "Creating gym and initial admin account...";
+          statusBox.textContent = "Creating gym and all accounts...";
 
           try {
             const response = await fetch("/api/setup", {
@@ -847,7 +860,7 @@ function renderLogin(): Response {
             <div class="brand-mark">G</div>
             <div class="brand-text">
               <h1>Gym admin login</h1>
-              <p>Sign in as admin, manager or owner to manage your gym.</p>
+              <p>Sign in with your role account to manage your gym.</p>
             </div>
           </div>
           <div class="tagline">Secure access</div>
@@ -857,7 +870,9 @@ function renderLogin(): Response {
         <div class="shell">
           <div class="card" style="max-width: 420px; margin: 0 auto;">
             <h2 style="margin-top:0; margin-bottom:4px; font-size:18px;">Welcome back</h2>
-            <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">Use the admin / manager / owner account email and password created earlier.</p>
+            <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">
+              Use the email and password for your admin / owner / manager / worker account.
+            </p>
             <div class="field" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
               <label for="email">Email</label>
               <input id="email" type="email" placeholder="you@example.com" />
@@ -1282,6 +1297,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         </div>
       </main>
       <script>
+        const CURRENT_ROLE = "${role}";
         const navItems = document.querySelectorAll(".nav-item");
         const tabs = {
           overview: document.getElementById("tab-overview"),
@@ -1308,6 +1324,21 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         const panelSubtitle = document.getElementById("panelSubtitle");
         const gymLabel = document.getElementById("gymLabel");
 
+        // Role-based UI restrictions
+        navItems.forEach(item => {
+          const tab = item.getAttribute("data-tab");
+          if (CURRENT_ROLE === "worker") {
+            if (tab === "accounts" || tab === "settings") {
+              item.style.display = "none";
+            }
+          } else if (CURRENT_ROLE === "manager") {
+            if (tab === "settings") {
+              item.style.display = "none";
+            }
+          }
+          // admin / owner see everything
+        });
+
         function switchTab(tab) {
           for (const key in tabs) {
             tabs[key].style.display = key === tab ? "" : "none";
@@ -1322,6 +1353,8 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         navItems.forEach(item => {
           item.addEventListener("click", () => {
             const tab = item.getAttribute("data-tab");
+            if (tab === "accounts" && CURRENT_ROLE === "worker") return;
+            if (tab === "settings" && (CURRENT_ROLE === "worker" || CURRENT_ROLE === "manager")) return;
             switchTab(tab);
           });
         });
@@ -1404,37 +1437,41 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           }
         }
 
-        document.getElementById("btnAddMembership").addEventListener("click", async () => {
-          const name = document.getElementById("m-name").value.trim();
-          const price = document.getElementById("m-price").value.trim();
-          const billing = document.getElementById("m-billing").value;
-          const access = document.getElementById("m-access").value;
-          const perks = document.getElementById("m-perks").value.trim();
-          const status = document.getElementById("membershipStatus");
-          status.textContent = "";
-          if (!name || !price) {
-            status.textContent = "Name and price are required.";
-            return;
-          }
-          try {
-            const res = await fetch("/api/admin/add-membership", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name, price: Number(price), billing, access, perks })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to add plan");
-            status.textContent = "Plan added.";
-            document.getElementById("m-name").value = "";
-            document.getElementById("m-price").value = "";
-            document.getElementById("m-perks").value = "";
-            loadBootstrap();
-          } catch (err) {
-            status.textContent = err.message || "Error adding plan.";
+        document.getElementById("btnAddMembership")?.addEventListener("click", async () => {
+          if (CURRENT_ROLE === "worker") return;
+          if (CURRENT_ROLE === "manager" || CURRENT_ROLE === "admin" || CURRENT_ROLE === "owner") {
+            const name = document.getElementById("m-name").value.trim();
+            const price = document.getElementById("m-price").value.trim();
+            const billing = document.getElementById("m-billing").value;
+            const access = document.getElementById("m-access").value;
+            const perks = document.getElementById("m-perks").value.trim();
+            const status = document.getElementById("membershipStatus");
+            status.textContent = "";
+            if (!name || !price) {
+              status.textContent = "Name and price are required.";
+              return;
+            }
+            try {
+              const res = await fetch("/api/admin/add-membership", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, price: Number(price), billing, access, perks })
+              });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Failed to add plan");
+              status.textContent = "Plan added.";
+              document.getElementById("m-name").value = "";
+              document.getElementById("m-price").value = "";
+              document.getElementById("m-perks").value = "";
+              loadBootstrap();
+            } catch (err) {
+              status.textContent = err.message || "Error adding plan.";
+            }
           }
         });
 
-        document.getElementById("btnAddWorker").addEventListener("click", async () => {
+        document.getElementById("btnAddWorker")?.addEventListener("click", async () => {
+          if (CURRENT_ROLE === "worker") return; // workers can't add workers
           const name = document.getElementById("w-name").value.trim();
           const role = document.getElementById("w-role").value;
           const dutyStart = document.getElementById("w-start").value.trim();
@@ -1463,7 +1500,8 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           }
         });
 
-        document.getElementById("btnAddAccount").addEventListener("click", async () => {
+        document.getElementById("btnAddAccount")?.addEventListener("click", async () => {
+          if (CURRENT_ROLE !== "admin" && CURRENT_ROLE !== "owner") return; // only admin/owner can create accounts
           const name = document.getElementById("a-name").value.trim();
           const email = document.getElementById("a-email").value.trim();
           const role = document.getElementById("a-role").value;
@@ -1692,17 +1730,25 @@ async function getSessionAccount(env: Env, token: string | undefined | null): Pr
 
 /* ----------------------- Setup & inserts ----------------------- */
 
-async function handleSetup(env: Env, raw: any): Promise<void> {
+async function handleSetup(env: Env, raw: any): Promise<number> {
   const workerCount = safeNumber(raw?.workerCount, 0);
   const workers = Array.isArray(raw?.workers) ? raw.workers.slice(0, 50) : [];
   const memberships = Array.isArray(raw?.memberships) ? raw.memberships.slice(0, 50) : [];
 
   const gymName = safeText(raw?.gymName, "Gym");
+
   const adminName = safeText(raw?.adminName, "Admin");
   const adminEmail = safeText(raw?.adminEmail);
   const adminPassword = safeText(raw?.adminPassword);
+
   const ownerName = safeText(raw?.ownerName);
+  const ownerEmail = safeText(raw?.ownerEmail);
+  const ownerPassword = safeText(raw?.ownerPassword);
+
   const managerName = safeText(raw?.managerName);
+  const managerEmail = safeText(raw?.managerEmail);
+  const managerPassword = safeText(raw?.managerPassword);
+
   const gymType = safeText(raw?.gymType, "combined");
   const openingTime = safeTime(raw?.openingTime, "06:00");
   const closingTime = safeTime(raw?.closingTime, "22:00");
@@ -1711,52 +1757,43 @@ async function handleSetup(env: Env, raw: any): Promise<void> {
     throw new Error("Gym name, admin email, and admin password are required.");
   }
 
-  const passwordHash = await hashPassword(adminPassword);
-
   // Insert gym
-  const gymResult = await env.DB.prepare(
+  const gymRes = await env.DB.prepare(
     `INSERT INTO gyms (name, gym_type, opening_time, closing_time)
      VALUES (?, ?, ?, ?)`,
   ).bind(gymName, gymType, openingTime, closingTime).run();
-
-  const anyResult: any = gymResult;
-  const gymId = Number(
-    anyResult?.meta?.last_row_id ??
-    anyResult?.last_row_id ??
-    anyResult?.lastInsertRowId,
-  );
+  const gymId = Number(gymRes.lastInsertRowId);
   if (!Number.isFinite(gymId) || gymId <= 0) {
     throw new Error("Could not determine newly created gym ID.");
   }
 
-  // Insert admin account
-  const adminResult = await env.DB.prepare(
+  // Admin account
+  const adminHash = await hashPassword(adminPassword);
+  const adminRes = await env.DB.prepare(
     `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
      VALUES (?, 'admin', ?, ?, ?)`,
-  ).bind(gymId, adminName, adminEmail, passwordHash).run();
-
-  const adminAny: any = adminResult;
-  const adminId = Number(
-    adminAny?.meta?.last_row_id ??
-    adminAny?.last_row_id ??
-    adminAny?.lastInsertRowId,
-  );
+  ).bind(gymId, adminName, adminEmail, adminHash).run();
+  const adminId = Number(adminRes.lastInsertRowId);
   if (!Number.isFinite(adminId) || adminId <= 0) {
     throw new Error("Could not determine admin account ID.");
   }
 
-  // Optional owner & manager (no login until explicitly created via Accounts tab)
-  if (ownerName) {
+  // Owner account (optional)
+  if (ownerName && ownerEmail && ownerPassword) {
+    const ownerHash = await hashPassword(ownerPassword);
     await env.DB.prepare(
       `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
        VALUES (?, 'owner', ?, ?, ?)`,
-    ).bind(gymId, ownerName, "", passwordHash).run();
+    ).bind(gymId, ownerName, ownerEmail, ownerHash).run();
   }
-  if (managerName) {
+
+  // Manager account (optional)
+  if (managerName && managerEmail && managerPassword) {
+    const managerHash = await hashPassword(managerPassword);
     await env.DB.prepare(
       `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
        VALUES (?, 'manager', ?, ?, ?)`,
-    ).bind(gymId, managerName, "", passwordHash).run();
+    ).bind(gymId, managerName, managerEmail, managerHash).run();
   }
 
   // Workers
@@ -1790,7 +1827,7 @@ async function handleSetup(env: Env, raw: any): Promise<void> {
     await planStmt.bind(gymId, name, price, billing, access, perks).run();
   }
 
-  // Setup done; session creation happens in handler
+  return adminId; // return admin account ID for initial session
 }
 
 /* ----------------------- Admin API ----------------------- */
@@ -1862,16 +1899,11 @@ export default {
           });
         }
         const raw = await request.json();
-        await handleSetup(env, raw);
-
-        // Get admin account for session
-        const admin = await env.DB.prepare(
-          `SELECT id FROM accounts WHERE role = 'admin' ORDER BY id LIMIT 1`,
-        ).first<any>();
+        const adminId = await handleSetup(env, raw);
 
         let headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (admin?.id) {
-          const token = await createSession(env, Number(admin.id));
+        if (adminId) {
+          const token = await createSession(env, Number(adminId));
           headers["Set-Cookie"] = `gym_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`;
         }
 
@@ -1968,6 +2000,13 @@ export default {
     if (path === "/api/admin/add-membership" && method === "POST") {
       try {
         const account = await requireSession(env, request);
+        if (account.role === "worker") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         const body = await request.json();
         const name = safeText(body?.name);
         const price = safeNumber(body?.price, 0);
@@ -2000,6 +2039,13 @@ export default {
     if (path === "/api/admin/add-worker" && method === "POST") {
       try {
         const account = await requireSession(env, request);
+        if (account.role === "worker") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         const body = await request.json();
         const name = safeText(body?.name);
         const role = safeText(body?.role, "trainer");
@@ -2031,6 +2077,13 @@ export default {
     if (path === "/api/admin/add-account" && method === "POST") {
       try {
         const account = await requireSession(env, request);
+        if (account.role !== "admin" && account.role !== "owner") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
         const body = await request.json();
         const name = safeText(body?.name);
         const email = safeText(body?.email);
