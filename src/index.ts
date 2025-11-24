@@ -50,7 +50,6 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
-  // If we've passed the day of month, count as next month due
   if (now.getDate() > exp.getDate()) months += 1;
   if (months < 1) months = 1;
   return months;
@@ -80,12 +79,10 @@ function baseHead(title: string): string {
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* Layout */
     .app-layout { display: flex; height: 100%; }
     .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
     
-    /* Components */
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
     .btn { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
     .btn-primary { background: var(--primary); color: white; }
@@ -98,51 +95,43 @@ function baseHead(title: string): string {
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-main); }
 
-    /* Tables */
     .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
     th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
     td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
     
-    /* Stats */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
     .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
     .stat-val { font-size: 28px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
     .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
-    /* Utilities */
     .hidden { display: none !important; }
     .flex { display: flex; align-items: center; gap: 12px; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
     
-    /* Badges */
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
     
-    /* Sidebar Specifics */
     .logo { padding: 24px; font-size: 20px; font-weight: 700; border-bottom: 1px solid #1f2937; letter-spacing: -0.5px; }
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 12px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 4px; transition: 0.2s; font-weight: 500; display: flex; align-items: center; gap: 10px; }
     .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
     .user-footer { padding: 20px; border-top: 1px solid #1f2937; }
 
-    /* Modals */
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
     .modal-content { background: white; width: 100%; max-width: 440px; padding: 24px; border-radius: 16px; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Check-in / payment search list */
     .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:last-child { border-bottom: none; }
     .checkin-item:hover { background: #ffffff; }
     .checkin-item small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
 
-    /* Mobile */
     .mobile-header { display: none; }
     @media (max-width: 768px) {
       body { overflow: auto; }
@@ -162,7 +151,7 @@ function baseHead(title: string): string {
 }
 
 /* ========================================================================
-   3. DATABASE SETUP (The "Fixer")
+   3. DATABASE SETUP
    ======================================================================== */
 
 async function initDB(env: Env) {
@@ -185,7 +174,6 @@ async function initDB(env: Env) {
   for (const sql of q) await env.DB.prepare(sql).run();
 }
 
-// NUKE FUNCTION: reset everything
 async function factoryReset(env: Env) {
   const drops = ["config", "users", "members", "attendance", "payments", "sessions"];
   for (const table of drops) await env.DB.prepare(`DROP TABLE IF EXISTS ${table}`).run();
@@ -200,25 +188,22 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
 
-    // OPTIONS handler for CORS
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     try {
-      await initDB(env); // Ensure DB exists on every request
+      await initDB(env);
 
       /* --- PUBLIC ROUTES --- */
-      
-      // 1. Root: Decide where to go
+
       if (url.pathname === "/") {
-        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'gym_name'").first();
+        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'gym_name'").first<any>();
         const user = await getSession(req, env);
         
-        if (!config) return renderSetup(); // No gym? Setup.
-        if (user) return Response.redirect(url.origin + "/dashboard", 302); // Logged in? Dashboard.
-        return renderLogin(config.value as string); // Default: Login.
+        if (!config) return renderSetup();
+        if (user) return Response.redirect(url.origin + "/dashboard", 302);
+        return renderLogin(config.value as string);
       }
 
-      // 2. Setup API
       if (url.pathname === "/api/setup" && req.method === "POST") {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
@@ -233,7 +218,6 @@ export default {
         return json({ success: true });
       }
 
-      // 3. Login API
       if (url.pathname === "/api/login" && req.method === "POST") {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
@@ -252,7 +236,6 @@ export default {
         });
       }
 
-      // 4. Factory Reset API (no button on login)
       if (url.pathname === "/api/nuke") {
         await factoryReset(env);
         return new Response("Database Reset Complete. Go to / to setup again.", { status: 200 });
@@ -263,16 +246,187 @@ export default {
       }
 
       /* --- PROTECTED ROUTES --- */
+
       const user = await getSession(req, env);
       if (!user) {
         if (url.pathname.startsWith('/api')) return json({ error: "Unauthorized" }, 401);
         return Response.redirect(url.origin + "/", 302);
       }
 
-      // Dashboard HTML
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // Live search for members (check-in / payments)
+      // PRINTABLE DUE LIST (HTML → user prints to PDF)
+      if (url.pathname === "/dues/print") {
+        const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
+        const gymName = (gymRow && gymRow.value) || "Gym OS";
+
+        const resMembers = await env.DB.prepare("SELECT * FROM members ORDER BY id").all<any>();
+        const members = resMembers.results || [];
+        const processed = members.map((m: any) => ({
+          ...m,
+          dueMonths: calcDueMonths(m.expiry_date as string | null)
+        })).filter((m: any) => m.dueMonths && m.dueMonths > 0)
+          .sort((a: any, b: any) => (b.dueMonths || 0) - (a.dueMonths || 0));
+
+        const todayStr = new Date().toISOString().split("T")[0];
+
+        const rowsHtml = processed.length
+          ? processed.map((m: any) => {
+              const exp = m.expiry_date ? m.expiry_date.split("T")[0] : "-";
+              const dueText = m.dueMonths + " month" + (m.dueMonths > 1 ? "s" : "") + " due";
+              const status = (m.status || "due").toUpperCase();
+              return `
+                <tr>
+                  <td>#${m.id}</td>
+                  <td>${m.name}</td>
+                  <td>${m.phone || "-"}</td>
+                  <td>${m.plan || "-"}</td>
+                  <td>${exp}</td>
+                  <td>${status}</td>
+                  <td>${dueText}</td>
+                </tr>`;
+            }).join("")
+          : `<tr><td colspan="7" style="text-align:center; padding:24px;">No members with due right now.</td></tr>`;
+
+        const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Due Members Report - ${gymName}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 32px;
+      background: #f9fafb;
+      color: #111827;
+    }
+    .report-wrapper {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 28px 32px;
+      box-shadow: 0 10px 40px rgba(15,23,42,0.12);
+      border: 1px solid #e5e7eb;
+    }
+    .report-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+      border-bottom: 1px solid #e5e7eb;
+      padding-bottom: 16px;
+    }
+    .report-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: #111827;
+    }
+    .report-meta {
+      text-align: right;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .badge-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      background: #eff6ff;
+      color: #1d4ed8;
+      margin-top: 4px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 13px;
+    }
+    th, td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: #6b7280;
+      background: #f9fafb;
+    }
+    tr:nth-child(even) td {
+      background: #f9fafb;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    .footer-note {
+      margin-top: 18px;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: right;
+    }
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+      .report-wrapper {
+        box-shadow: none;
+        border-radius: 0;
+        border: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="report-wrapper">
+    <div class="report-header">
+      <div>
+        <div class="report-title">${gymName}</div>
+        <div class="badge-pill">Due Members Report</div>
+      </div>
+      <div class="report-meta">
+        Generated on: ${todayStr}<br>
+        Generated by: ${user.name || "Gym Staff"}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Member Name</th>
+          <th>Phone</th>
+          <th>Plan</th>
+          <th>Expiry</th>
+          <th>Status</th>
+          <th>Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+
+    <div class="footer-note">
+      Tip: Use your browser's <strong>Print → Save as PDF</strong> to export this report.
+    </div>
+  </div>
+</body>
+</html>`;
+
+        return new Response(html, { headers: { "Content-Type": "text/html" } });
+      }
+
+      // member live search
       if (url.pathname === "/api/members/search" && req.method === "POST") {
         const body = await req.json() as any;
         const qRaw = (body.query || "").toString().trim();
@@ -306,9 +460,9 @@ export default {
         return json({ results });
       }
 
-      // Data Bootstrap
+      // bootstrap data
       if (url.pathname === "/api/bootstrap") {
-        const configRows = await env.DB.prepare("SELECT key, value FROM config").all();
+        const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
         const config: Record<string, string> = {};
         for (const row of configRows.results || []) {
           config[row.key] = row.value;
@@ -325,7 +479,7 @@ export default {
           membershipPlans = ["Standard", "Premium"];
         }
 
-        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
+        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const membersProcessed: any[] = [];
 
         let activeCount = 0;
@@ -369,17 +523,17 @@ export default {
           JOIN members m ON a.member_id = m.id 
           WHERE date(a.check_in_time) = date('now')
           ORDER BY a.id DESC
-        `).all();
+        `).all<any>();
 
         const attendanceHistory = await env.DB.prepare(`
           SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
           JOIN members m ON a.member_id = m.id 
           ORDER BY a.id DESC
-        `).all();
+        `).all<any>();
         
-        const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
-        const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
+        const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
+        const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
 
         const attendanceTodayWithDue = (attendanceToday.results || []).map((r: any) => ({
           ...r,
@@ -411,7 +565,6 @@ export default {
         });
       }
 
-      // Add Member
       if (url.pathname === "/api/members/add" && req.method === "POST") {
         const body = await req.json() as any;
         const expiry = new Date();
@@ -422,7 +575,6 @@ export default {
         return json({ success: true });
       }
 
-      // Check In (no duplicates per day)
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
@@ -446,7 +598,6 @@ export default {
         return json({ success: true, status, name: member.name, isExpired });
       }
 
-      // Add Payment
       if (url.pathname === "/api/payment" && req.method === "POST") {
         const { memberId, amount, months } = await req.json() as any;
         
@@ -463,7 +614,6 @@ export default {
         return json({ success: true });
       }
 
-      // Delete Member
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
@@ -472,7 +622,6 @@ export default {
         return json({ success: true });
       }
 
-      // Settings update
       if (url.pathname === "/api/settings" && req.method === "POST") {
         const body = await req.json() as any;
         const attendanceThreshold = parseInt(body.attendanceThreshold) || 3;
@@ -611,7 +760,7 @@ function renderDashboard(user: any) {
       <div class="overlay" onclick="toggleSidebar()"></div>
 
       <aside class="sidebar">
-        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.2</span></div>
+        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.3</span></div>
         <div class="nav">
           <div class="nav-item" onclick="app.nav('home')">📊 Overview</div>
           <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
@@ -715,7 +864,14 @@ function renderDashboard(user: any) {
 
           <div id="view-history" class="hidden">
             <div class="card">
-              <h3>Attendance History (All Days)</h3>
+              <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
+                <h3 style="margin:0;">Attendance History</h3>
+                <div class="flex" style="gap:8px;">
+                  <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
+                  <button class="btn btn-outline" style="font-size:12px; padding:6px 10px;" onclick="app.applyHistoryFilter()">Filter</button>
+                  <button class="btn btn-outline" style="font-size:12px; padding:6px 10px;" onclick="app.clearHistoryFilter()">Clear</button>
+                </div>
+              </div>
               <div class="table-responsive">
                 <table>
                   <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
@@ -756,7 +912,12 @@ function renderDashboard(user: any) {
             </div>
 
             <div class="card">
-              <h3>Worst Dues (Most Critical Members)</h3>
+              <div class="flex-between" style="margin-bottom:10px;">
+                <h3 style="margin:0;">Worst Dues (Most Critical Members)</h3>
+                <button class="btn btn-outline" style="font-size:12px; padding:6px 10px;" onclick="window.open('/dues/print','_blank')">
+                  Print Due List (PDF)
+                </button>
+              </div>
               <div class="table-responsive">
                 <table>
                   <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Due</th><th>Pay</th></tr></thead>
@@ -868,8 +1029,7 @@ function renderDashboard(user: any) {
           this.data = await res.json();
           this.render();
           this.applySettingsUI();
-          // Default landing: today's attendance
-          this.nav('attendance');
+          this.nav('attendance'); // default: today's attendance
         },
         
         nav(v) {
@@ -897,19 +1057,16 @@ function renderDashboard(user: any) {
         },
 
         render() {
-          // Stats
           document.getElementById('stat-active').innerText = this.data.stats.active;
           document.getElementById('stat-today').innerText = this.data.stats.today;
           document.getElementById('stat-rev').innerText = this.data.stats.revenue || 0;
           document.getElementById('stat-due').innerText = this.data.stats.dueMembers || 0;
           document.getElementById('stat-inactive').innerText = this.data.stats.inactiveMembers || 0;
 
-          // Payment view stats
           document.getElementById('pay-stat-due').innerText = this.data.stats.dueMembers || 0;
           document.getElementById('pay-stat-inactive').innerText = this.data.stats.inactiveMembers || 0;
           document.getElementById('pay-stat-totaldue').innerText = this.data.stats.totalDueMonths || 0;
 
-          // Members table
           const tbody = document.getElementById('tbl-members');
           tbody.innerHTML = (this.data.members || []).map(m => {
             let statusBadge = '<span class="badge bg-green">Active</span>';
@@ -929,7 +1086,6 @@ function renderDashboard(user: any) {
             </tr>\`;
           }).join('');
 
-          // Attendance data
           const today = this.data.attendanceToday || [];
           const history = this.data.attendanceHistory || [];
 
@@ -950,34 +1106,11 @@ function renderDashboard(user: any) {
               </tr>\`;
           }).join('') : '<tr><td colspan="4">No check-ins yet today.</td></tr>';
 
-          const historyRows = history.length ? history.map(a => {
-            const d = new Date(a.check_in_time);
-            const dateStr = d.toISOString().split('T')[0];
-            const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            const due = a.dueMonths == null 
-              ? '-' 
-              : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
-            const statusBadge = a.status === 'success' 
-              ? '<span class="badge bg-green">OK</span>' 
-              : '<span class="badge bg-red">Expired</span>';
-            return \`
-              <tr>
-                <td>\${dateStr}</td>
-                <td>\${timeStr}</td>
-                <td>\${a.name}</td>
-                <td>\${statusBadge}</td>
-                <td>\${due}</td>
-              </tr>\`;
-          }).join('') : '<tr><td colspan="5">No attendance history yet.</td></tr>';
-
-          // Home recent = today
           document.getElementById('tbl-attendance-recent').innerHTML = todayRows;
-          // Attendance tab = today
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
-          // History tab = all
-          document.getElementById('tbl-attendance-history').innerHTML = historyRows;
 
-          // Dues table (worst condition)
+          this.renderHistoryTable(null);
+
           const duesTbody = document.getElementById('tbl-dues');
           const duesMembers = (this.data.members || [])
             .filter(m => m.dueMonths && m.dueMonths > 0)
@@ -1001,10 +1134,56 @@ function renderDashboard(user: any) {
           this.renderCharts();
         },
 
+        renderHistoryTable(filterDate) {
+          const tbody = document.getElementById('tbl-attendance-history');
+          const history = this.data.attendanceHistory || [];
+          let list = history;
+          if (filterDate) {
+            list = history.filter(a => a.check_in_time && a.check_in_time.startsWith(filterDate));
+          }
+
+          if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="5">No attendance for selected date.</td></tr>';
+            return;
+          }
+
+          const rows = list.map(a => {
+            const d = new Date(a.check_in_time);
+            const dateStr = d.toISOString().split('T')[0];
+            const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const due = a.dueMonths == null 
+              ? '-' 
+              : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
+            const statusBadge = a.status === 'success' 
+              ? '<span class="badge bg-green">OK</span>' 
+              : '<span class="badge bg-red">Expired</span>';
+            return \`
+              <tr>
+                <td>\${dateStr}</td>
+                <td>\${timeStr}</td>
+                <td>\${a.name}</td>
+                <td>\${statusBadge}</td>
+                <td>\${due}</td>
+              </tr>\`;
+          }).join('');
+          tbody.innerHTML = rows;
+        },
+
+        applyHistoryFilter() {
+          const input = document.getElementById('history-date');
+          const val = input && input.value ? input.value : null;
+          this.renderHistoryTable(val);
+        },
+
+        clearHistoryFilter() {
+          const input = document.getElementById('history-date');
+          if (input) input.value = '';
+          this.renderHistoryTable(null);
+        },
+
         renderCharts() {
           if (typeof Chart === 'undefined') return;
 
-          // Dues chart
           const members = this.data.members || [];
           const noDue = members.filter(m => !m.dueMonths || m.dueMonths <= 0).length;
           const due1 = members.filter(m => m.dueMonths === 1).length;
@@ -1032,7 +1211,6 @@ function renderDashboard(user: any) {
             });
           }
 
-          // Attendance last 7 days chart
           const history = this.data.attendanceHistory || [];
           const labels = [];
           const counts = [];
@@ -1122,7 +1300,6 @@ function renderDashboard(user: any) {
           }
         },
 
-        // Live search handler for check-in input
         onCheckinInput(event) {
           const val = event.target.value;
           this.searchCheckin(val);
@@ -1165,7 +1342,6 @@ function renderDashboard(user: any) {
           }, 200);
         },
 
-        // Payment search
         onPaymentSearchInput(event) {
           const val = event.target.value;
           this.searchPayment(val);
