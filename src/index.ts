@@ -1,10 +1,10 @@
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket;
+  BUCKET: R2Bucket; // not used yet, but kept for future exports/backups
 }
 
 /**
- * HTML layout for the onboarding wizard
+ * Onboarding UI (HTML + JS)
  */
 function layout(): Response {
   const html = `<!doctype html>
@@ -442,7 +442,7 @@ function layout(): Response {
           <div class="card">
             <div id="steps" class="steps"></div>
             <form id="wizard">
-              <!-- STEP 0: Gym & role owners -->
+              <!-- STEP 0: Gym & roles -->
               <div class="step-content" data-step="0">
                 <div class="grid">
                   <div class="field">
@@ -468,7 +468,7 @@ function layout(): Response {
                   <div class="field">
                     <label for="ownerName">Owner name (optional)</label>
                     <input id="ownerName" name="ownerName" placeholder="Gym owner full name" />
-                    <div class="hint">For records — owner can be different from the admin.</div>
+                    <div class="hint">Owner can be different from the admin.</div>
                   </div>
                   <div class="field">
                     <label for="managerName">Manager name (optional)</label>
@@ -504,7 +504,7 @@ function layout(): Response {
               <!-- STEP 2: Team / workers -->
               <div class="step-content" data-step="2" style="display:none;">
                 <div class="notice">
-                  Set how many workers you have. We’ll generate clean duty slots you can adjust.
+                  Set how many workers you have. Duty slots will be generated and can be adjusted.
                 </div>
                 <div class="grid" style="margin-top:8px;">
                   <div class="field">
@@ -559,7 +559,14 @@ function layout(): Response {
 
       <script>
         const stepTitles = ["Gym & roles", "Schedule", "Team", "Memberships", "Review"];
-        const stepCaptions = ["Owner, admin, manager", "Opening hours & type", "Workers & duty slots", "Packages & pricing", "Check everything & finish"];
+        const stepCaptions = [
+          "Owner, admin, manager",
+          "Opening hours & type",
+          "Workers & duty slots",
+          "Packages & pricing",
+          "Check everything & finish"
+        ];
+
         const stepContainer = document.getElementById("steps");
         const stepContents = Array.from(document.querySelectorAll(".step-content"));
         const nextBtn = document.getElementById("nextBtn");
@@ -574,17 +581,18 @@ function layout(): Response {
         const addPlanBtn = document.getElementById("addPlan");
 
         let currentStep = 0;
+
+        // Default 2 membership types (others can be added)
         let membershipPlans = [
           { name: "Standard", price: "1500", billing: "monthly", access: "full", perks: "Gym floor + basic classes" },
-          { name: "Premium", price: "2500", billing: "monthly", access: "full", perks: "All classes, full-time access" },
-          { name: "Day Pass", price: "300", billing: "daily", access: "full", perks: "Single visit, all areas" }
+          { name: "Premium", price: "2500", billing: "monthly", access: "full", perks: "All classes, full-time access" }
         ];
 
         function populateWorkerCount() {
           workerCountSelect.innerHTML = Array.from({ length: 20 }, (_, i) => {
             const value = i + 1;
             const selected = value === 3 ? " selected" : "";
-            return '<option value="' + value + '"' + selected + '>' + value + "</option>";
+            return '<option value="' + value + '"' + selected + ">" + value + "</option>";
           }).join("");
         }
 
@@ -797,9 +805,9 @@ function layout(): Response {
             "role_accounts (owner, admin, manager)",
             "workers (duty slots)",
             "membership_plans (pricing & billing)",
-            "members (future: members linked to plans)",
-            "attendance_logs (future: check-ins)",
-            "balance_dues (future: due tracking)"
+            "members (members linked to plans)",
+            "attendance_logs (check-ins)",
+            "balance_dues (due tracking)"
           ];
 
           summaryBox.innerHTML = [
@@ -863,6 +871,7 @@ function layout(): Response {
           ].join("");
         }
 
+        // Initial render
         populateWorkerCount();
         renderSteps();
         renderWorkers();
@@ -1119,14 +1128,25 @@ async function insertGym(env: Env, payload: ReturnType<typeof sanitizePayload>) 
     throw new Error(`Failed to insert gym record. ${(error as Error).message}`);
   }
 
-  const gymId = Number(gymResult.lastInsertRowId);
+  // Correct way to get inserted ID from D1
+  const anyResult: any = gymResult;
+  const gymId = Number(
+    anyResult?.meta?.last_row_id ??
+      anyResult?.last_row_id ??
+      anyResult?.lastInsertRowId,
+  );
+
+  if (!Number.isFinite(gymId) || gymId <= 0) {
+    console.error("Invalid gymId after insert", { gymResult });
+    throw new Error("Could not determine newly created gym ID.");
+  }
 
   // role_accounts: admin, owner, manager
   const roleStmt = env.DB.prepare(
     `INSERT INTO role_accounts (gym_id, role, full_name, email) VALUES (?, ?, ?, ?)`,
   );
 
-  // Admin
+  // Admin (with email)
   try {
     await roleStmt
       .bind(
@@ -1141,7 +1161,7 @@ async function insertGym(env: Env, payload: ReturnType<typeof sanitizePayload>) 
     throw new Error(`Failed to insert admin account. ${(error as Error).message}`);
   }
 
-  // Owner (optional)
+  // Owner (optional, no login yet)
   if (payload.ownerName) {
     try {
       await roleStmt
@@ -1158,7 +1178,7 @@ async function insertGym(env: Env, payload: ReturnType<typeof sanitizePayload>) 
     }
   }
 
-  // Manager (optional)
+  // Manager (optional, no login yet)
   if (payload.managerName) {
     try {
       await roleStmt
