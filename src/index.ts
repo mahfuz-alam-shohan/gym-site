@@ -6,7 +6,7 @@ export interface Env {
 }
 
 /* ========================================================================
-   1. UTILITIES
+   1. UTILITIES & SECURITY
    ======================================================================== */
 const corsHeaders = {
   "Content-Type": "application/json",
@@ -28,42 +28,37 @@ async function hashPassword(pass: string): Promise<string> {
    2. DATABASE SCHEMA
    ======================================================================== */
 async function initDB(env: Env) {
-  // We use a try-catch here to prevent 1101 loops if schema is mismatched
-  try {
-    const q = [
-      `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
-      `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT)`,
-      `CREATE TABLE IF NOT EXISTS members (
-        id INTEGER PRIMARY KEY, 
-        name TEXT, 
-        phone TEXT, 
-        gender TEXT, 
-        plan TEXT, 
-        joined_at TEXT, 
-        due_date TEXT, 
-        status TEXT DEFAULT 'active',
-        notes TEXT
-      )`,
-      `CREATE TABLE IF NOT EXISTS attendance (
-        id INTEGER PRIMARY KEY, 
-        member_id INTEGER, 
-        check_in_time TEXT, 
-        status TEXT
-      )`,
-      `CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY, 
-        member_id INTEGER, 
-        amount INTEGER, 
-        date TEXT, 
-        months_paid INTEGER,
-        recorded_by TEXT
-      )`,
-      `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, role TEXT, expires_at TEXT)`
-    ];
-    for (const sql of q) await env.DB.prepare(sql).run();
-  } catch (e) {
-    console.error("Init DB Error (Ignorable if Nuke pending):", e);
-  }
+  const q = [
+    `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
+    `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT)`,
+    `CREATE TABLE IF NOT EXISTS members (
+      id INTEGER PRIMARY KEY, 
+      name TEXT, 
+      phone TEXT, 
+      gender TEXT, 
+      plan TEXT, 
+      joined_at TEXT, 
+      due_date TEXT, 
+      status TEXT DEFAULT 'active',
+      notes TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY, 
+      member_id INTEGER, 
+      check_in_time TEXT, 
+      status TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY, 
+      member_id INTEGER, 
+      amount INTEGER, 
+      date TEXT, 
+      months_paid INTEGER,
+      recorded_by TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, role TEXT, expires_at TEXT)`
+  ];
+  for (const sql of q) await env.DB.prepare(sql).run();
 }
 
 async function nukeDB(env: Env) {
@@ -73,25 +68,29 @@ async function nukeDB(env: Env) {
 }
 
 /* ========================================================================
-   3. WORKER LOGIC (WITH CRASH HANDLER)
+   3. WORKER LOGIC
    ======================================================================== */
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
-    // --- CRASH HANDLER WRAPPER ---
+    // 1. SAFETY CHECK: MISSING DB BINDING
+    if (!env.DB) {
+      return new Response(`<h1>Error: Database Not Connected</h1><p>Check wrangler.toml. Binding must be named 'DB'.</p>`, { headers: { "Content-Type": "text/html" } });
+    }
+
+    // 2. CRASH HANDLER WRAPPER
     try {
-      
-      // 1. Emergency Nuke API (Always accessible)
+      // Emergency Reset Route (Always active)
       if (url.pathname === "/api/nuke") {
         await nukeDB(env);
-        return json({ success: true, msg: "System Reset Complete" });
+        return json({ success: true });
       }
 
       await initDB(env);
 
-      // 2. PUBLIC ROUTES
+      // --- PUBLIC ROUTES ---
       if (url.pathname === "/") {
         const conf = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first();
         const user = await getSession(req, env);
@@ -103,7 +102,6 @@ export default {
       if (url.pathname === "/api/setup" && req.method === "POST") {
         const b = await req.json() as any;
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(b.gymName).run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_type', ?)").bind("universal").run();
         const hash = await hashPassword(b.password);
         await env.DB.prepare("DELETE FROM users").run(); 
         await env.DB.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')")
@@ -116,36 +114,27 @@ export default {
         const u = await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(b.email.toLowerCase()).first<any>();
         if (!u || await hashPassword(b.password) !== u.password_hash) return json({ error: "Invalid credentials" }, 401);
         const token = crypto.randomUUID();
-        await env.DB.prepare("INSERT INTO sessions (token, user_id, role, expires_at) VALUES (?, ?, ?, ?)").bind(token, u.id, u.role, new Date(Date.now() + 604800000).toISOString()).run();
+        await env.DB.prepare("INSERT INTO sessions (token, user_id, role, expires_at) VALUES (?, ?, ?, ?)").bind(token, u.id, u.role, "2099-01-01").run();
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Set-Cookie": `gym_auth=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800` }});
       }
 
       if (url.pathname === "/api/logout") return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "gym_auth=; Max-Age=0; Path=/" }});
 
-      // 3. PROTECTED ROUTES
+      // --- PROTECTED ROUTES ---
       const user = await getSession(req, env);
       if (!user) return url.pathname.startsWith("/api") ? json({ error: "Unauthorized" }, 401) : Response.redirect(url.origin + "/", 302);
 
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // APIs
+      // 1. BOOTSTRAP
       if (url.pathname === "/api/bootstrap") {
-        const members = await env.DB.prepare(`
-          SELECT *, (julianday('now') - julianday(due_date)) as days_overdue
-          FROM members ORDER BY id DESC`).all();
-        
-        const defaulters = await env.DB.prepare(`
-          SELECT id, name, phone, due_date, CAST(julianday('now') - julianday(due_date) AS INTEGER) as days_late
-          FROM members WHERE days_late > 0 ORDER BY days_late DESC
-        `).all();
-
+        const members = await env.DB.prepare(`SELECT *, (julianday('now') - julianday(due_date)) as days_overdue FROM members ORDER BY id DESC`).all();
+        const defaulters = await env.DB.prepare(`SELECT id, name, phone, due_date, CAST(julianday('now') - julianday(due_date) AS INTEGER) as days_late FROM members WHERE days_late > 0 ORDER BY days_late DESC`).all();
         const config = await env.DB.prepare("SELECT * FROM config").all();
-        return json({ 
-          user, members: members.results, defaulters: defaulters.results,
-          config: Object.fromEntries(config.results.map((c:any) => [c.key, c.value]))
-        });
+        return json({ user, members: members.results, defaulters: defaulters.results, config: Object.fromEntries(config.results.map((c:any) => [c.key, c.value])) });
       }
 
+      // 2. LIVE CHECK-IN
       if (url.pathname === "/api/checkin/lookup" && req.method === "POST") {
         const { query } = await req.json() as any;
         const members = await env.DB.prepare("SELECT id, name, status, due_date FROM members WHERE name LIKE ? OR id = ? OR phone LIKE ? LIMIT 5").bind(`%${query}%`, query, `%${query}%`).all();
@@ -164,6 +153,7 @@ export default {
         return json({ status, member: m, daysLate: daysLate > 0 ? daysLate : 0, msg: now > due ? `PAYMENT DUE: ${daysLate} DAYS LATE!` : "Welcome Back!" });
       }
 
+      // 3. MEMBER ACTIONS
       if (url.pathname === "/api/members/add" && req.method === "POST") {
         const fd = await req.json() as any;
         const start = new Date();
@@ -175,7 +165,7 @@ export default {
 
       if (url.pathname === "/api/payment/add" && req.method === "POST") {
         const b = await req.json() as any;
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date, months_paid, recorded_by) VALUES (?, ?, ?, ?, ?)")
+        await env.DB.prepare("INSERT INTO payments (member_id, amount, date, months_paid, recorded_by) VALUES (?, ?, ?, ?, ?, ?)")
           .bind(b.memberId, b.amount, new Date().toISOString(), b.months, user.name).run();
         const m = await env.DB.prepare("SELECT due_date FROM members WHERE id=?").bind(b.memberId).first<any>();
         let currentDue = new Date(m.due_date);
@@ -185,21 +175,17 @@ export default {
         return json({ success: true });
       }
 
-      if (url.pathname === "/api/attendance/history" && req.method === "POST") {
-        const { memberId } = await req.json() as any;
-        const logs = await env.DB.prepare("SELECT * FROM attendance WHERE member_id=? ORDER BY id DESC LIMIT 50").bind(memberId).all();
-        return json({ logs: logs.results });
-      }
-
-    } catch (e: any) { 
-      // EMERGENCY CRASH RENDERER
-      // If API request, return JSON error
-      if (url.pathname.startsWith("/api")) return json({ error: e.message }, 500);
-      
-      // If Browser request, return EMERGENCY HTML
-      return renderEmergency(e.message);
+    } catch (e: any) {
+      // EMERGENCY CRASH SCREEN
+      return new Response(`
+        <body style="background:#000;color:red;font-family:monospace;text-align:center;padding:50px">
+          <h1>SYSTEM CRASH DETECTED</h1>
+          <p>${e.message}</p>
+          <button onclick="fetch('/api/nuke').then(()=>location.reload())" style="padding:20px;font-size:20px;cursor:pointer;background:red;color:white;border:none">
+            ⚠ CLICK TO FACTORY RESET DATABASE
+          </button>
+        </body>`, { headers: { "Content-Type": "text/html" } });
     }
-    
     return new Response("Not Found", { status: 404 });
   }
 };
@@ -208,10 +194,7 @@ async function getSession(req: Request, env: Env) {
   const c = req.headers.get("Cookie");
   const t = c?.match(/gym_auth=([^;]+)/)?.[1];
   if (!t) return null;
-  // Wrap in try-catch in case table doesn't exist
-  try {
-    return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(t).first();
-  } catch (e) { return null; }
+  try { return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(t).first(); } catch(e){ return null; }
 }
 
 /* ========================================================================
@@ -238,40 +221,18 @@ function baseHead(title: string) {
   </style></head>`;
 }
 
-// --- EMERGENCY RECOVERY SCREEN ---
-function renderEmergency(error: string) {
-  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><title>System Critical</title>
-  <style>body{background:#000;color:#ff0000;font-family:monospace;display:flex;height:100vh;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:20px}</style></head>
-  <body>
-    <h1 style="font-size:48px;border:4px solid red;padding:20px">SYSTEM CRITICAL</h1>
-    <p style="font-size:18px;color:#fff">The database schema does not match the new version.</p>
-    <div style="background:#220000;padding:15px;border-radius:8px;margin:20px 0;max-width:600px;word-break:break-all">${error}</div>
-    <button onclick="nuke()" style="background:red;color:white;border:none;padding:20px 40px;font-size:20px;font-weight:bold;cursor:pointer">⚠ EMERGENCY DATABASE RESET</button>
-    <script>
-      async function nuke(){
-        if(!confirm("THIS WILL DELETE ALL GYM DATA AND RESET THE SYSTEM. PROCEED?")) return;
-        const btn = document.querySelector('button');
-        btn.innerText = "RESETTING...";
-        await fetch('/api/nuke');
-        alert("System Reset Complete. Redirecting...");
-        window.location.href = "/";
-      }
-    </script>
-  </body></html>`;
-}
-
 function renderLogin(name: string) {
   return `${baseHead("Login")}<body><div style="height:100vh;display:flex;align-items:center;justify-content:center">
   <div class="card" style="width:350px;text-align:center"><h2>${name}</h2><p style="color:var(--mut)">Staff Access</p>
   <form onsubmit="app.login(event)"><label style="text-align:left">Email</label><input name="email" required><label style="text-align:left">Password</label><input name="password" type="password" required>
   <button class="btn btn-p w-full" style="margin-top:10px">LOGIN</button></form>
-  <button onclick="location.href='/api/nuke'" style="margin-top:20px;background:none;border:none;color:var(--danger);font-size:11px;cursor:pointer">⚠ Factory Reset Database</button>
-  </div></div><script>const app={async login(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(r.ok)location.href='/dashboard';else alert('Access Denied')}}</script></body></html>`;
+  <button onclick="app.nuke()" style="margin-top:20px;background:none;border:none;color:var(--danger);font-size:11px;cursor:pointer">⚠ Factory Reset Database</button>
+  </div></div><script>const app={async login(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(r.ok)location.href='/dashboard';else alert('Access Denied')},async nuke(){if(confirm('RESET ALL?'))await fetch('/api/nuke');location.reload()}}</script></body></html>`;
 }
 
 function renderSetup() {
   return `${baseHead("Setup")}<body><div style="height:100vh;display:flex;align-items:center;justify-content:center"><div class="card" style="width:400px">
-  <h2>🚀 System Setup</h2><form onsubmit="s(event)"><label>Gym Name</label><input name="gymName" required><label>Admin Name</label><input name="adminName" required>
+  <h2>🚀 Gym System Setup</h2><form onsubmit="s(event)"><label>Gym Name</label><input name="gymName" required><label>Admin Name</label><input name="adminName" required>
   <label>Email</label><input name="email" required><label>Password</label><input name="password" type="password" required>
   <button class="btn btn-p w-full" style="margin-top:10px">INITIALIZE</button></form></div></div><script>
   async function s(e){e.preventDefault();const r=await fetch('/api/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(r.ok)location.reload();else alert('Error')}</script></body></html>`;
