@@ -721,6 +721,10 @@ function sanitizePayload(raw: any) {
 }
 
 async function setupDatabase(env: Env) {
+  if (!env.DB) {
+    throw new Error("D1 binding DB is missing from the environment.");
+  }
+
   const statements = [
     `CREATE TABLE IF NOT EXISTS gyms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -797,17 +801,31 @@ async function setupDatabase(env: Env) {
   ];
 
   for (const sql of statements) {
-    await env.DB.prepare(sql).run();
+    try {
+      await env.DB.prepare(sql).run();
+    } catch (error) {
+      console.error("D1 setup error", { sql, error });
+      throw new Error(
+        `Failed to initialize database schema while running: ${sql.split("\n")[0]}. ${(error as Error).message}`
+      );
+    }
   }
 }
 
 async function insertGym(env: Env, payload: any) {
   const password_hash = await hashPassword(payload.password);
-  const gymResult = await env.DB.prepare(
-    `INSERT INTO gyms (name, email, password_hash, gym_type, opening_time, closing_time) VALUES (?, ?, ?, ?, ?, ?)`
-  )
-    .bind(payload.gymName, payload.email, password_hash, payload.gymType, payload.openingTime, payload.closingTime)
-    .run();
+  let gymResult;
+
+  try {
+    gymResult = await env.DB.prepare(
+      `INSERT INTO gyms (name, email, password_hash, gym_type, opening_time, closing_time) VALUES (?, ?, ?, ?, ?, ?)`
+    )
+      .bind(payload.gymName, payload.email, password_hash, payload.gymType, payload.openingTime, payload.closingTime)
+      .run();
+  } catch (error) {
+    console.error("D1 insert gym error", { payload, error });
+    throw new Error(`Failed to insert gym record. ${(error as Error).message}`);
+  }
 
   const gymId = gymResult.lastInsertRowId as number;
 
@@ -816,7 +834,12 @@ async function insertGym(env: Env, payload: any) {
   );
 
   for (const worker of payload.workers || []) {
-    await workerStmt.bind(gymId, worker.name || "Pending", worker.role, worker.dutyStart, worker.dutyEnd).run();
+    try {
+      await workerStmt.bind(gymId, worker.name || "Pending", worker.role, worker.dutyStart, worker.dutyEnd).run();
+    } catch (error) {
+      console.error("D1 insert worker error", { worker, error });
+      throw new Error(`Failed to insert worker ${worker?.name || "record"}. ${(error as Error).message}`);
+    }
   }
 
   const planStmt = env.DB.prepare(
@@ -824,13 +847,19 @@ async function insertGym(env: Env, payload: any) {
   );
 
   for (const plan of payload.memberships || []) {
-    await planStmt.bind(gymId, plan.name, Number(plan.price || 0), plan.billing, plan.access, plan.perks).run();
+    try {
+      await planStmt.bind(gymId, plan.name, Number(plan.price || 0), plan.billing, plan.access, plan.perks).run();
+    } catch (error) {
+      console.error("D1 insert membership plan error", { plan, error });
+      throw new Error(`Failed to insert membership plan ${plan?.name || "record"}. ${(error as Error).message}`);
+    }
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+    const requestId = crypto.randomUUID();
 
     if (request.method === "POST" && url.pathname === "/api/setup") {
       try {
@@ -846,11 +875,13 @@ export default {
 
         return new Response(JSON.stringify({
           message: "D1 tables are ready and the initial gym profile has been saved.",
+          requestId,
         }), {
           headers: { "Content-Type": "application/json" },
         });
       } catch (error) {
-        return new Response(JSON.stringify({ error: (error as Error).message }), { status: 500 });
+        console.error("Setup API error", { requestId, error });
+        return new Response(JSON.stringify({ error: (error as Error).message, requestId }), { status: 500 });
       }
     }
 
