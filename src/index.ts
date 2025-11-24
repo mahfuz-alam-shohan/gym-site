@@ -1,689 +1,550 @@
-import { D1Database } from "@cloudflare/workers-types";
+import { D1Database, R2Bucket } from "@cloudflare/workers-types";
 
 export interface Env {
   DB: D1Database;
+  BUCKET?: R2Bucket;
 }
 
 /* ========================================================================
    1. UTILITIES & SECURITY
    ======================================================================== */
-
 const corsHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "POST, GET, PUT, DELETE, OPTIONS",
 };
 
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: corsHeaders });
 }
 
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const hashed = await hashPassword(password);
-  return hashed === hash;
+async function hashPassword(pass: string): Promise<string> {
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest("SHA-256", enc.encode(pass));
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 /* ========================================================================
-   2. UI SYSTEM (Professional CSS & Layout)
+   2. DATABASE SCHEMA (STRICT GYM MANAGEMENT)
    ======================================================================== */
-
-function baseHead(title: string): string {
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>${title}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --primary: #6366f1; --primary-dark: #4f46e5;
-      --bg-body: #f3f4f6; --bg-nav: #111827; --bg-card: #ffffff;
-      --text-main: #111827; --text-muted: #6b7280;
-      --border: #e5e7eb;
-      --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
-      --radius: 8px;
-    }
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-
-    /* Layout */
-    .app-layout { display: flex; height: 100%; }
-    .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
-    .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
-    
-    /* Components */
-    .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
-    .btn { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-    .btn-primary { background: var(--primary); color: white; }
-    .btn-primary:hover { background: var(--primary-dark); }
-    .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
-    .btn-danger { background: var(--danger); color: white; }
-    .w-full { width: 100%; }
-    
-    input, select { width: 100%; padding: 11px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
-    input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
-    label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-main); }
-
-    /* Tables */
-    .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
-    table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
-    th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
-    td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    
-    /* Stats */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
-    .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
-    .stat-val { font-size: 28px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
-    .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-
-    /* Utilities */
-    .hidden { display: none !important; }
-    .flex { display: flex; align-items: center; gap: 12px; }
-    .flex-between { display: flex; justify-content: space-between; align-items: center; }
-    .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
-    
-    /* Badges */
-    .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .bg-green { background: #dcfce7; color: #166534; }
-    .bg-red { background: #fee2e2; color: #991b1b; }
-    
-    /* Sidebar Specifics */
-    .logo { padding: 24px; font-size: 20px; font-weight: 700; border-bottom: 1px solid #1f2937; letter-spacing: -0.5px; }
-    .nav { padding: 16px; flex: 1; }
-    .nav-item { padding: 12px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 4px; transition: 0.2s; font-weight: 500; display: flex; align-items: center; gap: 10px; }
-    .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
-    .user-footer { padding: 20px; border-top: 1px solid #1f2937; }
-
-    /* Modals */
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
-    .modal-content { background: white; width: 100%; max-width: 440px; padding: 24px; border-radius: 16px; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
-    @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-
-    /* Mobile */
-    @media (max-width: 768px) {
-      .app-layout { flex-direction: column; }
-      .sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; transform: translateX(-100%); }
-      .sidebar.open { transform: translateX(0); }
-      .mobile-header { display: flex; justify-content: space-between; padding: 16px; background: white; border-bottom: 1px solid var(--border); }
-      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
-      .overlay.open { display: block; }
-    }
-  </style>
-</head>`;
-}
-
-/* ========================================================================
-   3. DATABASE SETUP (The "Fixer")
-   ======================================================================== */
-
-// This function defines the "Ultimate" Schema
 async function initDB(env: Env) {
   const q = [
     `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
     `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT)`,
+    
+    // Core Member Data
     `CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY, 
       name TEXT, 
       phone TEXT, 
+      gender TEXT, 
       plan TEXT, 
       joined_at TEXT, 
-      expiry_date TEXT, 
-      status TEXT DEFAULT 'active'
+      due_date TEXT, -- The critical field for expiry
+      status TEXT DEFAULT 'active',
+      photo_key TEXT, -- Reference to R2 image
+      notes TEXT
     )`,
-    `CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY, member_id INTEGER, check_in_time TEXT, status TEXT)`,
-    `CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, member_id INTEGER, amount INTEGER, date TEXT)`,
-    `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, expires_at TEXT)`
+
+    // Attendance History (Investigative Log)
+    `CREATE TABLE IF NOT EXISTS attendance (
+      id INTEGER PRIMARY KEY, 
+      member_id INTEGER, 
+      check_in_time TEXT, 
+      status TEXT, -- 'success', 'denied_due', 'warning'
+      notes TEXT
+    )`,
+
+    // Financial Records
+    `CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY, 
+      member_id INTEGER, 
+      amount INTEGER, 
+      date TEXT, 
+      months_paid INTEGER,
+      recorded_by TEXT
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, role TEXT, expires_at TEXT)`
   ];
   for (const sql of q) await env.DB.prepare(sql).run();
 }
 
-// THE NUKE FUNCTION: This fixes your "no column user_id" error by resetting everything
-async function factoryReset(env: Env) {
-  const drops = ["config", "users", "members", "attendance", "payments", "sessions"];
-  for (const table of drops) await env.DB.prepare(`DROP TABLE IF EXISTS ${table}`).run();
+async function nukeDB(env: Env) {
+  const tables = ["config", "users", "members", "attendance", "payments", "sessions"];
+  for (const t of tables) await env.DB.prepare(`DROP TABLE IF EXISTS ${t}`).run();
   await initDB(env);
 }
 
 /* ========================================================================
-   4. WORKER LOGIC
+   3. BACKEND API
    ======================================================================== */
-
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-
-    // OPTIONS handler for CORS
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     try {
-      await initDB(env); // Ensure DB exists on every request
+      await initDB(env);
 
-      /* --- PUBLIC ROUTES --- */
-      
-      // 1. Root: Decide where to go
+      // --- PUBLIC ---
       if (url.pathname === "/") {
-        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'gym_name'").first();
+        const conf = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first();
         const user = await getSession(req, env);
-        
-        if (!config) return renderSetup(); // No gym? Setup.
-        if (user) return Response.redirect(url.origin + "/dashboard", 302); // Logged in? Dashboard.
-        return renderLogin(config.value as string); // Default: Login.
+        if (!conf) return renderSetup();
+        if (user) return Response.redirect(url.origin + "/dashboard", 302);
+        return renderLogin(conf.value as string);
       }
 
-      // 2. Setup API
+      // Setup & Auth
       if (url.pathname === "/api/setup" && req.method === "POST") {
-        const body = await req.json() as any;
-        const email = (body.email || "").trim().toLowerCase();
+        const b = await req.json() as any;
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(b.gymName).run();
+        // Default gym type
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_type', ?)").bind("universal").run();
         
-        // 1. Set Config
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
-        
-        // 2. Create Admin
-        const hash = await hashPassword(body.password);
-        // Clear users first to be safe
+        const hash = await hashPassword(b.password);
         await env.DB.prepare("DELETE FROM users").run(); 
-        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')")
-          .bind(email, hash, body.adminName).run();
-          
+        await env.DB.prepare("INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')")
+          .bind(b.adminName, b.email.toLowerCase(), hash).run();
         return json({ success: true });
       }
 
-      // 3. Login API
       if (url.pathname === "/api/login" && req.method === "POST") {
-        const body = await req.json() as any;
-        const email = (body.email || "").trim().toLowerCase();
-        
-        const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<any>();
-        if (!user || !(await verifyPassword(body.password, user.password_hash))) {
-          return json({ error: "Invalid credentials" }, 401);
-        }
-
+        const b = await req.json() as any;
+        const u = await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(b.email.toLowerCase()).first<any>();
+        if (!u || await hashPassword(b.password) !== u.password_hash) return json({ error: "Invalid credentials" }, 401);
         const token = crypto.randomUUID();
-        const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        await env.DB.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)").bind(token, user.id, expires).run();
-
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, "Set-Cookie": `gym_auth=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800` }
-        });
+        await env.DB.prepare("INSERT INTO sessions (token, user_id, role, expires_at) VALUES (?, ?, ?, ?)").bind(token, u.id, u.role, new Date(Date.now() + 604800000).toISOString()).run();
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Set-Cookie": `gym_auth=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800` }});
       }
 
-      // 4. Factory Reset API (The Fixer)
-      if (url.pathname === "/api/nuke") {
-        await factoryReset(env);
-        return new Response("Database Reset Complete. Go to / to setup again.", { status: 200 });
+      if (url.pathname === "/api/nuke") { await nukeDB(env); return json({ success: true }); }
+      if (url.pathname === "/api/logout") return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "gym_auth=; Max-Age=0; Path=/" }});
+
+      // Photo Proxy (R2)
+      if (url.pathname.startsWith("/media/")) {
+        if (!env.BUCKET) return new Response("No R2 Storage Configured", { status: 404 });
+        const key = url.pathname.replace("/media/", "");
+        const obj = await env.BUCKET.get(key);
+        if (!obj) return new Response("Image Not Found", { status: 404 });
+        return new Response(obj.body);
       }
 
-      if (url.pathname === "/api/logout") {
-        return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "gym_auth=; Max-Age=0; Path=/" } });
-      }
-
-      /* --- PROTECTED ROUTES --- */
+      // --- PROTECTED ---
       const user = await getSession(req, env);
-      if (!user) {
-        if(url.pathname.startsWith('/api')) return json({error: "Unauthorized"}, 401);
-        return Response.redirect(url.origin + "/", 302);
-      }
+      if (!user) return url.pathname.startsWith("/api") ? json({ error: "Unauthorized" }, 401) : Response.redirect(url.origin + "/", 302);
 
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // Data Bootstrap (Load everything at once)
+      // 1. BOOTSTRAP (Load Data)
       if (url.pathname === "/api/bootstrap") {
-        const members = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
-        const attendance = await env.DB.prepare(`
-          SELECT a.check_in_time, a.status, m.name 
-          FROM attendance a JOIN members m ON a.member_id = m.id 
-          ORDER BY a.id DESC LIMIT 20`).all();
+        // Fetch Members with calculated 'Days Overdue'
+        const members = await env.DB.prepare(`
+          SELECT *, 
+          (julianday('now') - julianday(due_date)) as days_overdue
+          FROM members ORDER BY id DESC`).all();
         
-        // Complex Stats
-        const totalMembers = await env.DB.prepare("SELECT count(*) as c FROM members WHERE status='active'").first();
-        const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
-        const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
-        
-        return json({
-          user,
-          members: members.results,
-          attendance: attendance.results,
-          stats: {
-            active: totalMembers?.c || 0,
-            today: todayVisits?.c || 0,
-            revenue: revenue?.t || 0
-          }
+        // Fetch Defaulters (Priority List)
+        const defaulters = await env.DB.prepare(`
+          SELECT id, name, phone, due_date,
+          CAST(julianday('now') - julianday(due_date) AS INTEGER) as days_late
+          FROM members WHERE days_late > 0 ORDER BY days_late DESC
+        `).all();
+
+        const config = await env.DB.prepare("SELECT * FROM config").all();
+
+        return json({ 
+          user, 
+          members: members.results, 
+          defaulters: defaulters.results,
+          config: Object.fromEntries(config.results.map((c:any) => [c.key, c.value]))
         });
       }
 
-      // Add Member
-      if (url.pathname === "/api/members/add" && req.method === "POST") {
-        const body = await req.json() as any;
-        const expiry = new Date();
-        expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
-        
-        await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)")
-          .bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
-        return json({ success: true });
+      // 2. LIVE CHECK-IN (The Gatekeeper)
+      if (url.pathname === "/api/checkin/lookup" && req.method === "POST") {
+        const { query } = await req.json() as any;
+        const members = await env.DB.prepare(`
+          SELECT id, name, photo_key, status, due_date 
+          FROM members 
+          WHERE name LIKE ? OR id = ? OR phone LIKE ? LIMIT 5
+        `).bind(`%${query}%`, query, `%${query}%`).all();
+        return json({ results: members.results });
       }
 
-      // Check In
-      if (url.pathname === "/api/checkin" && req.method === "POST") {
+      if (url.pathname === "/api/checkin/submit" && req.method === "POST") {
         const { memberId } = await req.json() as any;
-        const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
-        if(!member) return json({ error: "Member not found" }, 404);
+        const m = await env.DB.prepare("SELECT * FROM members WHERE id=?").bind(memberId).first<any>();
+        if(!m) return json({error: "Member Not Found"}, 404);
+
+        const now = new Date();
+        const due = new Date(m.due_date);
         
-        const isExpired = new Date(member.expiry_date) < new Date();
-        const status = isExpired ? 'expired' : 'success';
+        // Logic: Is he skipping fees?
+        const isDefaulter = now > due;
+        const daysLate = Math.floor((now.getTime() - due.getTime()) / (1000 * 3600 * 24));
         
-        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, new Date().toISOString(), status).run();
-        return json({ success: true, status, name: member.name, isExpired });
+        const status = isDefaulter ? 'denied_due' : 'success';
+        
+        // Log it
+        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)")
+          .bind(memberId, now.toISOString(), status).run();
+
+        return json({ 
+          status, 
+          member: m, 
+          daysLate: daysLate > 0 ? daysLate : 0,
+          msg: isDefaulter ? `PAYMENT DUE: ${daysLate} DAYS LATE!` : "Welcome Back!" 
+        });
       }
 
-      // Add Payment
-      if (url.pathname === "/api/payment" && req.method === "POST") {
-        const { memberId, amount, months } = await req.json() as any;
+      // 3. MEMBER MANAGEMENT
+      if (url.pathname === "/api/members/add" && req.method === "POST") {
+        const fd = await req.json() as any; // simplified for json body
+        // Calculate Due Date
+        const start = new Date();
+        const due = new Date(start);
+        due.setMonth(due.getMonth() + parseInt(fd.duration)); // e.g. +1 month
+
+        let photoKey = null;
+        // NOTE: In a real form-data upload, we handle Blob. Here assuming Base64 or separate upload for simplicity in single-file
+        // If user wants photo, we assume they might implement the upload separately or we use placeholders.
         
-        // 1. Log Payment
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amount, new Date().toISOString()).run();
-        
-        // 2. Extend Expiry
-        const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
-        let newDate = new Date(member.expiry_date);
-        if (newDate < new Date()) newDate = new Date(); // If expired, start from today
-        newDate.setMonth(newDate.getMonth() + parseInt(months));
-        
-        // 3. Update Member
-        await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?").bind(newDate.toISOString(), memberId).run();
+        await env.DB.prepare(`
+          INSERT INTO members (name, phone, gender, plan, joined_at, due_date, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).bind(fd.name, fd.phone, fd.gender, fd.plan, start.toISOString(), due.toISOString(), fd.notes).run();
+
         return json({ success: true });
       }
 
-      // Delete Member
-      if (url.pathname === "/api/members/delete" && req.method === "POST") {
-        const { id } = await req.json() as any;
-        await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
-        await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run(); // Cleanup
-        await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); // Cleanup
-        return json({ success: true });
+      // 4. PAYMENT & RENEWAL
+      if (url.pathname === "/api/payment/add" && req.method === "POST") {
+        const b = await req.json() as any;
+        
+        // 1. Record Money
+        await env.DB.prepare("INSERT INTO payments (member_id, amount, date, months_paid, recorded_by) VALUES (?, ?, ?, ?, ?)")
+          .bind(b.memberId, b.amount, new Date().toISOString(), b.months, user.name).run();
+
+        // 2. Extend Validity
+        const m = await env.DB.prepare("SELECT due_date FROM members WHERE id=?").bind(b.memberId).first<any>();
+        let currentDue = new Date(m.due_date);
+        if(currentDue < new Date()) currentDue = new Date(); // If already expired, start fresh from today
+        
+        currentDue.setMonth(currentDue.getMonth() + parseInt(b.months));
+        
+        await env.DB.prepare("UPDATE members SET due_date = ?, status='active' WHERE id=?")
+          .bind(currentDue.toISOString(), b.memberId).run();
+
+        return json({ success: true, newDate: currentDue.toISOString() });
       }
 
-    } catch (e: any) {
-      return json({ error: e.message }, 500);
-    }
-    return new Response("Not found", { status: 404 });
+      // 5. ATTENDANCE HISTORY (Investigation)
+      if (url.pathname === "/api/attendance/history" && req.method === "POST") {
+        const { memberId } = await req.json() as any;
+        const logs = await env.DB.prepare("SELECT * FROM attendance WHERE member_id=? ORDER BY id DESC LIMIT 50").bind(memberId).all();
+        return json({ logs: logs.results });
+      }
+
+    } catch (e: any) { return json({ error: e.message }, 500); }
+    return new Response("Not Found", { status: 404 });
   }
 };
 
 async function getSession(req: Request, env: Env) {
-  const cookie = req.headers.get("Cookie");
-  const token = cookie?.match(/gym_auth=([^;]+)/)?.[1];
-  if (!token) return null;
-  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(token).first();
+  const c = req.headers.get("Cookie");
+  const t = c?.match(/gym_auth=([^;]+)/)?.[1];
+  if (!t) return null;
+  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(t).first();
 }
 
 /* ========================================================================
-   5. FRONTEND (The "Ultimate" Single Page App)
+   4. UI (UNIVERSAL GYM MANAGER DASHBOARD)
    ======================================================================== */
 
-function renderSetup() {
-  const html = `${baseHead("Gym OS - Setup")}
-  <body>
-    <div class="center-screen">
-      <div class="card" style="width: 100%; max-width: 420px;">
-        <h2 style="color:var(--primary); margin-bottom:10px;">🚀 System Setup</h2>
-        <p style="color:var(--text-muted); margin-bottom:24px;">Initialize your gym management system.</p>
-        
-        <form id="form">
-          <label>Gym Name</label><input name="gymName" required placeholder="e.g. Iron Paradise">
-          <label>Admin Name</label><input name="adminName" required placeholder="John Doe">
-          <label>Admin Email</label><input name="email" type="email" required placeholder="admin@gym.com">
-          <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:12px">Install System</button>
-        </form>
-        <div id="error" style="color:var(--danger); margin-top:10px; font-size:13px; text-align:center;"></div>
-        
-        <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
-           <p style="font-size:12px; color:var(--text-muted);">Database issues? Click below to fix.</p>
-           <button onclick="nukeDB()" class="btn btn-danger" style="font-size:11px; padding:6px 12px;">⚠ Factory Reset Database</button>
-        </div>
-      </div>
-    </div>
-    <script>
-      async function nukeDB() {
-        if(!confirm("Are you sure? This deletes ALL data.")) return;
-        await fetch('/api/nuke');
-        alert("Reset complete. Please refresh.");
-        location.reload();
-      }
-      document.getElementById('form').onsubmit = async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button[type="submit"]');
-        btn.textContent = "Installing..."; btn.disabled = true;
-        try {
-          const res = await fetch('/api/setup', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          if(res.ok) window.location.reload();
-          else throw new Error("Setup failed");
-        } catch(err) {
-          document.getElementById('error').textContent = err.message;
-          btn.textContent = "Install System"; btn.disabled = false;
-        }
-      }
-    </script>
-  </body></html>`;
-  return new Response(html, { headers: { "Content-Type": "text/html" } });
+function baseHead(title: string) {
+  return `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#1e293b; --text:#f1f5f9; --mut:#94a3b8; 
+      --acc:#3b82f6; --acc-h:#2563eb; 
+      --danger:#ef4444; --warn:#f59e0b; --success:#22c55e;
+      --font:'Inter',sans-serif;
+    }
+    *{box-sizing:border-box}body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+    
+    /* Utility */
+    .flex{display:flex;align-items:center;gap:10px}.hidden{display:none!important}.w-full{width:100%}
+    .btn{padding:10px 16px;border-radius:6px;border:none;font-weight:700;cursor:pointer;font-family:var(--font);transition:0.2s}
+    .btn-p{background:var(--acc);color:white}.btn-p:hover{background:var(--acc-h)}
+    .btn-d{background:var(--danger);color:white}.btn-w{background:var(--panel);border:1px solid #334155;color:white}
+    
+    input,select,textarea{background:#334155;border:1px solid #475569;color:white;padding:12px;border-radius:6px;width:100%;outline:none;font-family:var(--font)}
+    input:focus{border-color:var(--acc)} label{font-size:12px;color:var(--mut);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:0.5px}
+
+    /* Layout */
+    .layout{display:flex;height:100%}
+    .sidebar{width:250px;background:#020617;border-right:1px solid #1e293b;display:flex;flex-direction:column}
+    .main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+    .content{flex:1;overflow-y:auto;padding:20px}
+    
+    /* Nav */
+    .logo{padding:20px;font-weight:900;font-size:18px;letter-spacing:-0.5px;color:white;border-bottom:1px solid #1e293b}
+    .nav-item{padding:15px 20px;color:var(--mut);cursor:pointer;font-weight:600;border-left:3px solid transparent}
+    .nav-item:hover{background:#0f172a;color:white}
+    .nav-item.active{background:#0f172a;color:var(--acc);border-left-color:var(--acc)}
+    
+    /* Cards & Tables */
+    .card{background:var(--panel);border-radius:8px;padding:20px;border:1px solid #334155;margin-bottom:20px}
+    table{width:100%;border-collapse:collapse} th{text-align:left;color:var(--mut);padding:10px;font-size:12px;text-transform:uppercase}
+    td{padding:12px 10px;border-top:1px solid #334155}
+    .badge{padding:4px 8px;border-radius:4px;font-size:11px;font-weight:800;text-transform:uppercase}
+    .ok{background:#052e16;color:#4ade80;border:1px solid #14532d}
+    .bad{background:#450a0a;color:#f87171;border:1px solid #7f1d1d}
+
+    /* Live Terminal */
+    .terminal{background:#000;color:#33ff00;font-family:'JetBrains Mono',monospace;padding:20px;border-radius:8px;border:1px solid #333}
+    .big-status{font-size:40px;font-weight:900;text-align:center;margin:20px 0;text-transform:uppercase;letter-spacing:-1px}
+
+    /* Modal */
+    .modal-wrap{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;z-index:99}
+    .modal{background:var(--panel);width:500px;padding:30px;border-radius:12px;border:1px solid #475569;box-shadow:0 20px 50px rgba(0,0,0,0.5)}
+
+    @media(max-width:768px){.layout{flex-direction:column}.sidebar{display:none}}
+  </style></head>`;
 }
 
-function renderLogin(gymName: string) {
-  const html = `${baseHead("Login")}
-  <body>
-    <div class="center-screen">
-      <div class="card" style="width: 100%; max-width: 380px;">
-        <h2 style="margin-bottom:5px;">${gymName}</h2>
-        <p style="color:var(--text-muted); margin-bottom:24px;">Staff Access Portal</p>
-        
-        <form id="form">
-          <label>Email</label><input name="email" required>
-          <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:12px;">Login</button>
-        </form>
-        <div id="error" style="color:var(--danger); margin-top:15px; font-size:13px; text-align:center;"></div>
-        
-        <div style="margin-top:30px; text-align:center;">
-           <a href="#" onclick="nukeDB()" style="color:var(--text-muted); font-size:11px;">⚠ Reset Database</a>
-        </div>
-      </div>
-    </div>
-    <script>
-      async function nukeDB() {
-        if(!confirm("Database Error? This deletes ALL data to fix schema.")) return;
-        await fetch('/api/nuke');
-        alert("Reset complete. Refreshing.");
-        location.reload();
-      }
-      document.getElementById('form').onsubmit = async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button');
-        btn.textContent = "Verifying..."; btn.disabled = true;
-        try {
-          const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          if(res.ok) window.location.href = '/dashboard';
-          else {
-            const d = await res.json();
-            throw new Error(d.error || "Login failed");
-          }
-        } catch(err) {
-          document.getElementById('error').textContent = err.message;
-          btn.textContent = "Login"; btn.disabled = false;
-        }
-      }
-    </script>
-  </body></html>`;
-  return new Response(html, { headers: { "Content-Type": "text/html" } });
+function renderLogin(name: string) {
+  return `${baseHead("Login")}<body><div style="height:100vh;display:flex;align-items:center;justify-content:center">
+  <div class="card" style="width:350px"><h2>${name}</h2><p style="color:var(--mut)">Staff Access</p>
+  <form onsubmit="app.login(event)"><label>Email</label><input name="email" required><label>Password</label><input name="password" type="password" required>
+  <button class="btn btn-p w-full" style="margin-top:10px">LOGIN</button></form>
+  <div style="text-align:center;margin-top:20px"><button onclick="app.nuke()" class="btn btn-d" style="font-size:10px">⚠ Factory Reset Database</button></div>
+  </div></div><script>const app={
+    async login(e){e.preventDefault();const r=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+    if(r.ok)location.href='/dashboard';else alert('Access Denied')},
+    async nuke(){if(confirm('RESET SYSTEM?'))await fetch('/api/nuke');location.reload()}
+  }</script></body></html>`;
+}
+
+function renderSetup() {
+  return `${baseHead("Setup")}<body><div style="height:100vh;display:flex;align-items:center;justify-content:center"><div class="card" style="width:400px">
+  <h2>🚀 Gym System Setup</h2><form onsubmit="s(event)"><label>Gym Name</label><input name="gymName" required><label>Admin Name</label><input name="adminName" required>
+  <label>Email</label><input name="email" required><label>Password</label><input name="password" type="password" required>
+  <button class="btn btn-p w-full" style="margin-top:10px">INITIALIZE</button></form></div></div><script>
+  async function s(e){e.preventDefault();const r=await fetch('/api/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+  if(r.ok)location.reload();else alert('Error')} </script></body></html>`;
 }
 
 function renderDashboard(user: any) {
-  const html = `${baseHead("Dashboard")}
-  <body>
-    <div class="app-layout">
-      <div class="mobile-header hidden">
-         <div style="font-weight:bold;">Gym OS</div>
-         <button class="btn btn-outline" onclick="toggleSidebar()">☰</button>
+  return `${baseHead("Dashboard")}<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="logo">GYM OS <span style="font-size:10px;color:var(--acc)">PRO</span></div>
+      <div class="nav-item active" onclick="app.nav('live')">⚡ LIVE CHECK-IN</div>
+      <div class="nav-item" onclick="app.nav('members')">👥 MEMBERS</div>
+      <div class="nav-item" onclick="app.nav('due')">🕵️ DEFAULTERS</div>
+      <div class="nav-item" onclick="app.nav('config')">⚙️ SETTINGS</div>
+      <div style="margin-top:auto;padding:20px;border-top:1px solid #1e293b">
+        <div style="font-weight:bold">${user.name}</div>
+        <a href="/api/logout" style="color:var(--danger);font-size:12px;text-decoration:none">Log Out</a>
       </div>
-      <div class="overlay" onclick="toggleSidebar()"></div>
-
-      <aside class="sidebar">
-        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.0</span></div>
-        <div class="nav">
-          <div class="nav-item active" onclick="app.nav('home')">📊 Overview</div>
-          <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item" onclick="app.nav('attendance')">⏰ Attendance</div>
-        </div>
-        <div class="user-footer">
-          <div style="font-weight:600;">${user.name}</div>
-          <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${user.role.toUpperCase()}</div>
-          <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;">Sign Out &rarr;</a>
-        </div>
-      </aside>
-
-      <main class="main-content">
-        <div class="flex-between" style="padding: 24px 24px 0 24px;">
-           <h2 id="page-title" style="margin:0;">Dashboard</h2>
-           <button class="btn btn-primary" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
-        </div>
-
-        <div style="padding: 24px;">
-          <div id="view-home">
-            <div class="stats-grid">
-              <div class="stat-card">
-                <span class="stat-label">Active Members</span>
-                <span class="stat-val" id="stat-active">--</span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Today's Visits</span>
-                <span class="stat-val" id="stat-today">--</span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label">Total Revenue</span>
-                <span class="stat-val" style="color:var(--success)">$<span id="stat-rev">--</span></span>
-              </div>
-            </div>
-            
-            <div class="card">
-              <div class="flex-between" style="margin-bottom:15px;">
-                 <h3 style="margin:0;">Recent Activity</h3>
-                 <button class="btn btn-outline" style="font-size:12px;" onclick="app.nav('attendance')">View All</button>
-              </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Status</th></tr></thead>
-                  <tbody id="tbl-attendance-recent"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div id="view-members" class="hidden">
-            <div class="card">
-              <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-                <input id="search" placeholder="Search members..." style="width:300px; margin:0;" onkeyup="app.filter()">
-                <button class="btn btn-primary" onclick="app.modals.add.open()">+ Add Member</button>
-              </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
-                  <tbody id="tbl-members"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <div id="view-attendance" class="hidden">
-            <div class="card">
-              <h3>Full Attendance Log</h3>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Result</th></tr></thead>
-                  <tbody id="tbl-attendance-full"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <div id="modal-checkin" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 style="text-align:center; margin-top:0;">⚡ Check-In</h3>
-        <input id="checkin-id" type="number" placeholder="Enter Member ID" style="font-size:18px; padding:15px; text-align:center;" autofocus>
-        <button class="btn btn-primary w-full" onclick="app.checkIn()">Submit</button>
-        <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; height:20px;"></div>
-        <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
-      </div>
-    </div>
-
-    <div id="modal-add" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 style="margin-top:0;">New Member</h3>
-        <form onsubmit="app.addMember(event)">
-          <label>Full Name</label><input name="name" required>
-          <label>Phone Number</label><input name="phone" required>
-          <div class="flex">
-            <div class="w-full"><label>Plan</label><select name="plan"><option>Standard</option><option>Premium</option></select></div>
-            <div class="w-full"><label>Months</label><input name="duration" type="number" value="1" required></div>
-          </div>
-          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
-            <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create Member</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div id="modal-pay" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 style="margin-top:0;">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
-        <form onsubmit="app.pay(event)">
-          <input type="hidden" name="memberId" id="pay-id">
-          <label>Amount ($)</label><input name="amount" type="number" required>
-          <label>Extend Expiry (Months)</label><input name="months" type="number" value="1" required>
-          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
-            <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Confirm Payment</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <script>
-      function toggleSidebar() { 
-        document.querySelector('.sidebar').classList.toggle('open');
-        document.querySelector('.overlay').classList.toggle('open');
-      }
-
-      const app = {
-        data: null,
-        async init() {
-          const res = await fetch('/api/bootstrap');
-          this.data = await res.json();
-          this.render();
-        },
+    </aside>
+    <main class="main">
+      <header style="padding:20px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between">
+        <h2 id="pg-title" style="margin:0">LIVE TERMINAL</h2>
+        <div><span class="badge ok">SYSTEM ONLINE</span></div>
+      </header>
+      <div class="content">
         
-        nav(v) {
-          document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          event.currentTarget.classList.add('active');
+        <!-- LIVE TERMINAL -->
+        <div id="v-live">
+          <div class="card terminal">
+            <label style="color:#33ff00">ACCESS CONTROL INPUT</label>
+            <input id="live-in" placeholder="TYPE MEMBER ID OR NAME..." style="background:transparent;border:none;border-bottom:2px solid #33ff00;color:white;font-size:24px;font-family:monospace;text-transform:uppercase" autofocus oninput="app.liveSearch()">
+            <div id="live-suggestions" style="margin-top:10px;color:#888"></div>
+          </div>
           
-          ['home', 'members', 'attendance'].forEach(id => document.getElementById('view-'+id).classList.add('hidden'));
-          document.getElementById('view-'+v).classList.remove('hidden');
-          document.getElementById('page-title').textContent = v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
-          
-          // Mobile close
-          document.querySelector('.sidebar').classList.remove('open');
-          document.querySelector('.overlay').classList.remove('open');
-        },
+          <div id="live-result" class="hidden" style="margin-top:20px">
+             <div class="card" style="text-align:center;padding:40px">
+                <div id="lr-avatar" style="width:100px;height:100px;background:#333;border-radius:50%;margin:0 auto 20px;display:grid;place-items:center;font-size:40px">👤</div>
+                <h1 id="lr-name" style="margin:0;font-size:32px">NAME</h1>
+                <div id="lr-msg" class="big-status">STATUS</div>
+                <div id="lr-info" style="color:var(--mut)">DETAILS</div>
+                <div style="margin-top:30px">
+                  <button class="btn btn-w" onclick="app.resetLive()">RESET SCREEN</button>
+                  <button class="btn btn-p" id="lr-pay-btn" onclick="">COLLECT DUES</button>
+                </div>
+             </div>
+          </div>
+        </div>
 
-        render() {
-          // Stats
-          document.getElementById('stat-active').innerText = this.data.stats.active;
-          document.getElementById('stat-today').innerText = this.data.stats.today;
-          document.getElementById('stat-rev').innerText = this.data.stats.revenue || 0;
+        <!-- MEMBERS LIST -->
+        <div id="v-members" class="hidden">
+          <div class="flex" style="margin-bottom:20px">
+            <input id="mem-search" placeholder="Search Database..." onkeyup="app.filterTable()">
+            <button class="btn btn-p" onclick="app.mod('add')">+ NEW MEMBER</button>
+          </div>
+          <div class="card" style="padding:0;overflow:hidden">
+            <table><thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Gender</th><th>Next Due</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="tb-mem"></tbody></table>
+          </div>
+        </div>
 
-          // Members
-          const tbody = document.getElementById('tbl-members');
-          tbody.innerHTML = this.data.members.map(m => {
-            const isExp = new Date(m.expiry_date) < new Date();
-            return \`<tr>
-              <td>#\${m.id}</td>
-              <td><strong>\${m.name}</strong></td>
-              <td>\${m.phone}</td>
-              <td>\${m.plan}</td>
-              <td>\${m.expiry_date.split('T')[0]}</td>
-              <td>\${isExp ? '<span class="badge bg-red">Expired</span>' : '<span class="badge bg-green">Active</span>'}</td>
-              <td>
-                <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button>
-                <button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(\${m.id})">Del</button>
-              </td>
-            </tr>\`;
-          }).join('');
+        <!-- DEFAULTERS / INVESTIGATION -->
+        <div id="v-due" class="hidden">
+           <div class="card" style="border-left:4px solid var(--danger)">
+              <h3>⚠️ DEFICIT INVESTIGATION</h3>
+              <p style="color:var(--mut)">These members have unpaid dues. Sorted by highest priority.</p>
+           </div>
+           <div class="card" style="padding:0;overflow:hidden">
+            <table><thead><tr><th>Name</th><th>Phone</th><th>Due Date</th><th>Days Late</th><th>Action</th></tr></thead>
+            <tbody id="tb-due"></tbody></table>
+          </div>
+        </div>
 
-          // Attendance
-          const attRows = this.data.attendance.map(a => \`
-            <tr>
-              <td>\${new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
-              <td>\${a.name}</td>
-              <td>\${a.status === 'success' ? '<span class="badge bg-green">OK</span>' : '<span class="badge bg-red">Expired</span>'}</td>
-            </tr>\`).join('');
-            
-          document.getElementById('tbl-attendance-recent').innerHTML = attRows;
-          document.getElementById('tbl-attendance-full').innerHTML = attRows;
-        },
+        <!-- SETTINGS -->
+        <div id="v-config" class="hidden">
+           <div class="card" style="max-width:500px">
+              <h3>Gym Configuration</h3>
+              <label>Gym Name</label><input id="conf-name" readonly>
+              <label>Gym Type (Policy)</label><select id="conf-type" disabled><option value="universal">Universal (Co-ed)</option><option>Male Only</option><option>Female Only</option></select>
+              <p style="font-size:12px;color:var(--mut)">Configuration is locked by admin policy.</p>
+           </div>
+        </div>
 
-        async checkIn() {
-          const id = document.getElementById('checkin-id').value;
-          const div = document.getElementById('checkin-res');
-          div.innerText = "Checking...";
-          
-          const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId: id}) });
-          const json = await res.json();
-          
-          if(res.ok) {
-            div.style.color = json.status === 'success' ? 'var(--success)' : 'var(--danger)';
-            div.innerText = json.status === 'success' ? '✅ Welcome ' + json.name : '⛔ EXPIRED: ' + json.name;
-            if(json.status === 'success') setTimeout(() => location.reload(), 1000);
-          } else {
-            div.style.color = 'var(--danger)';
-            div.innerText = json.error || "Not found";
-          }
-        },
+      </div>
+    </main>
+  </div>
 
-        async addMember(e) {
-          e.preventDefault();
-          await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          location.reload();
-        },
+  <!-- MODALS -->
+  <div id="m-add" class="modal-wrap"><div class="modal"><h3>New Member Registration</h3><form onsubmit="app.addMem(event)">
+  <label>Full Name</label><input name="name" required>
+  <div class="flex"><div class="w-full"><label>Phone</label><input name="phone" required></div><div class="w-full"><label>Gender</label><select name="gender"><option>Male</option><option>Female</option></select></div></div>
+  <label>Membership Plan</label><select name="plan"><option>Monthly</option><option>Yearly</option><option>Daily</option></select>
+  <label>Initial Duration (Months)</label><input name="duration" type="number" value="1" required>
+  <label>Notes</label><textarea name="notes" rows="2"></textarea>
+  <div class="flex" style="justify-content:flex-end;margin-top:15px"><button type="button" class="btn btn-w" onclick="app.close()">Cancel</button><button class="btn btn-p">Register</button></div></form></div></div>
 
-        async pay(e) {
-          e.preventDefault();
-          await fetch('/api/payment', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          location.reload();
-        },
+  <div id="m-pay" class="modal-wrap"><div class="modal"><h3>💰 Collect Payment</h3><p id="p-name"></p><form onsubmit="app.pay(event)">
+  <input type="hidden" name="memberId" id="p-id">
+  <label>Amount Received</label><input name="amount" type="number" required>
+  <label>Extend Membership (Months)</label><input name="months" type="number" value="1" required>
+  <div class="flex" style="justify-content:flex-end;margin-top:15px"><button type="button" class="btn btn-w" onclick="app.close()">Cancel</button><button class="btn btn-p">Confirm Payment</button></div></form></div></div>
 
-        async del(id) {
-          if(!confirm("Delete member?")) return;
-          await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) });
-          location.reload();
-        },
-        
-        filter() {
-           const q = document.getElementById('search').value.toLowerCase();
-           document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none');
-        },
+  <div id="m-hist" class="modal-wrap"><div class="modal" style="width:600px"><h3>Attendance Record</h3><div style="max-height:300px;overflow-y:auto;border:1px solid #334155;border-radius:6px"><table id="tb-hist"></table></div><button class="btn btn-w w-full" style="margin-top:10px" onclick="app.close()">Close</button></div></div>
 
-        modals: {
-          checkin: { open:()=>{document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus()}, close:()=>document.getElementById('modal-checkin').style.display='none' },
-          add: { open:()=>document.getElementById('modal-add').style.display='flex', close:()=>document.getElementById('modal-add').style.display='none' },
-          pay: { 
-            open:(id)=>{
-              const m = app.data.members.find(x=>x.id===id);
-              document.getElementById('pay-id').value=id;
-              document.getElementById('pay-name').innerText = m.name;
-              document.getElementById('modal-pay').style.display='flex';
-            }, 
-            close:()=>document.getElementById('modal-pay').style.display='none' 
-          }
-        }
-      };
+  <script>
+  const app = {
+    data: null,
+    async init(){ const r=await fetch('/api/bootstrap'); if(r.ok){this.data=await r.json(); this.render()} },
+    
+    render(){
+      const d = this.data;
+      document.getElementById('conf-name').value = d.config.gym_name || 'Gym';
       
-      app.init();
-    </script>
-  </body></html>`;
-  return new Response(html, { headers: { "Content-Type": "text/html" } });
+      // Members Table
+      document.getElementById('tb-mem').innerHTML = d.members.map(m => {
+        const late = m.days_overdue > 0;
+        return \`<tr>
+          <td>#\${m.id}</td><td><b>\${m.name}</b></td><td>\${m.phone}</td><td>\${m.gender}</td>
+          <td style="color:\${late?'var(--danger)':'var(--success)'}">\${m.due_date.split('T')[0]}</td>
+          <td>\${late ? '<span class="badge bad">DUE</span>':'<span class="badge ok">OK</span>'}</td>
+          <td>
+             <button class="btn btn-p" style="padding:4px 8px;font-size:10px" onclick="app.mod('pay',\${m.id})">PAY</button>
+             <button class="btn btn-w" style="padding:4px 8px;font-size:10px" onclick="app.hist(\${m.id})">LOGS</button>
+          </td>
+        </tr>\`;
+      }).join('');
+
+      // Defaulters Table
+      document.getElementById('tb-due').innerHTML = d.defaulters.map(m => \`<tr>
+         <td style="font-weight:bold;color:var(--danger)">\${m.name}</td><td>\${m.phone}</td><td>\${m.due_date.split('T')[0]}</td>
+         <td><span class="badge bad">\${m.days_late} DAYS LATE</span></td>
+         <td><button class="btn btn-p" onclick="app.mod('pay',\${m.id})">COLLECT</button></td>
+      </tr>\`).join('');
+    },
+
+    // --- LIVE TERMINAL LOGIC ---
+    async liveSearch(){
+      const q = document.getElementById('live-in').value;
+      if(q.length < 1) { document.getElementById('live-suggestions').innerHTML=''; return; }
+      
+      const r = await fetch('/api/checkin/lookup', {method:'POST', body:JSON.stringify({query:q})});
+      const res = await r.json();
+      
+      if(res.results.length === 1 && (res.results[0].id == q || res.results[0].name.toLowerCase() === q.toLowerCase())) {
+         this.checkIn(res.results[0].id); // Auto submit if exact match
+      } else {
+         document.getElementById('live-suggestions').innerHTML = res.results.map(m => \`<div style="padding:5px;cursor:pointer" onclick="app.checkIn(\${m.id})">> \${m.name} (#\${m.id})</div>\`).join('');
+      }
+    },
+
+    async checkIn(id){
+      const r = await fetch('/api/checkin/submit', {method:'POST', body:JSON.stringify({memberId:id})});
+      const d = await r.json();
+      
+      const elRes = document.getElementById('live-result');
+      const elMsg = document.getElementById('lr-msg');
+      const elName = document.getElementById('lr-name');
+      const elInfo = document.getElementById('lr-info');
+      const elBtn = document.getElementById('lr-pay-btn');
+
+      elRes.classList.remove('hidden');
+      elName.innerText = d.member.name;
+      elMsg.innerText = d.msg;
+      
+      if(d.status === 'denied_due') {
+         elMsg.style.color = 'var(--danger)';
+         elRes.style.border = '4px solid var(--danger)';
+         elInfo.innerText = \`OVERDUE BY \${d.daysLate} DAYS. ACCESS DENIED.\`;
+         elBtn.classList.remove('hidden');
+         elBtn.onclick = () => app.mod('pay', d.member.id);
+         // Play Alert Sound (Optional browser quirk handling needed usually)
+      } else {
+         elMsg.style.color = 'var(--success)';
+         elRes.style.border = '4px solid var(--success)';
+         elInfo.innerText = "Membership Active. Enjoy your workout.";
+         elBtn.classList.add('hidden');
+      }
+      
+      document.getElementById('live-in').value = '';
+      document.getElementById('live-suggestions').innerHTML = '';
+    },
+
+    resetLive(){ document.getElementById('live-result').classList.add('hidden'); document.getElementById('live-in').focus(); },
+
+    // --- CRUD ---
+    async addMem(e){ e.preventDefault(); await fetch('/api/members/add', {method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target)))}); location.reload() },
+    async pay(e){ e.preventDefault(); await fetch('/api/payment/add', {method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target)))}); location.reload() },
+    async hist(id){
+       const r = await fetch('/api/attendance/history', {method:'POST', body:JSON.stringify({memberId:id})});
+       const d = await r.json();
+       document.getElementById('tb-hist').innerHTML = d.logs.map(l=>\`<tr><td>\${new Date(l.check_in_time).toLocaleString()}</td><td>\${l.status}</td></tr>\`).join('');
+       this.mod('hist');
+    },
+
+    nav(v){ document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active')); event.currentTarget.classList.add('active'); 
+      ['live','members','due','config'].forEach(x=>document.getElementById('v-'+x).classList.add('hidden'));
+      document.getElementById('v-'+v).classList.remove('hidden'); document.getElementById('pg-title').innerText = v.toUpperCase();
+    },
+
+    mod(t, arg){
+      document.querySelectorAll('.modal-wrap').forEach(x=>x.style.display='none');
+      if(t==='add') document.getElementById('m-add').style.display='flex';
+      if(t==='pay') { 
+        const m = this.data.members.find(x=>x.id==arg);
+        document.getElementById('m-pay').style.display='flex'; 
+        document.getElementById('p-id').value=arg;
+        document.getElementById('p-name').innerText = m.name + (m.days_overdue > 0 ? \` (OVERDUE: \${parseInt(m.days_overdue)} days)\` : '');
+      }
+      if(t==='hist') document.getElementById('m-hist').style.display='flex';
+    },
+    close(){ document.querySelectorAll('.modal-wrap').forEach(x=>x.style.display='none') },
+    filterTable(){ const q=document.getElementById('mem-search').value.toLowerCase(); document.querySelectorAll('#tb-mem tr').forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?'':'none') }
+  };
+  app.init();
+  </script></body></html>`;
 }
