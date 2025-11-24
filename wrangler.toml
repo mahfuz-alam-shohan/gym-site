@@ -5,7 +5,7 @@ compatibility_date = "2024-06-20"
 [[d1_databases]]
 binding = "DB"
 database_name = "gym"
-database_id = "6edc4bb5-f374-4a85-8320-20b23f33b78e"
+database_id = "4e8a5f45-b545-4e26-a69c-cdcf9c0c59a7"
 
 [[r2_buckets]]
 binding = "BUCKET"
