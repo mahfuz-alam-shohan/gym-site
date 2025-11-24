@@ -112,13 +112,18 @@ function baseHead(title: string): string {
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
     /* Mobile */
+    .mobile-header { display: none; }
     @media (max-width: 768px) {
-      .app-layout { flex-direction: column; }
+      body { overflow: auto; }
+      .app-layout { flex-direction: column; height: auto; }
       .sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); }
-      .mobile-header { display: flex; justify-content: space-between; padding: 16px; background: white; border-bottom: 1px solid var(--border); }
+      .mobile-header { display: flex; justify-content: space-between; padding: 16px; background: white; border-bottom: 1px solid var(--border); align-items: center; }
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
+      .main-content { padding-top: 0; }
+      .card { padding: 16px; }
+      th, td { padding: 10px 12px; font-size: 13px; }
     }
   </style>
 </head>`;
@@ -128,7 +133,7 @@ function baseHead(title: string): string {
    3. DATABASE SETUP (The "Fixer")
    ======================================================================== */
 
-// This function defines the "Ultimate" Schema
+// This function defines the Schema
 async function initDB(env: Env) {
   const q = [
     `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
@@ -149,7 +154,7 @@ async function initDB(env: Env) {
   for (const sql of q) await env.DB.prepare(sql).run();
 }
 
-// THE NUKE FUNCTION: This fixes your "no column user_id" error by resetting everything
+// NUKE FUNCTION: reset everything
 async function factoryReset(env: Env) {
   const drops = ["config", "users", "members", "attendance", "payments", "sessions"];
   for (const table of drops) await env.DB.prepare(`DROP TABLE IF EXISTS ${table}`).run();
@@ -219,7 +224,7 @@ export default {
         });
       }
 
-      // 4. Factory Reset API (The Fixer)
+      // 4. Factory Reset API
       if (url.pathname === "/api/nuke") {
         await factoryReset(env);
         return new Response("Database Reset Complete. Go to / to setup again.", { status: 200 });
@@ -241,12 +246,25 @@ export default {
       // Data Bootstrap (Load everything at once)
       if (url.pathname === "/api/bootstrap") {
         const members = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
-        const attendance = await env.DB.prepare(`
+
+        // Today's attendance (for Attendance tab + Recent on home)
+        const attendanceToday = await env.DB.prepare(`
           SELECT a.check_in_time, a.status, m.name 
-          FROM attendance a JOIN members m ON a.member_id = m.id 
-          ORDER BY a.id DESC LIMIT 20`).all();
+          FROM attendance a 
+          JOIN members m ON a.member_id = m.id 
+          WHERE date(a.check_in_time) = date('now')
+          ORDER BY a.id DESC
+        `).all();
+
+        // Full history (for History tab)
+        const attendanceHistory = await env.DB.prepare(`
+          SELECT a.check_in_time, a.status, m.name 
+          FROM attendance a 
+          JOIN members m ON a.member_id = m.id 
+          ORDER BY a.id DESC
+        `).all();
         
-        // Complex Stats
+        // Stats
         const totalMembers = await env.DB.prepare("SELECT count(*) as c FROM members WHERE status='active'").first();
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
@@ -254,7 +272,8 @@ export default {
         return json({
           user,
           members: members.results,
-          attendance: attendance.results,
+          attendanceToday: attendanceToday.results,
+          attendanceHistory: attendanceHistory.results,
           stats: {
             active: totalMembers?.c || 0,
             today: todayVisits?.c || 0,
@@ -274,16 +293,28 @@ export default {
         return json({ success: true });
       }
 
-      // Check In
+      // Check In (now prevents multiple attendance in same day)
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if(!member) return json({ error: "Member not found" }, 404);
+
+        // BLOCK duplicate attendance in same day
+        const alreadyToday = await env.DB.prepare(`
+          SELECT id FROM attendance
+          WHERE member_id = ? AND date(check_in_time) = date('now')
+          LIMIT 1
+        `).bind(memberId).first<any>();
+
+        if (alreadyToday) {
+          return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
+        }
         
         const isExpired = new Date(member.expiry_date) < new Date();
         const status = isExpired ? 'expired' : 'success';
         
-        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, new Date().toISOString(), status).run();
+        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)")
+          .bind(memberId, new Date().toISOString(), status).run();
         return json({ success: true, status, name: member.name, isExpired });
       }
 
@@ -292,7 +323,8 @@ export default {
         const { memberId, amount, months } = await req.json() as any;
         
         // 1. Log Payment
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amount, new Date().toISOString()).run();
+        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)")
+          .bind(memberId, amount, new Date().toISOString()).run();
         
         // 2. Extend Expiry
         const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
@@ -301,7 +333,8 @@ export default {
         newDate.setMonth(newDate.getMonth() + parseInt(months));
         
         // 3. Update Member
-        await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?").bind(newDate.toISOString(), memberId).run();
+        await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?")
+          .bind(newDate.toISOString(), memberId).run();
         return json({ success: true });
       }
 
@@ -325,11 +358,13 @@ async function getSession(req: Request, env: Env) {
   const cookie = req.headers.get("Cookie");
   const token = cookie?.match(/gym_auth=([^;]+)/)?.[1];
   if (!token) return null;
-  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(token).first();
+  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?")
+    .bind(token)
+    .first();
 }
 
 /* ========================================================================
-   5. FRONTEND (The "Ultimate" Single Page App)
+   5. FRONTEND (Single Page App)
    ======================================================================== */
 
 function renderSetup() {
@@ -432,18 +467,19 @@ function renderDashboard(user: any) {
   const html = `${baseHead("Dashboard")}
   <body>
     <div class="app-layout">
-      <div class="mobile-header hidden">
+      <div class="mobile-header">
          <div style="font-weight:bold;">Gym OS</div>
          <button class="btn btn-outline" onclick="toggleSidebar()">☰</button>
       </div>
       <div class="overlay" onclick="toggleSidebar()"></div>
 
       <aside class="sidebar">
-        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.0</span></div>
+        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.1</span></div>
         <div class="nav">
           <div class="nav-item active" onclick="app.nav('home')">📊 Overview</div>
           <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item" onclick="app.nav('attendance')">⏰ Attendance</div>
+          <div class="nav-item" onclick="app.nav('attendance')">⏰ Today</div>
+          <div class="nav-item" onclick="app.nav('history')">📜 History</div>
         </div>
         <div class="user-footer">
           <div style="font-weight:600;">${user.name}</div>
@@ -477,8 +513,8 @@ function renderDashboard(user: any) {
             
             <div class="card">
               <div class="flex-between" style="margin-bottom:15px;">
-                 <h3 style="margin:0;">Recent Activity</h3>
-                 <button class="btn btn-outline" style="font-size:12px;" onclick="app.nav('attendance')">View All</button>
+                 <h3 style="margin:0;">Recent Activity (Today)</h3>
+                 <button class="btn btn-outline" style="font-size:12px;" onclick="app.nav('attendance')">View Today</button>
               </div>
               <div class="table-responsive">
                 <table>
@@ -506,15 +542,28 @@ function renderDashboard(user: any) {
 
           <div id="view-attendance" class="hidden">
             <div class="card">
-              <h3>Full Attendance Log</h3>
+              <h3>Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
                   <thead><tr><th>Time</th><th>Name</th><th>Result</th></tr></thead>
-                  <tbody id="tbl-attendance-full"></tbody>
+                  <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
             </div>
           </div>
+
+          <div id="view-history" class="hidden">
+            <div class="card">
+              <h3>Attendance History (All Days)</h3>
+              <div class="table-responsive">
+                <table>
+                  <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th></tr></thead>
+                  <tbody id="tbl-attendance-history"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
         </div>
       </main>
     </div>
@@ -579,11 +628,22 @@ function renderDashboard(user: any) {
         
         nav(v) {
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          event.currentTarget.classList.add('active');
+          // find the nav item by text
+          const navs = document.querySelectorAll('.nav .nav-item');
+          navs.forEach(el => {
+            if (el.textContent.includes('Overview') && v === 'home') el.classList.add('active');
+            if (el.textContent.includes('Members') && v === 'members') el.classList.add('active');
+            if (el.textContent.includes('Today') && v === 'attendance') el.classList.add('active');
+            if (el.textContent.includes('History') && v === 'history') el.classList.add('active');
+          });
           
-          ['home', 'members', 'attendance'].forEach(id => document.getElementById('view-'+id).classList.add('hidden'));
+          ['home', 'members', 'attendance', 'history'].forEach(id => {
+            const view = document.getElementById('view-'+id);
+            if (view) view.classList.add('hidden');
+          });
           document.getElementById('view-'+v).classList.remove('hidden');
-          document.getElementById('page-title').textContent = v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
+          document.getElementById('page-title').textContent = 
+            v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
           
           // Mobile close
           document.querySelector('.sidebar').classList.remove('open');
@@ -605,7 +665,7 @@ function renderDashboard(user: any) {
               <td><strong>\${m.name}</strong></td>
               <td>\${m.phone}</td>
               <td>\${m.plan}</td>
-              <td>\${m.expiry_date.split('T')[0]}</td>
+              <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
               <td>\${isExp ? '<span class="badge bg-red">Expired</span>' : '<span class="badge bg-green">Active</span>'}</td>
               <td>
                 <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button>
@@ -614,16 +674,33 @@ function renderDashboard(user: any) {
             </tr>\`;
           }).join('');
 
-          // Attendance
-          const attRows = this.data.attendance.map(a => \`
+          const today = this.data.attendanceToday || [];
+          const history = this.data.attendanceHistory || [];
+
+          const todayRows = today.length ? today.map(a => \`
             <tr>
               <td>\${new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
               <td>\${a.name}</td>
               <td>\${a.status === 'success' ? '<span class="badge bg-green">OK</span>' : '<span class="badge bg-red">Expired</span>'}</td>
-            </tr>\`).join('');
-            
-          document.getElementById('tbl-attendance-recent').innerHTML = attRows;
-          document.getElementById('tbl-attendance-full').innerHTML = attRows;
+            </tr>\`).join('') : '<tr><td colspan="3">No check-ins yet today.</td></tr>';
+
+          const historyRows = history.length ? history.map(a => {
+            const d = new Date(a.check_in_time);
+            return \`
+              <tr>
+                <td>\${d.toISOString().split('T')[0]}</td>
+                <td>\${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                <td>\${a.name}</td>
+                <td>\${a.status === 'success' ? '<span class="badge bg-green">OK</span>' : '<span class="badge bg-red">Expired</span>'}</td>
+              </tr>\`;
+          }).join('') : '<tr><td colspan="4">No attendance history yet.</td></tr>';
+
+          // Home recent = today
+          document.getElementById('tbl-attendance-recent').innerHTML = todayRows;
+          // Attendance tab = today
+          document.getElementById('tbl-attendance-today').innerHTML = todayRows;
+          // History tab = all
+          document.getElementById('tbl-attendance-history').innerHTML = historyRows;
         },
 
         async checkIn() {
@@ -637,7 +714,7 @@ function renderDashboard(user: any) {
           if(res.ok) {
             div.style.color = json.status === 'success' ? 'var(--success)' : 'var(--danger)';
             div.innerText = json.status === 'success' ? '✅ Welcome ' + json.name : '⛔ EXPIRED: ' + json.name;
-            if(json.status === 'success') setTimeout(() => location.reload(), 1000);
+            if(json.status === 'success') setTimeout(() => location.reload(), 800);
           } else {
             div.style.color = 'var(--danger)';
             div.innerText = json.error || "Not found";
@@ -664,17 +741,31 @@ function renderDashboard(user: any) {
         
         filter() {
            const q = document.getElementById('search').value.toLowerCase();
-           document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none');
+           document.querySelectorAll('#tbl-members tr').forEach(r => {
+             r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none';
+           });
         },
 
         modals: {
-          checkin: { open:()=>{document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus()}, close:()=>document.getElementById('modal-checkin').style.display='none' },
-          add: { open:()=>document.getElementById('modal-add').style.display='flex', close:()=>document.getElementById('modal-add').style.display='none' },
+          checkin: { 
+            open:()=>{
+              const m = document.getElementById('modal-checkin');
+              m.style.display='flex'; 
+              const input = document.getElementById('checkin-id');
+              input.value = '';
+              input.focus();
+            }, 
+            close:()=>document.getElementById('modal-checkin').style.display='none' 
+          },
+          add: { 
+            open:()=>document.getElementById('modal-add').style.display='flex', 
+            close:()=>document.getElementById('modal-add').style.display='none' 
+          },
           pay: { 
             open:(id)=>{
               const m = app.data.members.find(x=>x.id===id);
               document.getElementById('pay-id').value=id;
-              document.getElementById('pay-name').innerText = m.name;
+              document.getElementById('pay-name').innerText = m ? m.name : '';
               document.getElementById('modal-pay').style.display='flex';
             }, 
             close:()=>document.getElementById('modal-pay').style.display='none' 
