@@ -509,22 +509,7 @@ function renderOnboarding(): Response {
         var addPlanBtn = document.getElementById("addPlan");
 
         var currentStep = 0;
-        var membershipPlans = [
-          {
-            name: "Standard",
-            price: "1500",
-            billing: "monthly",
-            access: "full",
-            perks: "Gym floor + basic classes"
-          },
-          {
-            name: "Premium",
-            price: "2500",
-            billing: "monthly",
-            access: "full",
-            perks: "All classes, full-time access"
-          }
-        ];
+        var membershipPlans = [];
 
         // -------- HELPERS --------
         function populateWorkerCount() {
@@ -1310,6 +1295,11 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               .attendance-grid{ grid-template-columns:1fr; }
               .layout-row{ flex-direction:column; }
             }
+            .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-bottom:12px; }
+            .setting-tile { border:1px solid var(--border); border-radius:12px; padding:14px; background:#f8fafc; text-align:left; font-size:13px; display:flex; flex-direction:column; gap:6px; box-shadow:none; }
+            .setting-tile strong { font-size:14px; }
+            .setting-panel { border:1px solid var(--border); border-radius:12px; padding:12px; background:#f9fafb; margin-top:8px; }
+            .setting-panel h4 { margin:0 0 6px; }
           </style>
 
           ${role !== "admin" ? `<div class="attendance-card">
@@ -1599,8 +1589,75 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               <div class="section">
                 <h3>Settings</h3>
                 <div class="section-inner">
-                  <p style="margin:0; font-size:13px;">Basic settings will be managed here later (gym name, opening hours, etc.).</p>
-                  <p class="danger-text" style="margin-top:8px;">Note: Do not delete the database directly unless you know what you’re doing.</p>
+                  <div class="settings-grid" id="settingsTiles">
+                    <button class="setting-tile" data-setting-target="membership-designer">
+                      <strong>Memberships</strong>
+                      <span>Create and update plans</span>
+                    </button>
+                    <button class="setting-tile" data-setting-target="change-password">
+                      <strong>Change password</strong>
+                      <span>Update your login credentials</span>
+                    </button>
+                    <button class="setting-tile" data-setting-target="profile-picture">
+                      <strong>Add profile picture</strong>
+                      <span>Upload a photo for your account</span>
+                    </button>
+                    ${role === "admin" ? `<button class="setting-tile" data-setting-target="removals">
+                      <strong>Remove records</strong>
+                      <span>Delete members, workers or accounts</span>
+                    </button>` : ""}
+                  </div>
+
+                  <div class="setting-panel" id="panel-membership-designer" style="display:none;">
+                    <h4>Membership designer</h4>
+                    <p style="margin:0 0 8px; font-size:13px;">Open the membership workspace to design plans, billing cycles and perks.</p>
+                    <button class="primary" id="openMembershipDesigner">Go to memberships</button>
+                  </div>
+
+                  <div class="setting-panel" id="panel-change-password" style="display:none;">
+                    <h4>Change password</h4>
+                    <div class="form-grid">
+                      <div class="field">
+                        <label for="setting-current-password">Current password</label>
+                        <input id="setting-current-password" type="password" placeholder="Enter current password" />
+                      </div>
+                      <div class="field">
+                        <label for="setting-new-password">New password</label>
+                        <input id="setting-new-password" type="password" placeholder="Enter new password" />
+                      </div>
+                    </div>
+                    <div class="btn-row">
+                      <button class="primary" id="settingSavePassword">Update password</button>
+                    </div>
+                    <div class="status-bar" id="settingPasswordStatus"></div>
+                  </div>
+
+                  <div class="setting-panel" id="panel-profile-picture" style="display:none;">
+                    <h4>Profile picture</h4>
+                    <p style="margin:0 0 8px; font-size:13px;">Upload a clear headshot to personalize your account.</p>
+                    <input id="setting-profile-photo" type="file" accept="image/*" />
+                    <div class="btn-row">
+                      <button class="primary" id="settingSavePhoto">Save photo</button>
+                    </div>
+                    <div class="status-bar" id="settingPhotoStatus"></div>
+                  </div>
+
+                  ${role === "admin" ? `<div class="setting-panel" id="panel-removals" style="display:none;">
+                    <h4>Remove records</h4>
+                    <p style="margin:0 0 8px; font-size:13px;">Only admins can delete members, workers or other accounts. Admin accounts cannot be removed.</p>
+                    <div class="section" style="margin-top:0;">
+                      <h3 style="font-size:13px; margin:0 0 6px;">Members</h3>
+                      <div class="section-inner" id="removalMembers"></div>
+                    </div>
+                    <div class="section" style="margin-top:10px;">
+                      <h3 style="font-size:13px; margin:0 0 6px;">Workers</h3>
+                      <div class="section-inner" id="removalWorkers"></div>
+                    </div>
+                    <div class="section" style="margin-top:10px;">
+                      <h3 style="font-size:13px; margin:0 0 6px;">Accounts</h3>
+                      <div class="section-inner" id="removalAccounts"></div>
+                    </div>
+                  </div>` : ""}
                 </div>
               </div>
             </div>
@@ -1657,13 +1714,10 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
         }
 
-        var membersData = [
-          { id: 1, name: "Arif Rahman", phone: "01711-000111", dueMonths: 0, status: "clear", avatar: createAvatar("Arif"), paymentNote: "Paid this month" },
-          { id: 2, name: "Sadia Akter", phone: "01822-234567", dueMonths: 1, status: "due", avatar: createAvatar("Sadia"), paymentNote: "1 month due" },
-          { id: 3, name: "Mahin Chowdhury", phone: "01689-445566", dueMonths: 0, status: "partial", avatar: createAvatar("Mahin"), paymentNote: "Half paid" },
-          { id: 4, name: "Nadia Karim", phone: "01933-778899", dueMonths: 2, status: "due", avatar: createAvatar("Nadia"), paymentNote: "2 months pending" },
-        ];
-        var nextMemberId = membersData.length + 1;
+        var membersData = [];
+        var workerData = [];
+        var accountData = [];
+        var nextMemberId = 1;
         var attendanceRecords = [];
         var selectedMemberId = null;
         var pendingPhotoData = null;
@@ -1695,7 +1749,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                     '</div>' +
                   '</div>' +
                   '<div class="member-actions">' +
-                    '<button class="ghost-danger" data-remove-member="' + m.id + '">Delete</button>' +
+                    (CURRENT_ROLE === "admin" ? '<button class="ghost-danger" data-remove-member="' + m.id + '">Delete</button>' : "") +
                   '</div>' +
                 '</div>'
               );
@@ -1713,6 +1767,36 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               updateSearchResults(attendanceInput ? attendanceInput.value : "");
             });
           });
+
+          var removalMembers = document.getElementById("removalMembers");
+          if (removalMembers) {
+            if (!membersData.length) {
+              removalMembers.innerHTML = '<div class="list-row"><span>No members to remove</span></div>';
+            } else {
+              removalMembers.innerHTML = membersData
+                .map(function(m) {
+                  return (
+                    '<div class="list-row">' +
+                    '<span>#' + m.id + ' · ' + m.name + '</span>' +
+                    '<button class="ghost-danger" data-remove-member="' + m.id + '">Remove</button>' +
+                    '</div>'
+                  );
+                })
+                .join("");
+            }
+
+            var removalButtons = removalMembers.querySelectorAll('[data-remove-member]');
+            removalButtons.forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                var id = Number(btn.getAttribute('data-remove-member'));
+                membersData = membersData.filter(function(m) { return m.id !== id; });
+                attendanceRecords = attendanceRecords.filter(function(a) { return a.memberId !== id; });
+                renderMemberList();
+                renderAttendanceTables();
+                updateSearchResults(attendanceInput ? attendanceInput.value : "");
+              });
+            });
+          }
         }
 
         function renderAttendanceTables() {
@@ -1736,6 +1820,137 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               '</tr>';
             }).join("");
           });
+        }
+
+        function renderWorkerListFromState() {
+          var workerList = document.getElementById("workerList");
+          if (!workerList) return;
+          if (!workerData.length) {
+            workerList.innerHTML = '<div class="list-row"><span>No workers yet</span></div>';
+            return;
+          }
+          workerList.innerHTML = workerData
+            .map(function(w) {
+              var removeBtn = CURRENT_ROLE === "admin" ? '<button class="ghost-danger" data-remove-worker="' +
+                w.id +
+                '">Remove</button>' : "";
+              return (
+                '<div class="list-row">' +
+                '<span>' + w.full_name + '</span>' +
+                '<span style="display:flex; align-items:center; gap:6px;">' +
+                '<span class="pill-soft">' +
+                w.role +
+                " • " +
+                (w.duty_start || "--:--") +
+                "-" +
+                (w.duty_end || "--:--") +
+                '</span>' +
+                removeBtn +
+                '</span>' +
+                '</div>'
+              );
+            })
+            .join("");
+
+          var workerRemoveButtons = workerList.querySelectorAll('[data-remove-worker]');
+          workerRemoveButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = Number(btn.getAttribute('data-remove-worker'));
+              workerData = workerData.filter(function(w) { return w.id !== id; });
+              renderWorkerListFromState();
+            });
+          });
+
+          var removalWorkers = document.getElementById("removalWorkers");
+          if (removalWorkers) {
+            if (!workerData.length) {
+              removalWorkers.innerHTML = '<div class="list-row"><span>No workers to remove</span></div>';
+            } else {
+              removalWorkers.innerHTML = workerData
+                .map(function(w) {
+                  return (
+                    '<div class="list-row">' +
+                    '<span>' + (w.full_name || w.name || "Worker") + '</span>' +
+                    '<button class="ghost-danger" data-remove-worker="' + w.id + '">Remove</button>' +
+                    '</div>'
+                  );
+                })
+                .join("");
+
+              var removalButtons = removalWorkers.querySelectorAll('[data-remove-worker]');
+              removalButtons.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                  var id = Number(btn.getAttribute('data-remove-worker'));
+                  workerData = workerData.filter(function(w) { return w.id !== id; });
+                  renderWorkerListFromState();
+                });
+              });
+            }
+          }
+        }
+
+        function renderAccountListFromState() {
+          var accountList = document.getElementById("accountList");
+          if (!accountList) return;
+          if (!accountData.length) {
+            accountList.innerHTML = '<div class="list-row"><span>No accounts yet</span></div>';
+            return;
+          }
+          accountList.innerHTML = accountData
+            .map(function(a) {
+              var isAdmin = (a.role || "").toLowerCase() === "admin";
+              var removeBtn = CURRENT_ROLE === "admin" && !isAdmin ? '<button class="ghost-danger" data-remove-account="' +
+                a.id +
+                '">Remove</button>' : "";
+              return (
+                '<div class="list-row">' +
+                '<span>' + a.full_name + ' (' + (a.email || "no email") + ')</span>' +
+                '<span style="display:flex; align-items:center; gap:6px;">' +
+                '<span class="pill-soft green">' + a.role + '</span>' +
+                removeBtn +
+                '</span>' +
+                '</div>'
+              );
+            })
+            .join("");
+
+          var accountRemoveButtons = accountList.querySelectorAll('[data-remove-account]');
+          accountRemoveButtons.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              var id = Number(btn.getAttribute('data-remove-account'));
+              accountData = accountData.filter(function(a) { return a.id !== id; });
+              renderAccountListFromState();
+            });
+          });
+
+          var removalAccounts = document.getElementById("removalAccounts");
+          if (removalAccounts) {
+            if (!accountData.length) {
+              removalAccounts.innerHTML = '<div class="list-row"><span>No accounts to remove</span></div>';
+            } else {
+              removalAccounts.innerHTML = accountData
+                .map(function(a) {
+                  var isAdmin = (a.role || "").toLowerCase() === "admin";
+                  var button = isAdmin ? '<span class="pill-soft">Admin protected</span>' : '<button class="ghost-danger" data-remove-account="' + a.id + '">Remove</button>';
+                  return (
+                    '<div class="list-row">' +
+                    '<span>' + a.full_name + ' (' + (a.email || "no email") + ')</span>' +
+                    button +
+                    '</div>'
+                  );
+                })
+                .join("");
+
+              var removalButtons = removalAccounts.querySelectorAll('[data-remove-account]');
+              removalButtons.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                  var id = Number(btn.getAttribute('data-remove-account'));
+                  accountData = accountData.filter(function(a) { return a.id !== id; });
+                  renderAccountListFromState();
+                });
+              });
+            }
+          }
         }
 
         function updateSearchResults(query) {
@@ -1817,6 +2032,66 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           });
         }
 
+        var settingTiles = document.querySelectorAll('[data-setting-target]');
+        var settingPanels = {
+          'membership-designer': document.getElementById('panel-membership-designer'),
+          'change-password': document.getElementById('panel-change-password'),
+          'profile-picture': document.getElementById('panel-profile-picture'),
+          removals: document.getElementById('panel-removals')
+        };
+
+        function showSettingPanel(target) {
+          Object.keys(settingPanels).forEach(function(key) {
+            var panel = settingPanels[key];
+            if (panel) panel.style.display = key === target ? '' : 'none';
+          });
+        }
+
+        settingTiles.forEach(function(tile) {
+          tile.addEventListener('click', function() {
+            var target = tile.getAttribute('data-setting-target');
+            if (target === 'membership-designer') {
+              switchTab('memberships');
+              return;
+            }
+            showSettingPanel(target);
+          });
+        });
+
+        var openMembershipDesigner = document.getElementById('openMembershipDesigner');
+        if (openMembershipDesigner) {
+          openMembershipDesigner.addEventListener('click', function() {
+            switchTab('memberships');
+          });
+        }
+
+        var settingSavePassword = document.getElementById('settingSavePassword');
+        if (settingSavePassword) {
+          settingSavePassword.addEventListener('click', function() {
+            var current = (document.getElementById('setting-current-password').value || '').trim();
+            var next = (document.getElementById('setting-new-password').value || '').trim();
+            var status = document.getElementById('settingPasswordStatus');
+            if (!current || !next) {
+              status.textContent = 'Provide both current and new passwords.';
+              return;
+            }
+            status.textContent = 'Password updated locally (connect API to persist).';
+          });
+        }
+
+        var settingSavePhoto = document.getElementById('settingSavePhoto');
+        if (settingSavePhoto) {
+          settingSavePhoto.addEventListener('click', function() {
+            var photo = document.getElementById('setting-profile-photo');
+            var status = document.getElementById('settingPhotoStatus');
+            if (!photo || !photo.files || !photo.files.length) {
+              status.textContent = 'Choose a photo to upload.';
+              return;
+            }
+            status.textContent = 'Photo attached. Hook up upload API to save permanently.';
+          });
+        }
+
         var addMemberBtn = document.getElementById("btnAddMember");
         if (addMemberBtn) {
           addMemberBtn.addEventListener('click', function() {
@@ -1848,13 +2123,15 @@ function renderAdminDashboard(accountName: string, role: string): Response {
 
         renderMemberList();
         renderAttendanceTables();
+        renderWorkerListFromState();
+        renderAccountListFromState();
 
         navItems.forEach(function(item) {
           var tab = item.getAttribute("data-tab");
-          if (CURRENT_ROLE === "worker") {
-            if (tab === "accounts" || tab === "settings") item.style.display = "none";
-          } else if (CURRENT_ROLE === "manager") {
-            if (tab === "settings") item.style.display = "none";
+          if (CURRENT_ROLE !== "admin") {
+            if (tab === "memberships" || tab === "accounts") {
+              item.style.display = "none";
+            }
           }
         });
 
@@ -1873,8 +2150,6 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         navItems.forEach(function(item) {
           item.addEventListener("click", function() {
             var tab = item.getAttribute("data-tab");
-            if (tab === "accounts" && CURRENT_ROLE === "worker") return;
-            if (tab === "settings" && (CURRENT_ROLE === "worker" || CURRENT_ROLE === "manager")) return;
             switchTab(tab);
           });
         });
@@ -1907,10 +2182,14 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   data.gym.closing_time;
               }
 
+              membersData = Array.isArray(data.members) ? data.members : membersData;
+              nextMemberId = (membersData[membersData.length - 1]?.id || 0) + 1;
+              var plans = Array.isArray(data.plans) ? data.plans : [];
               var memberCount = data.memberCount || membersData.length;
               document.getElementById("metricMembers").textContent = memberCount;
-              document.getElementById("metricPlans").textContent = data.plans.length || 0;
-              document.getElementById("metricWorkers").textContent = data.workers.length || 0;
+              document.getElementById("metricPlans").textContent = plans.length || 0;
+              workerData = Array.isArray(data.workers) ? data.workers : workerData;
+              document.getElementById("metricWorkers").textContent = workerData.length || 0;
               var note = document.getElementById("metricMembersNote");
               if (memberCount === 0) {
                 note.textContent = "No members yet";
@@ -1919,10 +2198,10 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               }
 
               var membershipList = document.getElementById("membershipList");
-              if (!data.plans.length) {
+              if (!plans.length) {
                 membershipList.innerHTML = '<div class="list-row"><span>No plans yet</span></div>';
               } else {
-                membershipList.innerHTML = data.plans
+                membershipList.innerHTML = plans
                   .map(function(p) {
                     return (
                       '<div class="list-row"><span>' +
@@ -1937,45 +2216,11 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   .join("");
               }
 
-              var workerList = document.getElementById("workerList");
-              if (!data.workers.length) {
-                workerList.innerHTML = '<div class="list-row"><span>No workers yet</span></div>';
-              } else {
-                workerList.innerHTML = data.workers
-                  .map(function(w) {
-                    return (
-                      '<div class="list-row"><span>' +
-                      w.full_name +
-                      '</span><span class="pill-soft">' +
-                      w.role +
-                      " • " +
-                      (w.duty_start || "--:--") +
-                      "-" +
-                      (w.duty_end || "--:--") +
-                      "</span></div>"
-                    );
-                  })
-                  .join("");
-              }
+              accountData = Array.isArray(data.accounts) ? data.accounts : accountData;
 
-              var accountList = document.getElementById("accountList");
-              if (!data.accounts.length) {
-                accountList.innerHTML = '<div class="list-row"><span>No accounts yet</span></div>';
-              } else {
-                accountList.innerHTML = data.accounts
-                  .map(function(a) {
-                    return (
-                      '<div class="list-row"><span>' +
-                      a.full_name +
-                      " (" +
-                      (a.email || "no email") +
-                      ')</span><span class="pill-soft green">' +
-                      a.role +
-                      "</span></div>"
-                    );
-                  })
-                  .join("");
-              }
+              renderMemberList();
+              renderWorkerListFromState();
+              renderAccountListFromState();
             })
             .catch(function(err) {
               console.error(err);
