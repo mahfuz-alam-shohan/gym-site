@@ -1070,8 +1070,7 @@ function renderLogin(): Response {
   });
 }
 
-/* ----------------------- Dashboard page (same as before) ----------------------- */
-/* (I’m not re-explaining everything; just keeping exactly as from last version.) */
+/* ----------------------- Dashboard page ----------------------- */
 
 function renderAdminDashboard(accountName: string, role: string): Response {
   const html = `${baseHead("Gym Admin Dashboard")}
@@ -1358,7 +1357,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               <div class="section">
                 <h3>Workers</h3>
                 <div class="section-inner" id="workerList">
-                  <div class="list-row"><span>Loading...</span></div>
+                  <div class="list-row"><span>No workers yet</span></div>
                 </div>
               </div>
               <div class="section" style="margin-top:12px;">
@@ -1797,6 +1796,19 @@ function parseCookies(request: Request): Record<string, string> {
   return cookies;
 }
 
+function getLastInsertId(result: any, entity: string): number {
+  const meta = result && result.meta;
+  const raw =
+    meta && typeof meta.last_row_id !== "undefined"
+      ? meta.last_row_id
+      : (result && (result.lastInsertRowId as any));
+  const id = Number(raw);
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error(`Could not determine ${entity} ID from D1 result.`);
+  }
+  return id;
+}
+
 /* ----------------------- DB setup ----------------------- */
 
 async function setupDatabase(env: Env) {
@@ -1961,44 +1973,53 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     throw new Error("Gym name, admin email, and admin password are required.");
   }
 
-  const gymRes = await env.DB.prepare(
+  // ---- INSERT GYM ----
+  const gymRes: any = await env.DB.prepare(
     `INSERT INTO gyms (name, gym_type, opening_time, closing_time)
-     VALUES (?, ?, ?, ?)`,
-  ).bind(gymName, gymType, openingTime, closingTime).run();
-  const gymId = Number(gymRes.lastInsertRowId);
-  if (!Number.isFinite(gymId) || gymId <= 0) {
-    throw new Error("Could not determine newly created gym ID.");
-  }
+     VALUES (?, ?, ?, ?)`
+  )
+    .bind(gymName, gymType, openingTime, closingTime)
+    .run();
 
+  const gymId = getLastInsertId(gymRes, "gym");
+
+  // ---- INSERT ADMIN ACCOUNT ----
   const adminHash = await hashPassword(adminPassword);
-  const adminRes = await env.DB.prepare(
+  const adminRes: any = await env.DB.prepare(
     `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-     VALUES (?, 'admin', ?, ?, ?)`,
-  ).bind(gymId, adminName, adminEmail, adminHash).run();
-  const adminId = Number(adminRes.lastInsertRowId);
-  if (!Number.isFinite(adminId) || adminId <= 0) {
-    throw new Error("Could not determine admin account ID.");
-  }
+     VALUES (?, 'admin', ?, ?, ?)`
+  )
+    .bind(gymId, adminName, adminEmail, adminHash)
+    .run();
 
+  const adminId = getLastInsertId(adminRes, "admin account");
+
+  // ---- OPTIONAL OWNER ----
   if (ownerName && ownerEmail && ownerPassword) {
     const ownerHash = await hashPassword(ownerPassword);
     await env.DB.prepare(
       `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-       VALUES (?, 'owner', ?, ?, ?)`,
-    ).bind(gymId, ownerName, ownerEmail, ownerHash).run();
+       VALUES (?, 'owner', ?, ?, ?)`
+    )
+      .bind(gymId, ownerName, ownerEmail, ownerHash)
+      .run();
   }
 
+  // ---- OPTIONAL MANAGER ----
   if (managerName && managerEmail && managerPassword) {
     const managerHash = await hashPassword(managerPassword);
     await env.DB.prepare(
       `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-       VALUES (?, 'manager', ?, ?, ?)`,
-    ).bind(gymId, managerName, managerEmail, managerHash).run();
+       VALUES (?, 'manager', ?, ?, ?)`
+    )
+      .bind(gymId, managerName, managerEmail, managerHash)
+      .run();
   }
 
+  // ---- WORKERS ----
   const workerStmt = env.DB.prepare(
     `INSERT INTO workers (gym_id, full_name, role, duty_start, duty_end)
-     VALUES (?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?)`
   );
 
   for (let i = 0; i < workerCount; i++) {
@@ -2010,9 +2031,10 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
     await workerStmt.bind(gymId, name, role, dutyStart, dutyEnd).run();
   }
 
+  // ---- MEMBERSHIP PLANS ----
   const planStmt = env.DB.prepare(
     `INSERT INTO membership_plans (gym_id, name, price, billing_cycle, access_scope, perks)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?)`
   );
 
   for (let i = 0; i < memberships.length; i++) {
