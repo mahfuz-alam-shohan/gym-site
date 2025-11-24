@@ -1300,6 +1300,20 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             .setting-tile strong { font-size:14px; }
             .setting-panel { border:1px solid var(--border); border-radius:12px; padding:12px; background:#f9fafb; margin-top:8px; }
             .setting-panel h4 { margin:0 0 6px; }
+            .payments-card { border:1px solid var(--border); border-radius:14px; padding:12px; background:#fdfdfd; box-shadow:var(--shadow-soft); }
+            .payments-header { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+            .payments-table { width:100%; border-collapse:collapse; font-size:12px; }
+            .payments-table th, .payments-table td { padding:8px 6px; border-bottom:1px solid var(--border); text-align:left; }
+            .payments-table tr.highlight { background: #fff7ed; }
+            .badge-soft { display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:11px; background:#eef2ff; color:#4338ca; }
+            .badge-soft.due { background:#fef2f2; color:#b91c1c; }
+            .badge-soft.clear { background:#ecfdf3; color:#166534; }
+            .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,0.35); display:flex; justify-content:center; align-items:center; padding:16px; z-index:20; }
+            .modal { width:100%; max-width:520px; background:var(--surface); border-radius:16px; padding:16px; box-shadow:var(--shadow-soft); border:1px solid var(--border); }
+            .modal h3 { margin:0 0 6px; font-size:16px; }
+            .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+            .modal-grid { display:grid; grid-template-columns:1fr; gap:10px; }
+            .fees-summary { font-size:13px; background:#f8fafc; border:1px dashed var(--border); border-radius:12px; padding:10px; }
           </style>
 
           <div class="layout-row">
@@ -1310,6 +1324,9 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             </div>
             <div class="nav-item active" data-tab="overview">
               <span>Overview</span><span>●</span>
+            </div>
+            <div class="nav-item" data-tab="payments">
+              <span>Payments</span><span>●</span>
             </div>
             <div class="nav-item" data-tab="members">
               <span>Members</span><span>●</span>
@@ -1411,6 +1428,35 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               </div>
             </div>
 
+            <div id="tab-payments" style="display:none;">
+              <div class="payments-card">
+                <div class="payments-header">
+                  <div>
+                    <div class="panel-title">Payment center</div>
+                    <div class="panel-subtitle">Ranked by highest dues first</div>
+                  </div>
+                  <button class="primary" id="openFees">Fees</button>
+                </div>
+                <div style="overflow-x:auto; margin-top:10px;">
+                  <table class="payments-table">
+                    <thead>
+                      <tr>
+                        <th style="width:60px;">ID</th>
+                        <th>Member</th>
+                        <th>Plan</th>
+                        <th>Due months</th>
+                        <th>Estimated due</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="paymentsTableBody">
+                      <tr><td colspan="6" style="text-align:center; color:#6b7280;">Loading dues...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
             <div id="tab-members" style="display:none;">
               <div class="section">
                 <h3>Members</h3>
@@ -1434,6 +1480,11 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                       <label for="member-due">Due months</label>
                       <input id="member-due" type="number" min="0" value="0" />
                       <small>Auto-tracked per member</small>
+                    </div>
+                    <div class="field">
+                      <label for="member-plan">Membership plan</label>
+                      <select id="member-plan"></select>
+                      <small>Used to calculate fee coverage</small>
                     </div>
                     <div class="field">
                       <label for="member-status">Payment status</label>
@@ -1667,6 +1718,37 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               </div>
             </div>
           </section>
+          <div id="feesModal" class="modal-backdrop" style="display:none;">
+            <div class="modal">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                <h3>Collect fees</h3>
+                <button class="ghost" id="closeFees">Close</button>
+              </div>
+              <div class="modal-grid" style="margin-top:8px;">
+                <div class="field">
+                  <label for="feesMemberSearch">Member ID or name</label>
+                  <input id="feesMemberSearch" placeholder="Start typing to search" />
+                  <div class="search-results" id="feesSearchResults" style="display:none;"></div>
+                </div>
+                <div class="fees-summary" id="feesMemberSummary">Select a member to see dues.</div>
+                <div class="field">
+                  <label for="feesAmount">Amount received</label>
+                  <input id="feesAmount" type="number" min="0" placeholder="e.g. 2000" />
+                  <small>Used to validate months covered by the payment.</small>
+                </div>
+                <div class="field">
+                  <label for="feesMonthSelect">Months to clear</label>
+                  <select id="feesMonthSelect"></select>
+                  <small>Options are limited to the member’s pending months.</small>
+                </div>
+                <div class="status-bar" id="feesStatus"></div>
+              </div>
+              <div class="modal-actions">
+                <button class="secondary" id="resetFees">Reset</button>
+                <button class="primary" id="submitFees">Submit payment</button>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
       <script>
@@ -1675,6 +1757,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var tabs = {
           attendance: document.getElementById("tab-attendance"),
           overview: document.getElementById("tab-overview"),
+          payments: document.getElementById("tab-payments"),
           members: document.getElementById("tab-members"),
           memberships: document.getElementById("tab-memberships"),
           workers: document.getElementById("tab-workers"),
@@ -1684,6 +1767,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var titles = {
           attendance: "Attendance",
           overview: "Overview",
+          payments: "Payments",
           members: "Members",
           memberships: "Memberships",
           workers: "Workers",
@@ -1693,6 +1777,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var subtitles = {
           attendance: "Check in members and view daily attendance",
           overview: "Quick snapshot of your gym",
+          payments: "Collect fees and clear dues",
           members: "Member list, photos and due status",
           memberships: "Configure plans and pricing",
           workers: "Manage trainers and staff",
@@ -1713,6 +1798,19 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var memberListEl = document.getElementById("memberList");
         var memberStatusEl = document.getElementById("memberStatus");
         var memberPhotoInput = document.getElementById("member-photo");
+        var paymentsTableBody = document.getElementById("paymentsTableBody");
+        var feesModal = document.getElementById("feesModal");
+        var feesMemberSearch = document.getElementById("feesMemberSearch");
+        var feesSearchResults = document.getElementById("feesSearchResults");
+        var feesMemberSummary = document.getElementById("feesMemberSummary");
+        var feesAmountInput = document.getElementById("feesAmount");
+        var feesMonthSelect = document.getElementById("feesMonthSelect");
+        var feesStatus = document.getElementById("feesStatus");
+        var openFeesBtn = document.getElementById("openFees");
+        var closeFeesBtn = document.getElementById("closeFees");
+        var resetFeesBtn = document.getElementById("resetFees");
+        var submitFeesBtn = document.getElementById("submitFees");
+        var memberPlanSelect = document.getElementById("member-plan");
 
         function createAvatar(name) {
           var initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
@@ -1726,15 +1824,45 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         var membersData = [];
         var workerData = [];
         var accountData = [];
+        var plansData = [];
         var nextMemberId = 1;
         var attendanceRecords = [];
         var selectedMemberId = null;
+        var selectedFeesMemberId = null;
         var pendingPhotoData = null;
+
+        function populatePlanSelect() {
+          if (!memberPlanSelect) return;
+          var options = '<option value="">No plan linked</option>';
+          plansData.forEach(function(plan) {
+            options += '<option value="' + plan.id + '">' + plan.name + ' (' + plan.billing_cycle + ')</option>';
+          });
+          memberPlanSelect.innerHTML = options;
+        }
 
         function dueSummary(member) {
           var dueLine = member.dueMonths > 0 ? member.dueMonths + " month(s) due" : "No dues";
-          var statusLine = member.status === "clear" ? "Payment clear" : member.status === "partial" ? "Partial payment" : "Payment pending";
+          var statusLine = member.dueMonths > 0 ? "Payment pending" : "Payment clear";
+          if (member.paymentNote) {
+            statusLine = member.paymentNote;
+          }
           return { dueLine: dueLine, statusLine: statusLine };
+        }
+
+        function monthlyPrice(member) {
+          var price = Number(member.planPrice || 0);
+          var billing = (member.planBilling || "monthly").toLowerCase();
+          if (!price) return 0;
+          if (billing === "monthly") return price;
+          if (billing === "weekly") return price * 4;
+          if (billing === "daily") return price * 30;
+          if (billing === "yearly") return price / 12;
+          return price;
+        }
+
+        function estimatedDue(member) {
+          var unit = monthlyPrice(member);
+          return Math.max(0, Math.round(unit * member.dueMonths));
         }
 
         function renderMemberList() {
@@ -1755,6 +1883,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                     '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">' +
                       '<span class="pill-soft ' + (m.dueMonths > 0 ? 'orange' : 'green') + '">' + summary.dueLine + '</span>' +
                       '<span class="pill-soft blue">' + summary.statusLine + '</span>' +
+                      (m.planName ? '<span class="pill-soft">' + m.planName + '</span>' : '') +
                     '</div>' +
                   '</div>' +
                   '<div class="member-actions">' +
@@ -1816,6 +1945,126 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               });
             });
           }
+        }
+
+        function renderPaymentsTable() {
+          if (!paymentsTableBody) return;
+          if (!membersData.length) {
+            paymentsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6b7280;">No members yet</td></tr>';
+            return;
+          }
+          var sorted = membersData.slice().sort(function(a, b) {
+            if (b.dueMonths !== a.dueMonths) return b.dueMonths - a.dueMonths;
+            return a.id - b.id;
+          });
+          paymentsTableBody.innerHTML = sorted.map(function(m) {
+            var summary = dueSummary(m);
+            var dueAmount = estimatedDue(m);
+            var statusClass = m.dueMonths > 0 ? 'badge-soft due' : 'badge-soft clear';
+            var planLabel = m.planName ? m.planName + (m.planBilling ? ' • ' + m.planBilling : '') : 'No plan linked';
+            return (
+              '<tr class="' + (m.dueMonths > 0 ? 'highlight' : '') + '">' +
+              '<td>#' + m.id + '</td>' +
+              '<td>' + m.name + '<br /><small style="color:#475569;">' + (m.phone || 'No phone') + '</small></td>' +
+              '<td>' + planLabel + '</td>' +
+              '<td>' + m.dueMonths + '</td>' +
+              '<td>' + (dueAmount ? dueAmount : '0') + '</td>' +
+              '<td><span class="' + statusClass + '">' + summary.dueLine + '</span></td>' +
+              '</tr>'
+            );
+          }).join("");
+        }
+
+        function resetFeesForm() {
+          selectedFeesMemberId = null;
+          if (feesMemberSearch) feesMemberSearch.value = '';
+          if (feesAmountInput) feesAmountInput.value = '';
+          if (feesMonthSelect) {
+            feesMonthSelect.innerHTML = '';
+            feesMonthSelect.disabled = false;
+          }
+          if (feesMemberSummary) feesMemberSummary.textContent = 'Select a member to see dues.';
+          if (feesSearchResults) {
+            feesSearchResults.style.display = 'none';
+            feesSearchResults.innerHTML = '';
+          }
+          if (feesStatus) feesStatus.textContent = '';
+        }
+
+        function populateFeesMonths(member) {
+          if (!feesMonthSelect) return;
+          var due = Number(member.dueMonths || 0);
+          if (due <= 0) {
+            feesMonthSelect.innerHTML = '<option value="0">No dues to clear</option>';
+            feesMonthSelect.disabled = true;
+            return;
+          }
+          feesMonthSelect.disabled = false;
+          var options = '';
+          for (var i = 1; i <= due; i++) {
+            options += '<option value="' + i + '">' + i + (i === 1 ? ' month' : ' months') + '</option>';
+          }
+          feesMonthSelect.innerHTML = options;
+        }
+
+        function setFeesSelection(member) {
+          selectedFeesMemberId = member ? member.id : null;
+          if (!member || !feesMemberSummary) {
+            feesMemberSummary.textContent = 'Select a member to see dues.';
+            return;
+          }
+          populateFeesMonths(member);
+          var dueLine = dueSummary(member).dueLine;
+          var dueAmount = estimatedDue(member);
+          var price = monthlyPrice(member);
+          var planLine = member.planName ? member.planName + (member.planBilling ? ' • ' + member.planBilling : '') : 'No plan';
+          feesMemberSummary.innerHTML =
+            '<strong>#' + member.id + ' · ' + member.name + '</strong><br />' +
+            'Plan: ' + planLine + '<br />' +
+            dueLine + ' • Estimated due: ' + dueAmount + (price ? ' (≈' + price + ' per month)' : '');
+          if (feesAmountInput) {
+            feesAmountInput.value = dueAmount ? String(dueAmount) : '';
+          }
+        }
+
+        function updateFeesSearch(query) {
+          if (!feesSearchResults) return;
+          var term = (query || '').toString().toLowerCase();
+          if (!term.trim()) {
+            feesSearchResults.style.display = 'none';
+            feesSearchResults.innerHTML = '';
+            return;
+          }
+          var filtered = membersData.filter(function(m) {
+            return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
+          }).slice(0, 8);
+          feesSearchResults.style.display = '';
+          if (!filtered.length) {
+            feesSearchResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
+            return;
+          }
+          feesSearchResults.innerHTML = filtered.map(function(m) {
+            var summary = dueSummary(m);
+            return (
+              '<div class="search-item" data-fees-id="' + m.id + '">' +
+              '<img class="search-avatar" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
+              '<div class="search-lines">' +
+              '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+              '<small>' + summary.dueLine + ' • ' + (m.planName || 'No plan') + '</small>' +
+              '</div>' +
+              '</div>'
+            );
+          }).join('');
+
+          var items = feesSearchResults.querySelectorAll('[data-fees-id]');
+          items.forEach(function(item) {
+            item.addEventListener('click', function() {
+              var id = Number(item.getAttribute('data-fees-id'));
+              var m = membersData.find(function(mem) { return mem.id === id; });
+              setFeesSelection(m || null);
+              if (feesSearchResults) feesSearchResults.style.display = 'none';
+            });
+          });
         }
 
         function renderAttendanceTables() {
@@ -2020,6 +2269,67 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           });
         }
 
+        function showFeesModal() {
+          resetFeesForm();
+          if (feesModal) feesModal.style.display = 'flex';
+        }
+
+        function hideFeesModal() {
+          if (feesModal) feesModal.style.display = 'none';
+        }
+
+        if (openFeesBtn) {
+          openFeesBtn.addEventListener('click', function() {
+            showFeesModal();
+          });
+        }
+
+        if (closeFeesBtn) {
+          closeFeesBtn.addEventListener('click', function() {
+            hideFeesModal();
+          });
+        }
+
+        if (resetFeesBtn) {
+          resetFeesBtn.addEventListener('click', function() {
+            resetFeesForm();
+          });
+        }
+
+        if (feesMemberSearch) {
+          updateFeesSearch(feesMemberSearch.value);
+          feesMemberSearch.addEventListener('input', function(e) {
+            updateFeesSearch(e.target.value || '');
+          });
+        }
+
+        if (submitFeesBtn) {
+          submitFeesBtn.addEventListener('click', function() {
+            if (!selectedFeesMemberId) {
+              if (feesStatus) feesStatus.textContent = 'Select a member first.';
+              return;
+            }
+            var monthsPaid = Number(feesMonthSelect && feesMonthSelect.value ? feesMonthSelect.value : 0);
+            var amountPaid = Number(feesAmountInput && feesAmountInput.value ? feesAmountInput.value : 0);
+            if (feesStatus) feesStatus.textContent = 'Submitting payment...';
+            fetch('/api/admin/record-payment', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ memberId: selectedFeesMemberId, monthsPaid: monthsPaid, amountPaid: amountPaid })
+            })
+              .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || 'Could not record payment');
+                if (feesStatus) feesStatus.textContent = 'Payment recorded';
+                hideFeesModal();
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                if (feesStatus) feesStatus.textContent = err.message || 'Unable to save payment.';
+              });
+          });
+        }
+
         if (attendanceButton) {
           attendanceButton.addEventListener('click', function() {
             if (!selectedMemberId) {
@@ -2125,6 +2435,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             var name = (document.getElementById('member-name').value || '').trim();
             var phone = (document.getElementById('member-phone').value || '').trim();
             var dueMonths = Number(document.getElementById('member-due').value || 0);
+            var planId = memberPlanSelect ? Number(memberPlanSelect.value || 0) : 0;
             var status = (document.getElementById('member-status').value || 'clear');
             if (!name) {
               if (memberStatusEl) memberStatusEl.textContent = 'Name is required.';
@@ -2138,6 +2449,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                 name: name,
                 phone: phone,
                 dueMonths: dueMonths,
+                planId: planId || null,
                 status: status,
                 photoData: pendingPhotoData
               })
@@ -2228,14 +2540,18 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                       name: m.full_name,
                       phone: m.phone || '',
                       dueMonths: Number(m.due_months || 0),
-                      status: m.status === 'active' ? 'clear' : (m.status || 'clear'),
+                      status: m.status || 'clear',
                       avatar: m.avatar_url ? '/media/' + m.avatar_url : createAvatar(m.full_name),
-                      paymentNote: m.payment_note || ''
+                      paymentNote: m.payment_note || '',
+                      planId: m.membership_plan_id || null,
+                      planName: m.plan_name || '',
+                      planBilling: m.plan_billing || '',
+                      planPrice: Number(m.plan_price || 0)
                     };
                   })
                 : membersData;
               nextMemberId = (membersData[membersData.length - 1]?.id || 0) + 1;
-              var plans = Array.isArray(data.plans) ? data.plans : [];
+              plansData = Array.isArray(data.plans) ? data.plans : plansData;
               var memberCount = data.memberCount || membersData.length;
               attendanceRecords = Array.isArray(data.attendance)
                 ? data.attendance.map(function(row) {
@@ -2257,7 +2573,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   })
                 : attendanceRecords;
               document.getElementById("metricMembers").textContent = memberCount;
-              document.getElementById("metricPlans").textContent = plans.length || 0;
+              document.getElementById("metricPlans").textContent = plansData.length || 0;
               workerData = Array.isArray(data.workers) ? data.workers : workerData;
               document.getElementById("metricWorkers").textContent = workerData.length || 0;
               var note = document.getElementById("metricMembersNote");
@@ -2268,10 +2584,10 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               }
 
               var membershipList = document.getElementById("membershipList");
-              if (!plans.length) {
+              if (!plansData.length) {
                 membershipList.innerHTML = '<div class="list-row"><span>No plans yet</span></div>';
               } else {
-                membershipList.innerHTML = plans
+                membershipList.innerHTML = plansData
                   .map(function(p) {
                     return (
                       '<div class="list-row"><span>' +
@@ -2286,9 +2602,12 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   .join("");
               }
 
+              populatePlanSelect();
+
               accountData = Array.isArray(data.accounts) ? data.accounts : accountData;
 
               renderMemberList();
+              renderPaymentsTable();
               renderWorkerListFromState();
               renderAccountListFromState();
             })
@@ -2599,6 +2918,18 @@ async function setupDatabase(env: Env) {
       updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
       FOREIGN KEY (gym_id) REFERENCES gyms(id)
     )`,
+    `CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      gym_id INTEGER NOT NULL,
+      member_id INTEGER NOT NULL,
+      amount_paid REAL DEFAULT 0,
+      months_cleared INTEGER DEFAULT 0,
+      previous_due_months INTEGER DEFAULT 0,
+      new_due_months INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+      FOREIGN KEY (gym_id) REFERENCES gyms(id),
+      FOREIGN KEY (member_id) REFERENCES members(id)
+    )`,
     `CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       account_id INTEGER NOT NULL,
@@ -2783,8 +3114,12 @@ async function saveAvatar(env: Env, gymId: number, photoData?: string | null): P
 
 async function listMembers(env: Env, gymId: number) {
   const res = await env.DB.prepare(
-    `SELECT id, full_name, phone, status, avatar_url, due_months, payment_note
-     FROM members WHERE gym_id = ? ORDER BY id DESC`,
+    `SELECT m.id, m.full_name, m.phone, m.status, m.avatar_url, m.due_months, m.payment_note,
+            m.membership_plan_id, p.name AS plan_name, p.price AS plan_price, p.billing_cycle AS plan_billing
+     FROM members m
+     LEFT JOIN membership_plans p ON m.membership_plan_id = p.id
+     WHERE m.gym_id = ?
+     ORDER BY m.id DESC`,
   )
     .bind(gymId)
     .all<any>();
@@ -3041,15 +3376,16 @@ export default {
         const phone = safeText(body?.phone);
         const statusVal = safeText(body?.status, "clear");
         const dueMonths = safeNumber(body?.dueMonths, 0);
+        const planId = safeNumber(body?.planId, 0) || null;
         if (!name) throw new Error("Name is required.");
         const avatarKey = await saveAvatar(env, account.gym_id, body?.photoData);
         const paymentNote = dueMonths > 0 ? `${dueMonths} month(s) due` : "Paid";
 
         const res = await env.DB.prepare(
-          `INSERT INTO members (gym_id, full_name, phone, status, avatar_url, due_months, payment_note)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT INTO members (gym_id, full_name, phone, status, avatar_url, due_months, payment_note, membership_plan_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
         )
-          .bind(account.gym_id, name, phone, statusVal, avatarKey, dueMonths, paymentNote)
+          .bind(account.gym_id, name, phone, statusVal, avatarKey, dueMonths, paymentNote, planId)
           .run();
 
         const id = getLastInsertId(res, "member");
@@ -3136,6 +3472,97 @@ export default {
             due_months: member.due_months,
             member_status: member.status,
           }),
+          { headers: { "Content-Type": "application/json" } },
+        );
+      } catch (err) {
+        if ((err as Error).message === "Unauthenticated") {
+          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (path === "/api/admin/record-payment" && method === "POST") {
+      try {
+        const account = await requireSession(env, request);
+        if (account.role === "worker") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const body = await request.json();
+        const memberId = safeNumber(body?.memberId, 0);
+        const monthsPaid = Math.max(0, safeNumber(body?.monthsPaid, 0));
+        const amountPaid = Math.max(0, safeNumber(body?.amountPaid, 0));
+        if (!memberId) throw new Error("memberId is required");
+
+        const member = await env.DB.prepare(
+          `SELECT m.id, m.full_name, m.due_months, m.status, m.membership_plan_id,
+                  p.price AS plan_price, p.billing_cycle AS plan_billing
+           FROM members m
+           LEFT JOIN membership_plans p ON m.membership_plan_id = p.id
+           WHERE m.id = ? AND m.gym_id = ?`
+        )
+          .bind(memberId, account.gym_id)
+          .first<any>();
+
+        if (!member) throw new Error("Member not found");
+        const currentDue = safeNumber(member?.due_months, 0);
+        if (currentDue <= 0) {
+          return new Response(JSON.stringify({ message: "Member has no dues." }), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const planPrice = safeNumber(member?.plan_price, 0);
+        const billing = safeText(member?.plan_billing, "monthly").toLowerCase();
+        const monthsFromAmount = (() => {
+          if (!planPrice || !amountPaid) return 0;
+          if (billing === "monthly") return Math.floor(amountPaid / planPrice);
+          if (billing === "weekly") return Math.floor((amountPaid / planPrice) * 4);
+          if (billing === "daily") return Math.floor((amountPaid / planPrice) * 30);
+          if (billing === "yearly") return Math.floor((amountPaid / planPrice) * 12);
+          return 0;
+        })();
+
+        if (amountPaid > 0 && planPrice > 0 && monthsFromAmount === 0) {
+          throw new Error("Payment amount does not cover a full billing cycle.");
+        }
+
+        let monthsToClear = monthsPaid > 0 ? monthsPaid : monthsFromAmount;
+        if (monthsFromAmount > 0 && monthsToClear > monthsFromAmount) {
+          monthsToClear = monthsFromAmount;
+        }
+        if (monthsToClear <= 0) throw new Error("Enter a valid payment amount or months to clear.");
+        monthsToClear = Math.min(monthsToClear, currentDue);
+
+        const newDueMonths = Math.max(0, currentDue - monthsToClear);
+        const newStatus = newDueMonths === 0 ? "active" : "due";
+        const note = newDueMonths === 0 ? "Paid" : `${newDueMonths} month(s) due`;
+
+        await env.DB.prepare(
+          `UPDATE members SET due_months = ?, status = ?, payment_note = ? WHERE id = ? AND gym_id = ?`
+        )
+          .bind(newDueMonths, newStatus, note, memberId, account.gym_id)
+          .run();
+
+        await env.DB.prepare(
+          `INSERT INTO payments (gym_id, member_id, amount_paid, months_cleared, previous_due_months, new_due_months)
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+          .bind(account.gym_id, memberId, amountPaid, monthsToClear, currentDue, newDueMonths)
+          .run();
+
+        return new Response(
+          JSON.stringify({ message: "Payment recorded", newDueMonths, cleared: monthsToClear }),
           { headers: { "Content-Type": "application/json" } },
         );
       } catch (err) {
