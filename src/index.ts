@@ -42,7 +42,7 @@ function baseHead(title: string): string {
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title}</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -61,7 +61,7 @@ function baseHead(title: string): string {
     .app-layout { display: flex; height: 100%; }
     .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
-    
+
     /* Components */
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
     .btn { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
@@ -70,7 +70,7 @@ function baseHead(title: string): string {
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
     .btn-danger { background: var(--danger); color: white; }
     .w-full { width: 100%; }
-    
+
     input, select { width: 100%; padding: 11px; margin-bottom: 15px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-main); }
@@ -81,7 +81,7 @@ function baseHead(title: string): string {
     th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
     td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    
+
     /* Stats */
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
     .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
@@ -93,12 +93,15 @@ function baseHead(title: string): string {
     .flex { display: flex; align-items: center; gap: 12px; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
-    
+    .mobile-header { display: none; }
+    .page-header { flex-wrap: wrap; gap: 12px; }
+    .filter-row { flex-wrap: wrap; gap: 10px; }
+
     /* Badges */
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
-    
+
     /* Sidebar Specifics */
     .logo { padding: 24px; font-size: 20px; font-weight: 700; border-bottom: 1px solid #1f2937; letter-spacing: -0.5px; }
     .nav { padding: 16px; flex: 1; }
@@ -112,13 +115,31 @@ function baseHead(title: string): string {
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
     /* Mobile */
+    @media (max-width: 900px) {
+      body { background: #ffffff; }
+      .card { padding: 18px; margin-bottom: 16px; }
+      .stats-grid { gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+      .nav-item { padding: 12px; }
+    }
+
     @media (max-width: 768px) {
       .app-layout { flex-direction: column; }
-      .sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; transform: translateX(-100%); }
+      .sidebar { position: fixed; inset: 0 auto 0 0; height: 100vh; transform: translateX(-100%); width: 82%; max-width: 320px; }
       .sidebar.open { transform: translateX(0); }
-      .mobile-header { display: flex; justify-content: space-between; padding: 16px; background: white; border-bottom: 1px solid var(--border); }
-      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
+      .mobile-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: white; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 30; }
+      .mobile-header .btn { padding: 8px 10px; }
+      .main-content { padding-bottom: 24px; }
+      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 40; display: none; }
       .overlay.open { display: block; }
+      .flex-between { align-items: flex-start; gap: 12px; }
+      .page-header h2 { margin-bottom: 6px; }
+      .filter-row { flex-direction: column; align-items: stretch; }
+      #search { width: 100% !important; }
+      .table-responsive { box-shadow: none; }
+      table { white-space: normal; }
+      th, td { padding: 10px 12px; font-size: 13px; }
+      .btn { width: 100%; }
+      .modal-content { margin: 0 16px; }
     }
   </style>
 </head>`;
@@ -432,7 +453,7 @@ function renderDashboard(user: any) {
   const html = `${baseHead("Dashboard")}
   <body>
     <div class="app-layout">
-      <div class="mobile-header hidden">
+      <div class="mobile-header">
          <div style="font-weight:bold;">Gym OS</div>
          <button class="btn btn-outline" onclick="toggleSidebar()">☰</button>
       </div>
@@ -441,9 +462,9 @@ function renderDashboard(user: any) {
       <aside class="sidebar">
         <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.0</span></div>
         <div class="nav">
-          <div class="nav-item active" onclick="app.nav('home')">📊 Overview</div>
-          <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item" onclick="app.nav('attendance')">⏰ Attendance</div>
+          <div class="nav-item active" onclick="app.nav('home', event)">📊 Overview</div>
+          <div class="nav-item" onclick="app.nav('members', event)">👥 Members</div>
+          <div class="nav-item" onclick="app.nav('attendance', event)">⏰ Attendance</div>
         </div>
         <div class="user-footer">
           <div style="font-weight:600;">${user.name}</div>
@@ -453,7 +474,7 @@ function renderDashboard(user: any) {
       </aside>
 
       <main class="main-content">
-        <div class="flex-between" style="padding: 24px 24px 0 24px;">
+        <div class="flex-between page-header" style="padding: 24px 24px 0 24px;">
            <h2 id="page-title" style="margin:0;">Dashboard</h2>
            <button class="btn btn-primary" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
         </div>
@@ -491,7 +512,7 @@ function renderDashboard(user: any) {
 
           <div id="view-members" class="hidden">
             <div class="card">
-              <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+              <div class="flex-between filter-row" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
                 <input id="search" placeholder="Search members..." style="width:300px; margin:0;" onkeyup="app.filter()">
                 <button class="btn btn-primary" onclick="app.modals.add.open()">+ Add Member</button>
               </div>
@@ -577,10 +598,11 @@ function renderDashboard(user: any) {
           this.render();
         },
         
-        nav(v) {
+        nav(v, ev) {
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          event.currentTarget.classList.add('active');
-          
+          const target = (ev?.currentTarget as HTMLElement) || null;
+          if (target) target.classList.add('active');
+
           ['home', 'members', 'attendance'].forEach(id => document.getElementById('view-'+id).classList.add('hidden'));
           document.getElementById('view-'+v).classList.remove('hidden');
           document.getElementById('page-title').textContent = v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
