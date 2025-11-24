@@ -2612,6 +2612,19 @@ async function setupDatabase(env: Env) {
   for (const sql of statements) {
     await env.DB.prepare(sql).run();
   }
+
+  // Ensure newer columns exist when the database was created before a schema change.
+  await ensureColumn(env, "members", "avatar_url", "avatar_url TEXT");
+  await ensureColumn(env, "members", "due_months", "due_months INTEGER DEFAULT 0");
+  await ensureColumn(env, "members", "payment_note", "payment_note TEXT");
+}
+
+async function ensureColumn(env: Env, table: string, column: string, definition: string) {
+  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  const hasColumn = info.results?.some((col) => col.name === column);
+  if (!hasColumn) {
+    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${definition}`).run();
+  }
 }
 
 async function getGymCount(env: Env): Promise<number> {
