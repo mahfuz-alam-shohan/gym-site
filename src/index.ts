@@ -121,6 +121,7 @@ function baseHead(title: string): string {
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
+    .bg-amber { background: #fef3c7; color: #92400e; }
     
     /* Sidebar Specifics */
     .logo { padding: 24px; font-size: 20px; font-weight: 700; border-bottom: 1px solid #1f2937; letter-spacing: -0.5px; }
@@ -156,6 +157,7 @@ function baseHead(title: string): string {
       th, td { padding: 10px 12px; font-size: 13px; }
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>`;
 }
 
@@ -254,7 +256,7 @@ export default {
         });
       }
 
-      // 4. Factory Reset API
+      // 4. Factory Reset API (only reachable manually, no button on login)
       if (url.pathname === "/api/nuke") {
         await factoryReset(env);
         return new Response("Database Reset Complete. Go to / to setup again.", { status: 200 });
@@ -310,7 +312,62 @@ export default {
 
       // Data Bootstrap (Load everything at once)
       if (url.pathname === "/api/bootstrap") {
-        const members = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
+        // Load all config
+        const configRows = await env.DB.prepare("SELECT key, value FROM config").all();
+        const config: Record<string, string> = {};
+        for (const row of configRows.results || []) {
+          config[row.key] = row.value;
+        }
+
+        const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
+        const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
+        let membershipPlans: string[];
+        try {
+          membershipPlans = config["membership_plans"]
+            ? JSON.parse(config["membership_plans"])
+            : ["Standard", "Premium"];
+        } catch {
+          membershipPlans = ["Standard", "Premium"];
+        }
+
+        // Members with computed due + status
+        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
+        const membersProcessed: any[] = [];
+
+        let activeCount = 0;
+        let dueMembersCount = 0;
+        let inactiveMembersCount = 0;
+        let totalDueMonths = 0;
+
+        for (const m of membersRaw.results || []) {
+          const dueMonths = calcDueMonths(m.expiry_date as string | null);
+          let newStatus = m.status || "active";
+
+          if (dueMonths != null && dueMonths >= inactiveAfterMonths) {
+            newStatus = "inactive";
+            inactiveMembersCount++;
+          } else if (dueMonths != null && dueMonths > 0) {
+            newStatus = "due";
+            dueMembersCount++;
+          } else {
+            newStatus = "active";
+            activeCount++;
+          }
+
+          if (dueMonths && dueMonths > 0) totalDueMonths += dueMonths;
+
+          if (newStatus !== m.status) {
+            await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?")
+              .bind(newStatus, m.id)
+              .run();
+          }
+
+          membersProcessed.push({
+            ...m,
+            status: newStatus,
+            dueMonths,
+          });
+        }
 
         // Today's attendance (for Attendance tab + Recent on home)
         const attendanceToday = await env.DB.prepare(`
@@ -321,7 +378,7 @@ export default {
           ORDER BY a.id DESC
         `).all();
 
-        // Full history (for History tab)
+        // Full history (for History tab + charts)
         const attendanceHistory = await env.DB.prepare(`
           SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
@@ -329,8 +386,7 @@ export default {
           ORDER BY a.id DESC
         `).all();
         
-        // Stats
-        const totalMembers = await env.DB.prepare("SELECT count(*) as c FROM members WHERE status='active'").first();
+        // Stats from DB
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
 
@@ -345,13 +401,21 @@ export default {
         
         return json({
           user,
-          members: members.results,
+          members: membersProcessed,
           attendanceToday: attendanceTodayWithDue,
           attendanceHistory: attendanceHistoryWithDue,
           stats: {
-            active: totalMembers?.c || 0,
+            active: activeCount,
             today: todayVisits?.c || 0,
-            revenue: revenue?.t || 0
+            revenue: revenue?.t || 0,
+            dueMembers: dueMembersCount,
+            inactiveMembers: inactiveMembersCount,
+            totalDueMonths
+          },
+          settings: {
+            attendanceThreshold,
+            inactiveAfterMonths,
+            membershipPlans
           }
         });
       }
@@ -418,6 +482,28 @@ export default {
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run(); // Cleanup
         await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); // Cleanup
+        return json({ success: true });
+      }
+
+      // Settings update
+      if (url.pathname === "/api/settings" && req.method === "POST") {
+        const body = await req.json() as any;
+        const attendanceThreshold = parseInt(body.attendanceThreshold) || 3;
+        const inactiveAfterMonths = parseInt(body.inactiveAfterMonths) || 3;
+        let membershipPlans: string[];
+
+        if (Array.isArray(body.membershipPlans)) {
+          membershipPlans = body.membershipPlans.map((x: any) => String(x).trim()).filter(Boolean);
+        } else if (typeof body.membershipPlans === "string") {
+          membershipPlans = body.membershipPlans.split(",").map((s: string) => s.trim()).filter(Boolean);
+        } else {
+          membershipPlans = ["Standard", "Premium"];
+        }
+
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(attendanceThreshold)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(inactiveAfterMonths)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(membershipPlans)).run();
+
         return json({ success: true });
       }
 
@@ -503,19 +589,9 @@ function renderLogin(gymName: string) {
           <button type="submit" class="btn btn-primary w-full" style="padding:12px;">Login</button>
         </form>
         <div id="error" style="color:var(--danger); margin-top:15px; font-size:13px; text-align:center;"></div>
-        
-        <div style="margin-top:30px; text-align:center;">
-           <a href="#" onclick="nukeDB()" style="color:var(--text-muted); font-size:11px;">⚠ Reset Database</a>
-        </div>
       </div>
     </div>
     <script>
-      async function nukeDB() {
-        if(!confirm("Database Error? This deletes ALL data to fix schema.")) return;
-        await fetch('/api/nuke');
-        alert("Reset complete. Refreshing.");
-        location.reload();
-      }
       document.getElementById('form').onsubmit = async (e) => {
         e.preventDefault();
         const btn = e.target.querySelector('button');
@@ -554,6 +630,7 @@ function renderDashboard(user: any) {
           <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
           <div class="nav-item" onclick="app.nav('attendance')">⏰ Today</div>
           <div class="nav-item" onclick="app.nav('history')">📜 History</div>
+          <div class="nav-item" onclick="app.nav('settings')">⚙ Settings</div>
         </div>
         <div class="user-footer">
           <div style="font-weight:600;">${user.name}</div>
@@ -583,6 +660,28 @@ function renderDashboard(user: any) {
                 <span class="stat-label">Total Revenue</span>
                 <span class="stat-val" style="color:var(--success)">$<span id="stat-rev">--</span></span>
               </div>
+              <div class="stat-card">
+                <span class="stat-label">Members With Due</span>
+                <span class="stat-val" id="stat-due">--</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Inactive Members</span>
+                <span class="stat-val" id="stat-inactive">--</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="flex-between" style="margin-bottom:15px;">
+                 <h3 style="margin:0;">Dues Overview</h3>
+              </div>
+              <canvas id="chart-dues" height="120"></canvas>
+            </div>
+
+            <div class="card">
+              <div class="flex-between" style="margin-bottom:15px;">
+                 <h3 style="margin:0;">Attendance (Last 7 Days)</h3>
+              </div>
+              <canvas id="chart-attendance" height="120"></canvas>
             </div>
             
             <div class="card">
@@ -638,6 +737,30 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <div id="view-settings" class="hidden">
+            <div class="card">
+              <h3>System Settings</h3>
+              <p style="color:var(--text-muted); font-size:13px; margin-bottom:20px;">
+                Configure billing logic and membership plans. Dues and inactive status are auto-calculated from expiry and your rules.
+              </p>
+              <form id="settings-form" onsubmit="app.saveSettings(event)">
+                <label>Minimum attendance days per month to count as billable</label>
+                <input name="attendanceThreshold" type="number" min="1" max="31" required>
+                
+                <label>Months of due after which membership becomes <strong>inactive</strong></label>
+                <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
+                
+                <label>Membership plan names (comma-separated)</label>
+                <input name="membershipPlans" type="text" required placeholder="Standard, Premium">
+                
+                <div class="flex-between" style="margin-top:15px; gap:10px;">
+                  <button type="submit" class="btn btn-primary">Save Settings</button>
+                  <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
+                </div>
+              </form>
+            </div>
+          </div>
+
         </div>
       </main>
     </div>
@@ -667,8 +790,13 @@ function renderDashboard(user: any) {
           <label>Full Name</label><input name="name" required>
           <label>Phone Number</label><input name="phone" required>
           <div class="flex">
-            <div class="w-full"><label>Plan</label><select name="plan"><option>Standard</option><option>Premium</option></select></div>
-            <div class="w-full"><label>Months</label><input name="duration" type="number" value="1" required></div>
+            <div class="w-full">
+              <label>Plan</label>
+              <select name="plan" id="plan-select"></select>
+            </div>
+            <div class="w-full">
+              <label>Months</label><input name="duration" type="number" value="1" required>
+            </div>
           </div>
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
@@ -703,11 +831,13 @@ function renderDashboard(user: any) {
       const app = {
         data: null,
         searchTimeout: null,
+        charts: { dues: null, attendance: null },
 
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
           this.render();
+          this.applySettingsUI();
         },
         
         nav(v) {
@@ -718,9 +848,10 @@ function renderDashboard(user: any) {
             if (el.textContent.includes('Members') && v === 'members') el.classList.add('active');
             if (el.textContent.includes('Today') && v === 'attendance') el.classList.add('active');
             if (el.textContent.includes('History') && v === 'history') el.classList.add('active');
+            if (el.textContent.includes('Settings') && v === 'settings') el.classList.add('active');
           });
           
-          ['home', 'members', 'attendance', 'history'].forEach(id => {
+          ['home', 'members', 'attendance', 'history', 'settings'].forEach(id => {
             const view = document.getElementById('view-'+id);
             if (view) view.classList.add('hidden');
           });
@@ -737,18 +868,22 @@ function renderDashboard(user: any) {
           document.getElementById('stat-active').innerText = this.data.stats.active;
           document.getElementById('stat-today').innerText = this.data.stats.today;
           document.getElementById('stat-rev').innerText = this.data.stats.revenue || 0;
+          document.getElementById('stat-due').innerText = this.data.stats.dueMembers || 0;
+          document.getElementById('stat-inactive').innerText = this.data.stats.inactiveMembers || 0;
 
           // Members
           const tbody = document.getElementById('tbl-members');
-          tbody.innerHTML = this.data.members.map(m => {
-            const isExp = new Date(m.expiry_date) < new Date();
+          tbody.innerHTML = (this.data.members || []).map(m => {
+            let statusBadge = '<span class="badge bg-green">Active</span>';
+            if (m.status === 'due') statusBadge = '<span class="badge bg-amber">Due</span>';
+            if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
             return \`<tr>
               <td>#\${m.id}</td>
               <td><strong>\${m.name}</strong></td>
               <td>\${m.phone}</td>
               <td>\${m.plan}</td>
               <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-              <td>\${isExp ? '<span class="badge bg-red">Expired</span>' : '<span class="badge bg-green">Active</span>'}</td>
+              <td>\${statusBadge}</td>
               <td>
                 <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button>
                 <button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(\${m.id})">Del</button>
@@ -802,14 +937,137 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
           // History tab = all
           document.getElementById('tbl-attendance-history').innerHTML = historyRows;
+
+          this.renderCharts();
+        },
+
+        renderCharts() {
+          if (typeof Chart === 'undefined') return;
+
+          // Dues chart
+          const members = this.data.members || [];
+          const noDue = members.filter(m => !m.dueMonths || m.dueMonths <= 0).length;
+          const due1 = members.filter(m => m.dueMonths === 1).length;
+          const due2plus = members.filter(m => m.dueMonths >= 2 && m.status !== 'inactive').length;
+          const inactive = members.filter(m => m.status === 'inactive').length;
+
+          const ctx1El = document.getElementById('chart-dues');
+          if (ctx1El && ctx1El.getContext) {
+            const ctx1 = ctx1El.getContext('2d');
+            if (this.charts.dues) this.charts.dues.destroy();
+            this.charts.dues = new Chart(ctx1, {
+              type: 'bar',
+              data: {
+                labels: ['No Due', '1 Month Due', '2+ Months Due', 'Inactive'],
+                datasets: [{
+                  label: 'Members',
+                  data: [noDue, due1, due2plus, inactive]
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+              }
+            });
+          }
+
+          // Attendance last 7 days chart
+          const history = this.data.attendanceHistory || [];
+          const labels = [];
+          const counts = [];
+
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dateIso = d.toISOString().split('T')[0];
+            const label = d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+            labels.push(label);
+            const c = history.filter(h => h.check_in_time && h.check_in_time.startsWith(dateIso)).length;
+            counts.push(c);
+          }
+
+          const ctx2El = document.getElementById('chart-attendance');
+          if (ctx2El && ctx2El.getContext) {
+            const ctx2 = ctx2El.getContext('2d');
+            if (this.charts.attendance) this.charts.attendance.destroy();
+            this.charts.attendance = new Chart(ctx2, {
+              type: 'line',
+              data: {
+                labels,
+                datasets: [{
+                  label: 'Check-ins',
+                  data: counts,
+                  tension: 0.3
+                }]
+              },
+              options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, precision: 0 } }
+              }
+            });
+          }
+        },
+
+        applySettingsUI() {
+          const settings = this.data.settings || {};
+          const form = document.getElementById('settings-form');
+          if (form) {
+            const th = form.querySelector('input[name="attendanceThreshold"]');
+            const inact = form.querySelector('input[name="inactiveAfterMonths"]');
+            const plans = form.querySelector('input[name="membershipPlans"]');
+            if (th) th.value = settings.attendanceThreshold || 3;
+            if (inact) inact.value = settings.inactiveAfterMonths || 3;
+            if (plans) plans.value = (settings.membershipPlans || ['Standard','Premium']).join(', ');
+          }
+
+          const select = document.getElementById('plan-select');
+          if (select) {
+            const plansArray = (settings.membershipPlans || ['Standard','Premium']);
+            select.innerHTML = plansArray.map(p => '<option>' + p + '</option>').join('');
+          }
+        },
+
+        async saveSettings(e) {
+          e.preventDefault();
+          const form = e.target;
+          const attendanceThreshold = form.querySelector('input[name="attendanceThreshold"]').value;
+          const inactiveAfterMonths = form.querySelector('input[name="inactiveAfterMonths"]').value;
+          const membershipPlans = form.querySelector('input[name="membershipPlans"]').value;
+
+          const statusEl = document.getElementById('settings-status');
+          if (statusEl) statusEl.textContent = 'Saving...';
+
+          const res = await fetch('/api/settings', {
+            method: 'POST',
+            body: JSON.stringify({
+              attendanceThreshold,
+              inactiveAfterMonths,
+              membershipPlans
+            })
+          });
+
+          if (res.ok) {
+            if (statusEl) {
+              statusEl.style.color = 'var(--success)';
+              statusEl.textContent = 'Saved. Reloading...';
+            }
+            setTimeout(() => location.reload(), 600);
+          } else {
+            if (statusEl) {
+              statusEl.style.color = 'var(--danger)';
+              statusEl.textContent = 'Failed to save settings';
+            }
+          }
         },
 
         // Live search handler for check-in input
         onCheckinInput(event) {
           const val = event.target.value;
-          app.searchCheckin(val);
+          this.searchCheckin(val);
           if (event.key === 'Enter') {
-            app.checkIn();
+            this.checkIn();
           }
         },
 
