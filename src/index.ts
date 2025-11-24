@@ -915,5 +915,7 @@ function renderDashboard(user: any): Response {
       // Init App
       app.init();
     </script>
-  </body></html>`, { headers: { "Content-Type": "text/html" } });
+  </body></html>`;
+
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
