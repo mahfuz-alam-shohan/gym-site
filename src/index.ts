@@ -3,24 +3,22 @@ export interface Env {
   BUCKET: R2Bucket;
 }
 
-function layout(body: string): Response {
+function layout(): Response {
   const html = `<!doctype html>
   <html lang="en">
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>Gym Attendance Setup</title>
+      <title>Gym Onboarding</title>
       <style>
         :root {
           color-scheme: light;
           --surface: #ffffff;
-          --muted: #f4f6fb;
+          --muted: #f6f7fb;
           --primary: #1c6dd0;
-          --primary-soft: #e3edfb;
-          --text: #1f2937;
-          --border: #d6deeb;
-          --success: #0f9d58;
-          --shadow: 0 12px 40px rgba(28, 109, 208, 0.12);
+          --text: #0f172a;
+          --border: #d7deeb;
+          --shadow: 0 12px 38px rgba(28, 109, 208, 0.12);
         }
 
         * {
@@ -37,15 +35,15 @@ function layout(body: string): Response {
         header {
           background: var(--surface);
           box-shadow: var(--shadow);
-          padding: 20px 28px;
+          padding: 20px 28px 14px;
           position: sticky;
           top: 0;
           z-index: 10;
         }
 
         h1 {
-          margin: 0;
-          font-size: 24px;
+          margin: 0 0 6px;
+          font-size: 26px;
           letter-spacing: -0.02em;
         }
 
@@ -65,38 +63,39 @@ function layout(body: string): Response {
 
         .steps {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-          gap: 12px;
-          margin-bottom: 20px;
+          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+          gap: 8px;
+          margin-bottom: 16px;
         }
 
         .step {
-          padding: 12px 14px;
+          padding: 10px 12px;
           border-radius: 12px;
           border: 1px solid var(--border);
           background: var(--surface);
           display: flex;
           align-items: center;
-          gap: 10px;
-          opacity: 0.65;
+          gap: 8px;
+          opacity: 0.75;
           transition: all 0.2s ease;
         }
 
         .step.active {
           border-color: var(--primary);
-          background: var(--primary-soft);
+          background: #e6f0ff;
           opacity: 1;
         }
 
         .step-number {
-          width: 28px;
-          height: 28px;
+          width: 26px;
+          height: 26px;
           border-radius: 50%;
           background: var(--primary);
           color: #fff;
           display: grid;
           place-items: center;
-          font-weight: 600;
+          font-weight: 700;
+          font-size: 13px;
         }
 
         form {
@@ -195,9 +194,9 @@ function layout(body: string): Response {
         }
 
         .notice {
-          background: #fff7ed;
-          color: #8b3a0e;
-          border: 1px solid #f8d1a5;
+          background: #f0f7ff;
+          color: #0b3c75;
+          border: 1px solid #cfe1ff;
           padding: 12px 14px;
           border-radius: 12px;
           font-weight: 600;
@@ -229,15 +228,55 @@ function layout(body: string): Response {
           background: #fff1f2;
           color: #9f1239;
         }
+
+        .plans {
+          display: grid;
+          gap: 12px;
+        }
+
+        .plan-card {
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          padding: 14px 14px 10px;
+          background: #fdfefe;
+        }
+
+        .plan-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+
+        .inline {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 10px;
+        }
+
+        .chip-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin: 8px 0 0;
+        }
+
+        .chip {
+          background: #e6f0ff;
+          color: #0f3c96;
+          padding: 6px 10px;
+          border-radius: 999px;
+          font-weight: 600;
+          font-size: 13px;
+        }
       </style>
     </head>
     <body>
       <header>
         <div class="pill">Cloudflare D1 + R2 ready</div>
-        <h1>Gym attendance onboarding dashboard</h1>
-        <p style="margin: 6px 0 0; color: #475569;">
-          Configure what data we need, preview the database tables, and launch the setup for your combined or single-gender gym.
-        </p>
+        <h1>Gym attendance onboarding</h1>
+        <p style="margin: 0; color: #475569;">Create your gym, team, and memberships with a few clean steps.</p>
       </header>
       <main>
         <div class="card">
@@ -261,17 +300,23 @@ function layout(body: string): Response {
             </div>
 
             <div class="step-content" data-step="1" style="display:none;">
-              <div class="field">
-                <label for="gymType">Gym type</label>
-                <select id="gymType" name="gymType" required>
-                  <option value="combined">Combined (all genders)</option>
-                  <option value="male">Male only</option>
-                  <option value="female">Female only</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="openingTime">Opening time</label>
-                <input id="openingTime" name="openingTime" type="time" required />
+              <div class="grid">
+                <div class="field">
+                  <label for="gymType">Gym type</label>
+                  <select id="gymType" name="gymType" required>
+                    <option value="combined">Combined (all members)</option>
+                    <option value="male">Male only</option>
+                    <option value="female">Female only</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="openingTime">Opening time</label>
+                  <input id="openingTime" name="openingTime" type="time" required />
+                </div>
+                <div class="field">
+                  <label for="closingTime">Closing time</label>
+                  <input id="closingTime" name="closingTime" type="time" required />
+                </div>
               </div>
             </div>
 
@@ -280,9 +325,7 @@ function layout(body: string): Response {
               <div class="grid">
                 <div class="field">
                   <label for="workerCount">Workers</label>
-                  <select id="workerCount" name="workerCount">
-                    ${Array.from({ length: 20 }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("\n")}
-                  </select>
+                  <select id="workerCount" name="workerCount"></select>
                 </div>
                 <div class="field">
                   <label for="shiftPreset">Default shift length</label>
@@ -297,6 +340,14 @@ function layout(body: string): Response {
             </div>
 
             <div class="step-content" data-step="3" style="display:none;">
+              <div class="notice">Add membership styles you offer. Adjust price, billing, and perks.</div>
+              <div class="plans" id="plans"></div>
+              <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:6px;">
+                <button type="button" class="secondary" id="addPlan">Add another type</button>
+              </div>
+            </div>
+
+            <div class="step-content" data-step="4" style="display:none;">
               <div class="summary" id="summary"></div>
               <div class="status" id="status"></div>
             </div>
@@ -310,7 +361,7 @@ function layout(body: string): Response {
       </main>
 
       <script>
-        const steps = ["Gym details", "Gym type & hours", "Team setup", "Review & create"];
+        const steps = ["Gym details", "Schedule", "Team", "Memberships", "Review"];
         const stepContainer = document.getElementById("steps");
         const stepContents = Array.from(document.querySelectorAll(".step-content"));
         const nextBtn = document.getElementById("nextBtn");
@@ -320,156 +371,256 @@ function layout(body: string): Response {
         const shiftPresetSelect = document.getElementById("shiftPreset");
         const statusBox = document.getElementById("status");
         const summaryBox = document.getElementById("summary");
+        const plansContainer = document.getElementById("plans");
+        const addPlanBtn = document.getElementById("addPlan");
 
         let currentStep = 0;
+        let membershipPlans = [
+          { name: "Standard", price: "39", billing: "monthly", access: "full", perks: "Gym floor + basic classes" },
+          { name: "Premium", price: "59", billing: "monthly", access: "full", perks: "All classes + sauna" },
+          { name: "Day Pass", price: "12", billing: "daily", access: "full", perks: "One visit, all areas" },
+        ];
 
-        const renderSteps = () => {
+        function populateWorkerCount() {
+          workerCountSelect.innerHTML = Array.from({ length: 20 }, (_, i) => {
+            const value = i + 1;
+            const selected = value === 3 ? " selected" : "";
+            return '<option value="' + value + '"' + selected + '>' + value + '</option>';
+          }).join("");
+        }
+
+        function renderSteps() {
           stepContainer.innerHTML = steps
-            .map((title, index) => \`
-              <div class="step \${index === currentStep ? "active" : ""}">
-                <div class="step-number">\${index + 1}</div>
-                <div>
-                  <div style="font-weight:700; font-size:14px;">\${title}</div>
-                  <div style="color:#475569; font-size:13px;">\${index === 0 ? "Start with basics" : index === 1 ? "Combined or gender specific" : index === 2 ? "Shift definitions" : "Confirm tables"}</div>
-                </div>
-              </div>
-            \`)
+            .map(function(title, index) {
+              const active = index === currentStep ? " active" : "";
+              const caption = ["Basics", "Hours", "Shifts", "Memberships", "Review"][index];
+              return '<div class="step' + active + '"><div class="step-number">' + (index + 1) + '</div><div><div style="font-weight:700; font-size:14px;">' + title + '</div><div style="color:#475569; font-size:13px;">' + caption + '</div></div></div>';
+            })
             .join("");
-        };
+        }
 
-        const timeFromPreset = (index: number, preset: number) => {
+        function timeFromPreset(index, preset) {
           const startHour = 6 + (index % 3) * 3;
           const start = String(startHour).padStart(2, "0") + ":00";
           const endHour = (startHour + preset) % 24;
           const end = String(endHour).padStart(2, "0") + ":00";
           return { start, end };
-        };
+        }
 
-        const renderWorkers = () => {
-          const count = Number(workerCountSelect.value);
-          const preset = Number(shiftPresetSelect.value);
-          workersContainer.innerHTML = Array.from({ length: count }, (_, i) => {
+        function renderWorkers() {
+          const count = Number(workerCountSelect.value || 0);
+          const preset = Number(shiftPresetSelect.value || 8);
+          workersContainer.innerHTML = Array.from({ length: count }, function(_, i) {
             const times = timeFromPreset(i, preset);
-            return \`
-              <div class="worker-card">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <div style="font-weight:700;">Worker \${i + 1}</div>
-                  <span class="pill">Auto shift: \${times.start} - \${times.end}</span>
-                </div>
-                <div class="grid">
-                  <div class="field">
-                    <label for="worker-name-\${i}">Full name</label>
-                    <input id="worker-name-\${i}" name="worker-name-\${i}" placeholder="e.g. Jordan Smith" required />
-                  </div>
-                  <div class="field">
-                    <label for="worker-role-\${i}">Role</label>
-                    <select id="worker-role-\${i}" name="worker-role-\${i}">
-                      <option value="trainer">Trainer</option>
-                      <option value="front-desk">Front desk</option>
-                      <option value="maintenance">Maintenance</option>
-                      <option value="manager">Manager</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label for="worker-start-\${i}">Duty starts</label>
-                    <input id="worker-start-\${i}" name="worker-start-\${i}" type="time" value="\${times.start}" />
-                  </div>
-                  <div class="field">
-                    <label for="worker-end-\${i}">Duty ends</label>
-                    <input id="worker-end-\${i}" name="worker-end-\${i}" type="time" value="\${times.end}" />
-                  </div>
-                </div>
-              </div>
-            \`;
+            return [
+              '<div class="worker-card">',
+              '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">',
+              '<div style="font-weight:700;">Worker ' + (i + 1) + '</div>',
+              '<span class="pill">Auto shift: ' + times.start + ' - ' + times.end + '</span>',
+              '</div>',
+              '<div class="grid">',
+              '<div class="field">',
+              '<label for="worker-name-' + i + '">Full name</label>',
+              '<input id="worker-name-' + i + '" name="worker-name-' + i + '" placeholder="e.g. Jordan Smith" required />',
+              '</div>',
+              '<div class="field">',
+              '<label for="worker-role-' + i + '">Role</label>',
+              '<select id="worker-role-' + i + '" name="worker-role-' + i + '">',
+              '<option value="trainer">Trainer</option>',
+              '<option value="front-desk">Front desk</option>',
+              '<option value="maintenance">Maintenance</option>',
+              '<option value="manager">Manager</option>',
+              '</select>',
+              '</div>',
+              '<div class="field">',
+              '<label for="worker-start-' + i + '">Duty starts</label>',
+              '<input id="worker-start-' + i + '" name="worker-start-' + i + '" type="time" value="' + times.start + '" />',
+              '</div>',
+              '<div class="field">',
+              '<label for="worker-end-' + i + '">Duty ends</label>',
+              '<input id="worker-end-' + i + '" name="worker-end-' + i + '" type="time" value="' + times.end + '" />',
+              '</div>',
+              '</div>',
+              '</div>'
+            ].join("");
           }).join("");
-        };
+        }
 
-        renderSteps();
-        renderWorkers();
+        function renderPlans() {
+          plansContainer.innerHTML = membershipPlans
+            .map(function(plan, i) {
+              const removeButton = i > 0 ? '<button type="button" class="secondary" data-remove="' + i + '" style="padding:8px 10px;">Remove</button>' : "";
+              return [
+                '<div class="plan-card">',
+                '<div class="plan-header">',
+                '<div style="font-weight:700; font-size:15px;">Plan ' + (i + 1) + '</div>',
+                removeButton,
+                '</div>',
+                '<div class="inline">',
+                '<div class="field">',
+                '<label for="plan-name-' + i + '">Name</label>',
+                '<input id="plan-name-' + i + '" name="plan-name-' + i + '" value="' + plan.name + '" required />',
+                '</div>',
+                '<div class="field">',
+                '<label for="plan-price-' + i + '">Price</label>',
+                '<input id="plan-price-' + i + '" name="plan-price-' + i + '" type="number" min="0" value="' + plan.price + '" required />',
+                '</div>',
+                '<div class="field">',
+                '<label for="plan-billing-' + i + '">Billing</label>',
+                '<select id="plan-billing-' + i + '" name="plan-billing-' + i + '">',
+                '<option value="daily"' + (plan.billing === 'daily' ? ' selected' : '') + '>Per day</option>',
+                '<option value="weekly"' + (plan.billing === 'weekly' ? ' selected' : '') + '>Weekly</option>',
+                '<option value="monthly"' + (plan.billing === 'monthly' ? ' selected' : '') + '>Monthly</option>',
+                '<option value="yearly"' + (plan.billing === 'yearly' ? ' selected' : '') + '>Yearly</option>',
+                '</select>',
+                '</div>',
+                '<div class="field">',
+                '<label for="plan-access-' + i + '">Access</label>',
+                '<select id="plan-access-' + i + '" name="plan-access-' + i + '">',
+                '<option value="full"' + (plan.access === 'full' ? ' selected' : '') + '>Full facility</option>',
+                '<option value="daytime"' + (plan.access === 'daytime' ? ' selected' : '') + '>Daytime</option>',
+                '<option value="classes"' + (plan.access === 'classes' ? ' selected' : '') + '>Classes only</option>',
+                '<option value="swim"' + (plan.access === 'swim' ? ' selected' : '') + '>Pool & spa</option>',
+                '</select>',
+                '</div>',
+                '</div>',
+                '<div class="field" style="margin-top:10px;">',
+                '<label for="plan-perks-' + i + '">Perks</label>',
+                '<textarea id="plan-perks-' + i + '" name="plan-perks-' + i + '" rows="2">' + plan.perks + '</textarea>',
+                '</div>',
+                '<div class="chip-row">',
+                '<span class="chip">Billing: ' + plan.billing + '</span>',
+                '<span class="chip">Access: ' + plan.access + '</span>',
+                '</div>',
+                '</div>'
+              ].join("");
+            })
+            .join("");
 
-        workerCountSelect.addEventListener("change", renderWorkers);
-        shiftPresetSelect.addEventListener("change", renderWorkers);
+          plansContainer.querySelectorAll("[data-remove]").forEach(function(btn) {
+            btn.addEventListener("click", function(event) {
+              const index = Number(event.target.getAttribute("data-remove"));
+              membershipPlans.splice(index, 1);
+              renderPlans();
+            });
+          });
+        }
 
-        const goToStep = (index: number) => {
-          stepContents.forEach((content, i) => {
+        function syncPlansFromInputs() {
+          membershipPlans = membershipPlans.map(function(plan, i) {
+            const name = document.getElementById('plan-name-' + i);
+            const price = document.getElementById('plan-price-' + i);
+            const billing = document.getElementById('plan-billing-' + i);
+            const access = document.getElementById('plan-access-' + i);
+            const perks = document.getElementById('plan-perks-' + i);
+            return {
+              name: name ? name.value : plan.name,
+              price: price ? price.value : plan.price,
+              billing: billing ? billing.value : plan.billing,
+              access: access ? access.value : plan.access,
+              perks: perks ? perks.value : plan.perks,
+            };
+          });
+        }
+
+        function goToStep(index) {
+          stepContents.forEach(function(content, i) {
             content.setAttribute("style", i === index ? "" : "display:none;");
           });
           currentStep = index;
           renderSteps();
           backBtn.style.visibility = index === 0 ? "hidden" : "visible";
           nextBtn.textContent = index === stepContents.length - 1 ? "Create database" : "Next";
-        };
+        }
 
-        goToStep(0);
+        function validateCurrentStep() {
+          const inputs = stepContents[currentStep].querySelectorAll("input, select");
+          for (const input of Array.from(inputs)) {
+            if (input.hasAttribute("required") && !(input).value) {
+              input.reportValidity();
+              return false;
+            }
+          }
+          return true;
+        }
 
-        const gatherData = () => {
+        function gatherData() {
+          syncPlansFromInputs();
           const data = {
             gymName: document.getElementById("gymName").value,
             email: document.getElementById("email").value,
             password: document.getElementById("password").value,
             gymType: document.getElementById("gymType").value,
             openingTime: document.getElementById("openingTime").value,
+            closingTime: document.getElementById("closingTime").value,
             workerCount: Number(workerCountSelect.value),
             workers: [],
+            memberships: membershipPlans,
           };
 
           for (let i = 0; i < data.workerCount; i++) {
-            const name = document.getElementById(\`worker-name-\${i}\`).value;
-            const role = document.getElementById(\`worker-role-\${i}\`).value;
-            const dutyStart = document.getElementById(\`worker-start-\${i}\`).value;
-            const dutyEnd = document.getElementById(\`worker-end-\${i}\`).value;
+            const name = document.getElementById('worker-name-' + i).value;
+            const role = document.getElementById('worker-role-' + i).value;
+            const dutyStart = document.getElementById('worker-start-' + i).value;
+            const dutyEnd = document.getElementById('worker-end-' + i).value;
             data.workers.push({ name, role, dutyStart, dutyEnd });
           }
 
           return data;
-        };
+        }
 
-        const showSummary = () => {
+        function showSummary() {
           const data = gatherData();
           const previewTables = [
-            "gyms (name, email, password_hash, gym_type, opening_time, created_at)",
+            "gyms (name, email, password_hash, gym_type, opening_time, closing_time, created_at)",
             "workers (gym_id, full_name, role, duty_start, duty_end)",
+            "membership_plans (gym_id, name, price, billing_cycle, access_scope, perks)",
+            "members (gym_id, full_name, email, phone, membership_plan_id, start_date, end_date, status)",
             "attendance_logs (gym_id, worker_id, attendee_name, attendee_type, check_in, check_out, status)",
             "balance_dues (gym_id, member_name, amount_due, due_date, status)"
           ];
 
-          summaryBox.innerHTML = \`
-            <div class="summary-item">
-              <div style="font-weight:700;">Gym</div>
-              <div>\${data.gymName} • \${data.gymType}</div>
-              <div style="color:#475569;">Opens at \${data.openingTime}</div>
-            </div>
-            <div class="summary-item">
-              <div style="font-weight:700;">Team</div>
-              <div>\${data.workerCount} workers</div>
-              <div style="color:#475569;">\${data.workers.map(w => w.name || "(pending)").join(", ")}</div>
-            </div>
-            <div class="summary-item">
-              <div style="font-weight:700;">Tables to create</div>
-              <ul style="padding-left:18px; margin:6px 0 0; color:#334155;">
-                \${previewTables.map(t => \`<li>\${t}</li>\`).join("")}
-              </ul>
-            </div>
-            <div class="summary-item">
-              <div style="font-weight:700;">Automation</div>
-              <div>Attendance count view</div>
-              <div style="color:#475569;">Auto totals grouped per day and worker</div>
-            </div>
-          \`;
-        };
+          summaryBox.innerHTML = [
+            '<div class="summary-item">',
+            '<div style="font-weight:700;">Gym</div>',
+            '<div>' + data.gymName + ' • ' + data.gymType + '</div>',
+            '<div style="color:#475569;">' + data.openingTime + ' - ' + data.closingTime + '</div>',
+            '</div>',
+            '<div class="summary-item">',
+            '<div style="font-weight:700;">Team</div>',
+            '<div>' + data.workerCount + ' workers</div>',
+            '<div style="color:#475569;">' + data.workers.map(function(w) { return w.name || '(pending)'; }).join(', ') + '</div>',
+            '</div>',
+            '<div class="summary-item">',
+            '<div style="font-weight:700;">Memberships</div>',
+            '<div>' + data.memberships.length + ' types</div>',
+            '<div style="color:#475569;">' + data.memberships.map(function(m) { return m.name + ' (' + m.billing + ')'; }).join(', ') + '</div>',
+            '</div>',
+            '<div class="summary-item">',
+            '<div style="font-weight:700;">Tables to create</div>',
+            '<ul style="padding-left:18px; margin:6px 0 0; color:#334155;">',
+            previewTables.map(function(t) { return '<li>' + t + '</li>'; }).join(''),
+            '</ul>',
+            '</div>'
+          ].join('');
+        }
 
-        const validateCurrentStep = () => {
-          const inputs = stepContents[currentStep].querySelectorAll("input, select");
-          for (const input of Array.from(inputs)) {
-            if (input.hasAttribute("required") && !input.value) {
-              input.reportValidity();
-              return false;
-            }
-          }
-          return true;
-        };
+        populateWorkerCount();
+        renderSteps();
+        renderWorkers();
+        renderPlans();
+        goToStep(0);
 
-        nextBtn.addEventListener("click", async () => {
+        workerCountSelect.addEventListener("change", renderWorkers);
+        shiftPresetSelect.addEventListener("change", renderWorkers);
+
+        addPlanBtn.addEventListener("click", function() {
+          syncPlansFromInputs();
+          membershipPlans.push({ name: "New plan", price: "0", billing: "monthly", access: "full", perks: "" });
+          renderPlans();
+        });
+
+        nextBtn.addEventListener("click", async function() {
           if (!validateCurrentStep()) return;
           if (currentStep < stepContents.length - 1) {
             if (currentStep === stepContents.length - 2) {
@@ -490,17 +641,16 @@ function layout(body: string): Response {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),
             });
-
             const result = await response.json();
             if (!response.ok) throw new Error(result.error || "Failed to create tables");
             statusBox.textContent = result.message;
           } catch (error) {
             statusBox.classList.add("error");
-            statusBox.textContent = (error as Error).message;
+            statusBox.textContent = error.message;
           }
         });
 
-        backBtn.addEventListener("click", () => {
+        backBtn.addEventListener("click", function() {
           if (currentStep === 0) return;
           goToStep(currentStep - 1);
         });
@@ -534,7 +684,33 @@ async function setupDatabase(env: Env) {
       password_hash TEXT NOT NULL,
       gym_type TEXT NOT NULL,
       opening_time TEXT NOT NULL,
+      closing_time TEXT NOT NULL,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS membership_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      gym_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      price REAL NOT NULL,
+      billing_cycle TEXT NOT NULL,
+      access_scope TEXT,
+      perks TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (gym_id) REFERENCES gyms(id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      gym_id INTEGER NOT NULL,
+      full_name TEXT NOT NULL,
+      email TEXT,
+      phone TEXT,
+      membership_plan_id INTEGER,
+      start_date TEXT,
+      end_date TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (gym_id) REFERENCES gyms(id),
+      FOREIGN KEY (membership_plan_id) REFERENCES membership_plans(id)
     )`,
     `CREATE TABLE IF NOT EXISTS workers (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -583,8 +759,10 @@ async function setupDatabase(env: Env) {
 async function insertGym(env: Env, payload: any) {
   const password_hash = await hashPassword(payload.password);
   const gymResult = await env.DB.prepare(
-    `INSERT INTO gyms (name, email, password_hash, gym_type, opening_time) VALUES (?, ?, ?, ?, ?)`
-  ).bind(payload.gymName, payload.email, password_hash, payload.gymType, payload.openingTime).run();
+    `INSERT INTO gyms (name, email, password_hash, gym_type, opening_time, closing_time) VALUES (?, ?, ?, ?, ?, ?)`
+  )
+    .bind(payload.gymName, payload.email, password_hash, payload.gymType, payload.openingTime, payload.closingTime)
+    .run();
 
   const gymId = gymResult.lastInsertRowId as number;
 
@@ -594,6 +772,14 @@ async function insertGym(env: Env, payload: any) {
 
   for (const worker of payload.workers || []) {
     await workerStmt.bind(gymId, worker.name || "Pending", worker.role, worker.dutyStart, worker.dutyEnd).run();
+  }
+
+  const planStmt = env.DB.prepare(
+    `INSERT INTO membership_plans (gym_id, name, price, billing_cycle, access_scope, perks) VALUES (?, ?, ?, ?, ?, ?)`
+  );
+
+  for (const plan of payload.memberships || []) {
+    await planStmt.bind(gymId, plan.name, Number(plan.price || 0), plan.billing, plan.access, plan.perks).run();
   }
 }
 
@@ -621,6 +807,6 @@ export default {
       }
     }
 
-    return layout("");
+    return layout();
   },
 };
