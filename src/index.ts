@@ -2559,7 +2559,7 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                       ? new Date(row.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                       : '';
                     var dueMonths = Number(row.due_months || 0);
-                    var statusVal = row.member_status === 'active' ? 'clear' : (row.member_status || 'clear');
+                    var statusVal = row.member_status || 'clear';
                     return {
                       id: row.id,
                       memberId: row.member_id,
@@ -2885,7 +2885,7 @@ async function setupDatabase(env: Env) {
       membership_plan_id INTEGER,
       start_date TEXT,
       end_date TEXT,
-      status TEXT DEFAULT 'active',
+      status TEXT DEFAULT 'clear',
       avatar_url TEXT,
       due_months INTEGER DEFAULT 0,
       payment_note TEXT,
@@ -2948,6 +2948,11 @@ async function setupDatabase(env: Env) {
   await ensureColumn(env, "members", "avatar_url", "avatar_url TEXT");
   await ensureColumn(env, "members", "due_months", "due_months INTEGER DEFAULT 0");
   await ensureColumn(env, "members", "payment_note", "payment_note TEXT");
+
+  // Normalize legacy statuses to the current payment vocabulary.
+  await env.DB.prepare(
+    `UPDATE members SET status = 'clear' WHERE status = 'active' OR status IS NULL`,
+  ).run();
 }
 
 async function ensureColumn(env: Env, table: string, column: string, definition: string) {
@@ -3171,7 +3176,7 @@ async function adminBootstrap(env: Env, request: Request): Promise<Response> {
   ).bind(account.gym_id).all<any>();
 
   const membersCountRow = await env.DB.prepare(
-    `SELECT COUNT(*) AS c FROM members WHERE gym_id = ? AND status = 'active'`,
+    `SELECT COUNT(*) AS c FROM members WHERE gym_id = ?`,
   ).bind(account.gym_id).first<{ c: number }>();
 
   const members = await listMembers(env, account.gym_id);
@@ -3374,7 +3379,11 @@ export default {
         const body = await request.json();
         const name = safeText(body?.name);
         const phone = safeText(body?.phone);
-        const statusVal = safeText(body?.status, "clear");
+        const allowedStatuses = ["clear", "due", "partial"];
+        const statusInput = safeText(body?.status, "clear");
+        const statusVal = allowedStatuses.includes(statusInput)
+          ? statusInput
+          : "clear";
         const dueMonths = safeNumber(body?.dueMonths, 0);
         const planId = safeNumber(body?.planId, 0) || null;
         if (!name) throw new Error("Name is required.");
@@ -3545,7 +3554,7 @@ export default {
         monthsToClear = Math.min(monthsToClear, currentDue);
 
         const newDueMonths = Math.max(0, currentDue - monthsToClear);
-        const newStatus = newDueMonths === 0 ? "active" : "due";
+        const newStatus = newDueMonths === 0 ? "clear" : "due";
         const note = newDueMonths === 0 ? "Paid" : `${newDueMonths} month(s) due`;
 
         await env.DB.prepare(
