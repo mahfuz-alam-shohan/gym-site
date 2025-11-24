@@ -33,6 +33,29 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return hashed === hash;
 }
 
+/** Calculate how many months are due based on expiry date vs now.
+ *  - returns 0 => no due
+ *  - >=1 => that many months due
+ *  - null => no expiry / invalid date
+ */
+function calcDueMonths(expiry: string | null | undefined): number | null {
+  if (!expiry) return null;
+  const exp = new Date(expiry);
+  if (isNaN(exp.getTime())) return null;
+
+  const now = new Date();
+  if (exp >= now) return 0;
+
+  let months =
+    (now.getFullYear() - exp.getFullYear()) * 12 +
+    (now.getMonth() - exp.getMonth());
+
+  // If we've passed the day of month, count as next month due
+  if (now.getDate() > exp.getDate()) months += 1;
+  if (months < 1) months = 1;
+  return months;
+}
+
 /* ========================================================================
    2. UI SYSTEM (Professional CSS & Layout)
    ======================================================================== */
@@ -110,6 +133,13 @@ function baseHead(title: string): string {
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
     .modal-content { background: white; width: 100%; max-width: 440px; padding: 24px; border-radius: 16px; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Check-in suggestions */
+    .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
+    .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
+    .checkin-item:last-child { border-bottom: none; }
+    .checkin-item:hover { background: #ffffff; }
+    .checkin-item small { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
 
     /* Mobile */
     .mobile-header { display: none; }
@@ -237,11 +267,46 @@ export default {
       /* --- PROTECTED ROUTES --- */
       const user = await getSession(req, env);
       if (!user) {
-        if(url.pathname.startsWith('/api')) return json({error: "Unauthorized"}, 401);
+        if (url.pathname.startsWith('/api')) return json({ error: "Unauthorized" }, 401);
         return Response.redirect(url.origin + "/", 302);
       }
 
+      // Dashboard HTML
       if (url.pathname === "/dashboard") return renderDashboard(user);
+
+      // Live search for check-in: search by id / name / phone
+      if (url.pathname === "/api/members/search" && req.method === "POST") {
+        const body = await req.json() as any;
+        const qRaw = (body.query || "").toString().trim();
+        if (!qRaw) return json({ results: [] });
+
+        const maybeId = Number(qRaw);
+        let res;
+
+        if (!isNaN(maybeId)) {
+          res = await env.DB.prepare(`
+            SELECT id, name, phone, plan, expiry_date 
+            FROM members
+            WHERE id = ? OR name LIKE ? OR phone LIKE ?
+            ORDER BY id DESC
+            LIMIT 10
+          `).bind(maybeId, `%${qRaw}%`, `%${qRaw}%`).all();
+        } else {
+          res = await env.DB.prepare(`
+            SELECT id, name, phone, plan, expiry_date 
+            FROM members
+            WHERE name LIKE ? OR phone LIKE ?
+            ORDER BY id DESC
+            LIMIT 10
+          `).bind(`%${qRaw}%`, `%${qRaw}%`).all();
+        }
+
+        const results = (res.results || []).map((m: any) => ({
+          ...m,
+          dueMonths: calcDueMonths(m.expiry_date as string | null)
+        }));
+        return json({ results });
+      }
 
       // Data Bootstrap (Load everything at once)
       if (url.pathname === "/api/bootstrap") {
@@ -249,7 +314,7 @@ export default {
 
         // Today's attendance (for Attendance tab + Recent on home)
         const attendanceToday = await env.DB.prepare(`
-          SELECT a.check_in_time, a.status, m.name 
+          SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
           JOIN members m ON a.member_id = m.id 
           WHERE date(a.check_in_time) = date('now')
@@ -258,7 +323,7 @@ export default {
 
         // Full history (for History tab)
         const attendanceHistory = await env.DB.prepare(`
-          SELECT a.check_in_time, a.status, m.name 
+          SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
           JOIN members m ON a.member_id = m.id 
           ORDER BY a.id DESC
@@ -268,12 +333,21 @@ export default {
         const totalMembers = await env.DB.prepare("SELECT count(*) as c FROM members WHERE status='active'").first();
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
+
+        const attendanceTodayWithDue = (attendanceToday.results || []).map((r: any) => ({
+          ...r,
+          dueMonths: calcDueMonths(r.expiry_date as string | null)
+        }));
+        const attendanceHistoryWithDue = (attendanceHistory.results || []).map((r: any) => ({
+          ...r,
+          dueMonths: calcDueMonths(r.expiry_date as string | null)
+        }));
         
         return json({
           user,
           members: members.results,
-          attendanceToday: attendanceToday.results,
-          attendanceHistory: attendanceHistory.results,
+          attendanceToday: attendanceTodayWithDue,
+          attendanceHistory: attendanceHistoryWithDue,
           stats: {
             active: totalMembers?.c || 0,
             today: todayVisits?.c || 0,
@@ -297,7 +371,7 @@ export default {
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
-        if(!member) return json({ error: "Member not found" }, 404);
+        if (!member) return json({ error: "Member not found" }, 404);
 
         // BLOCK duplicate attendance in same day
         const alreadyToday = await env.DB.prepare(`
@@ -518,7 +592,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Status</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
                   <tbody id="tbl-attendance-recent"></tbody>
                 </table>
               </div>
@@ -545,7 +619,7 @@ function renderDashboard(user: any) {
               <h3>Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Result</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -557,7 +631,7 @@ function renderDashboard(user: any) {
               <h3>Attendance History (All Days)</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
@@ -571,9 +645,17 @@ function renderDashboard(user: any) {
     <div id="modal-checkin" class="modal-backdrop">
       <div class="modal-content">
         <h3 style="text-align:center; margin-top:0;">⚡ Check-In</h3>
-        <input id="checkin-id" type="number" placeholder="Enter Member ID" style="font-size:18px; padding:15px; text-align:center;" autofocus>
+        <input 
+          id="checkin-id" 
+          type="text" 
+          placeholder="Search by ID, name or phone" 
+          style="font-size:18px; padding:15px; text-align:center;" 
+          autofocus
+          onkeyup="app.onCheckinInput(event)"
+        >
+        <div id="checkin-suggestions" class="checkin-results"></div>
         <button class="btn btn-primary w-full" onclick="app.checkIn()">Submit</button>
-        <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; height:20px;"></div>
+        <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; min-height:20px;"></div>
         <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
       </div>
     </div>
@@ -620,6 +702,8 @@ function renderDashboard(user: any) {
 
       const app = {
         data: null,
+        searchTimeout: null,
+
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
@@ -628,7 +712,6 @@ function renderDashboard(user: any) {
         
         nav(v) {
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          // find the nav item by text
           const navs = document.querySelectorAll('.nav .nav-item');
           navs.forEach(el => {
             if (el.textContent.includes('Overview') && v === 'home') el.classList.add('active');
@@ -645,7 +728,6 @@ function renderDashboard(user: any) {
           document.getElementById('page-title').textContent = 
             v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
           
-          // Mobile close
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
         },
@@ -677,23 +759,42 @@ function renderDashboard(user: any) {
           const today = this.data.attendanceToday || [];
           const history = this.data.attendanceHistory || [];
 
-          const todayRows = today.length ? today.map(a => \`
-            <tr>
-              <td>\${new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
-              <td>\${a.name}</td>
-              <td>\${a.status === 'success' ? '<span class="badge bg-green">OK</span>' : '<span class="badge bg-red">Expired</span>'}</td>
-            </tr>\`).join('') : '<tr><td colspan="3">No check-ins yet today.</td></tr>';
+          const todayRows = today.length ? today.map(a => {
+            const t = new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const due = a.dueMonths == null 
+              ? '-' 
+              : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
+            const statusBadge = a.status === 'success' 
+              ? '<span class="badge bg-green">OK</span>' 
+              : '<span class="badge bg-red">Expired</span>';
+            return \`
+              <tr>
+                <td>\${t}</td>
+                <td>\${a.name}</td>
+                <td>\${statusBadge}</td>
+                <td>\${due}</td>
+              </tr>\`;
+          }).join('') : '<tr><td colspan="4">No check-ins yet today.</td></tr>';
 
           const historyRows = history.length ? history.map(a => {
             const d = new Date(a.check_in_time);
+            const dateStr = d.toISOString().split('T')[0];
+            const timeStr = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+            const due = a.dueMonths == null 
+              ? '-' 
+              : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
+            const statusBadge = a.status === 'success' 
+              ? '<span class="badge bg-green">OK</span>' 
+              : '<span class="badge bg-red">Expired</span>';
             return \`
               <tr>
-                <td>\${d.toISOString().split('T')[0]}</td>
-                <td>\${d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</td>
+                <td>\${dateStr}</td>
+                <td>\${timeStr}</td>
                 <td>\${a.name}</td>
-                <td>\${a.status === 'success' ? '<span class="badge bg-green">OK</span>' : '<span class="badge bg-red">Expired</span>'}</td>
+                <td>\${statusBadge}</td>
+                <td>\${due}</td>
               </tr>\`;
-          }).join('') : '<tr><td colspan="4">No attendance history yet.</td></tr>';
+          }).join('') : '<tr><td colspan="5">No attendance history yet.</td></tr>';
 
           // Home recent = today
           document.getElementById('tbl-attendance-recent').innerHTML = todayRows;
@@ -703,11 +804,67 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-history').innerHTML = historyRows;
         },
 
+        // Live search handler for check-in input
+        onCheckinInput(event) {
+          const val = event.target.value;
+          app.searchCheckin(val);
+          if (event.key === 'Enter') {
+            app.checkIn();
+          }
+        },
+
+        async searchCheckin(term) {
+          const box = document.getElementById('checkin-suggestions');
+          if (!term || !term.trim()) {
+            box.innerHTML = '';
+            return;
+          }
+
+          if (this.searchTimeout) clearTimeout(this.searchTimeout);
+          this.searchTimeout = setTimeout(async () => {
+            const res = await fetch('/api/members/search', { 
+              method: 'POST', 
+              body: JSON.stringify({ query: term }) 
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const list = data.results || [];
+            if (!list.length) {
+              box.innerHTML = '<div class="checkin-item">No matches found</div>';
+              return;
+            }
+            box.innerHTML = list.map(m => {
+              const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
+              const due = m.dueMonths == null 
+                ? '-' 
+                : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
+              return \`
+                <div class="checkin-item" onclick="app.selectCheckin(\${m.id})">
+                  <strong>#\${m.id} · \${m.name}</strong>
+                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due}</small>
+                </div>\`;
+            }).join('');
+          }, 200);
+        },
+
+        selectCheckin(id) {
+          const input = document.getElementById('checkin-id');
+          input.value = id;
+          document.getElementById('checkin-suggestions').innerHTML = '';
+          input.focus();
+        },
+
         async checkIn() {
-          const id = document.getElementById('checkin-id').value;
+          const id = document.getElementById('checkin-id').value.trim();
           const div = document.getElementById('checkin-res');
           div.innerText = "Checking...";
           
+          if (!id) {
+            div.style.color = 'var(--danger)';
+            div.innerText = "Please enter a member ID.";
+            return;
+          }
+
           const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId: id}) });
           const json = await res.json();
           
@@ -753,6 +910,8 @@ function renderDashboard(user: any) {
               m.style.display='flex'; 
               const input = document.getElementById('checkin-id');
               input.value = '';
+              document.getElementById('checkin-suggestions').innerHTML = '';
+              document.getElementById('checkin-res').innerText = '';
               input.focus();
             }, 
             close:()=>document.getElementById('modal-checkin').style.display='none' 
