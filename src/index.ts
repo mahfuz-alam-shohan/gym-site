@@ -1769,11 +1769,17 @@ function renderAdminDashboard(accountName: string, role: string): Response {
           removeButtons.forEach(function(btn) {
             btn.addEventListener('click', function() {
               var id = Number(btn.getAttribute('data-remove-member'));
-              membersData = membersData.filter(function(m) { return m.id !== id; });
-              attendanceRecords = attendanceRecords.filter(function(a) { return a.memberId !== id; });
-              renderMemberList();
-              renderAttendanceTables();
-              updateSearchResults(attendanceInput ? attendanceInput.value : "");
+              fetch('/api/admin/member/' + id, { method: 'DELETE' })
+                .then(function(res) {
+                  return res.json().then(function(data) { return { ok: res.ok, data: data }; });
+                })
+                .then(function(result) {
+                  if (!result.ok) throw new Error(result.data.error || 'Failed to remove');
+                  loadBootstrap();
+                })
+                .catch(function(err) {
+                  if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not remove member';
+                });
             });
           });
 
@@ -1798,11 +1804,15 @@ function renderAdminDashboard(accountName: string, role: string): Response {
             removalButtons.forEach(function(btn) {
               btn.addEventListener('click', function() {
                 var id = Number(btn.getAttribute('data-remove-member'));
-                membersData = membersData.filter(function(m) { return m.id !== id; });
-                attendanceRecords = attendanceRecords.filter(function(a) { return a.memberId !== id; });
-                renderMemberList();
-                renderAttendanceTables();
-                updateSearchResults(attendanceInput ? attendanceInput.value : "");
+                fetch('/api/admin/member/' + id, { method: 'DELETE' })
+                  .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+                  .then(function(result) {
+                    if (!result.ok) throw new Error(result.data.error || 'Failed to remove');
+                    loadBootstrap();
+                  })
+                  .catch(function(err) {
+                    if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not remove member';
+                  });
               });
             });
           }
@@ -2021,19 +2031,21 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               if (attendanceStatus) attendanceStatus.textContent = "Member not found.";
               return;
             }
-            var now = new Date();
-            var time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            attendanceRecords.unshift({
-              memberId: member.id,
-              name: member.name,
-              dueMonths: member.dueMonths,
-              status: member.status,
-              avatar: member.avatar || createAvatar(member.name),
-              note: member.dueMonths > 0 ? member.dueMonths + ' month(s) pending' : 'Up to date',
-              time: time
-            });
-            if (attendanceStatus) attendanceStatus.textContent = "Attendance recorded for #" + member.id + ".";
-            renderAttendanceTables();
+            if (attendanceStatus) attendanceStatus.textContent = "Recording attendance...";
+            fetch('/api/admin/record-attendance', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ memberId: member.id })
+            })
+              .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || 'Could not save');
+                if (attendanceStatus) attendanceStatus.textContent = "Attendance recorded for #" + member.id + ".";
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                if (attendanceStatus) attendanceStatus.textContent = err.message || 'Unable to record attendance.';
+              });
           });
         }
 
@@ -2118,21 +2130,31 @@ function renderAdminDashboard(accountName: string, role: string): Response {
               if (memberStatusEl) memberStatusEl.textContent = 'Name is required.';
               return;
             }
-            var member = {
-              id: nextMemberId++,
-              name: name,
-              phone: phone,
-              dueMonths: dueMonths,
-              status: status,
-              avatar: pendingPhotoData || createAvatar(name),
-              paymentNote: dueMonths > 0 ? dueMonths + ' month(s) due' : 'Paid'
-            };
-            membersData.push(member);
-            if (memberStatusEl) memberStatusEl.textContent = 'Member saved (#' + member.id + ').';
-            if (memberPhotoInput) memberPhotoInput.value = '';
-            pendingPhotoData = null;
-            renderMemberList();
-            updateSearchResults(attendanceInput ? attendanceInput.value : "");
+            if (memberStatusEl) memberStatusEl.textContent = 'Saving member...';
+            fetch('/api/admin/add-member', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: name,
+                phone: phone,
+                dueMonths: dueMonths,
+                status: status,
+                photoData: pendingPhotoData
+              })
+            })
+              .then(function(res) {
+                return res.json().then(function(data) { return { ok: res.ok, data: data }; });
+              })
+              .then(function(result) {
+                if (!result.ok) throw new Error(result.data.error || 'Failed to save member');
+                if (memberStatusEl) memberStatusEl.textContent = 'Member saved (#' + result.data.id + ').';
+                if (memberPhotoInput) memberPhotoInput.value = '';
+                pendingPhotoData = null;
+                loadBootstrap();
+              })
+              .catch(function(err) {
+                if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not save member.';
+              });
           });
         }
 
@@ -2199,10 +2221,41 @@ function renderAdminDashboard(accountName: string, role: string): Response {
                   data.gym.closing_time;
               }
 
-              membersData = Array.isArray(data.members) ? data.members : membersData;
+              membersData = Array.isArray(data.members)
+                ? data.members.map(function(m) {
+                    return {
+                      id: m.id,
+                      name: m.full_name,
+                      phone: m.phone || '',
+                      dueMonths: Number(m.due_months || 0),
+                      status: m.status === 'active' ? 'clear' : (m.status || 'clear'),
+                      avatar: m.avatar_url ? '/media/' + m.avatar_url : createAvatar(m.full_name),
+                      paymentNote: m.payment_note || ''
+                    };
+                  })
+                : membersData;
               nextMemberId = (membersData[membersData.length - 1]?.id || 0) + 1;
               var plans = Array.isArray(data.plans) ? data.plans : [];
               var memberCount = data.memberCount || membersData.length;
+              attendanceRecords = Array.isArray(data.attendance)
+                ? data.attendance.map(function(row) {
+                    var time = row.check_in
+                      ? new Date(row.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : '';
+                    var dueMonths = Number(row.due_months || 0);
+                    var statusVal = row.member_status === 'active' ? 'clear' : (row.member_status || 'clear');
+                    return {
+                      id: row.id,
+                      memberId: row.member_id,
+                      name: row.attendee_name,
+                      dueMonths: dueMonths,
+                      status: statusVal,
+                      avatar: row.avatar_url ? '/media/' + row.avatar_url : createAvatar(row.attendee_name),
+                      note: dueMonths > 0 ? dueMonths + ' month(s) pending' : 'Up to date',
+                      time: time
+                    };
+                  })
+                : attendanceRecords;
               document.getElementById("metricMembers").textContent = memberCount;
               document.getElementById("metricPlans").textContent = plans.length || 0;
               workerData = Array.isArray(data.workers) ? data.workers : workerData;
@@ -2419,6 +2472,20 @@ function safeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array } | null {
+  if (!dataUrl || typeof dataUrl !== "string") return null;
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1];
+  const base64 = match[2];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return { mime, bytes };
+}
+
 function parseCookies(request: Request): Record<string, string> {
   const cookieHeader = request.headers.get("Cookie");
   const cookies: Record<string, string> = {};
@@ -2500,6 +2567,9 @@ async function setupDatabase(env: Env) {
       start_date TEXT,
       end_date TEXT,
       status TEXT DEFAULT 'active',
+      avatar_url TEXT,
+      due_months INTEGER DEFAULT 0,
+      payment_note TEXT,
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
       FOREIGN KEY (gym_id) REFERENCES gyms(id),
       FOREIGN KEY (membership_plan_id) REFERENCES membership_plans(id)
@@ -2508,6 +2578,7 @@ async function setupDatabase(env: Env) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
       worker_id INTEGER,
+      member_id INTEGER,
       attendee_name TEXT,
       attendee_type TEXT NOT NULL,
       check_in TEXT NOT NULL,
@@ -2515,7 +2586,8 @@ async function setupDatabase(env: Env) {
       status TEXT DEFAULT 'present',
       created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
       FOREIGN KEY (gym_id) REFERENCES gyms(id),
-      FOREIGN KEY (worker_id) REFERENCES workers(id)
+      FOREIGN KEY (worker_id) REFERENCES workers(id),
+      FOREIGN KEY (member_id) REFERENCES members(id)
     )`,
     `CREATE TABLE IF NOT EXISTS balance_dues (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2686,6 +2758,41 @@ async function handleSetup(env: Env, raw: any): Promise<number> {
   return adminId;
 }
 
+async function saveAvatar(env: Env, gymId: number, photoData?: string | null): Promise<string | null> {
+  if (!photoData) return null;
+  if (!env.BUCKET) return null;
+  const parsed = parseDataUrl(photoData);
+  if (!parsed) return null;
+  const key = `gyms/${gymId}/avatars/${crypto.randomUUID()}`;
+  await env.BUCKET.put(key, parsed.bytes, { httpMetadata: { contentType: parsed.mime } });
+  return key;
+}
+
+async function listMembers(env: Env, gymId: number) {
+  const res = await env.DB.prepare(
+    `SELECT id, full_name, phone, status, avatar_url, due_months, payment_note
+     FROM members WHERE gym_id = ? ORDER BY id DESC`,
+  )
+    .bind(gymId)
+    .all<any>();
+  return res.results || [];
+}
+
+async function listAttendance(env: Env, gymId: number) {
+  const res = await env.DB.prepare(
+    `SELECT l.id, l.member_id, l.attendee_name, l.check_in, l.status AS attendance_status,
+            m.avatar_url, m.due_months, m.status AS member_status
+     FROM attendance_logs l
+     LEFT JOIN members m ON l.member_id = m.id
+     WHERE l.gym_id = ?
+     ORDER BY l.id DESC
+     LIMIT 30`,
+  )
+    .bind(gymId)
+    .all<any>();
+  return res.results || [];
+}
+
 /* ----------------------- Admin APIs ----------------------- */
 
 async function requireSession(env: Env, request: Request) {
@@ -2719,12 +2826,17 @@ async function adminBootstrap(env: Env, request: Request): Promise<Response> {
     `SELECT COUNT(*) AS c FROM members WHERE gym_id = ? AND status = 'active'`,
   ).bind(account.gym_id).first<{ c: number }>();
 
+  const members = await listMembers(env, account.gym_id);
+  const attendance = await listAttendance(env, account.gym_id);
+
   return new Response(JSON.stringify({
     gym: gymRow || null,
     plans: plans.results || [],
     workers: workers.results || [],
     accounts: accounts.results || [],
     memberCount: membersCountRow?.c ?? 0,
+    members,
+    attendance,
   }), { headers: { "Content-Type": "application/json" } });
 }
 
@@ -2827,6 +2939,24 @@ export default {
       });
     }
 
+    // --- file/media access ---
+    if (path.startsWith("/media/") && method === "GET") {
+      const key = decodeURIComponent(path.replace("/media/", ""));
+      if (!key) {
+        return new Response("Bad request", { status: 400 });
+      }
+      const obj = await env.BUCKET.get(key);
+      if (!obj) {
+        return new Response("Not found", { status: 404 });
+      }
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
+          "Cache-Control": "public, max-age=3600",
+        },
+      });
+    }
+
     // --- admin APIs ---
     if (path === "/api/admin/bootstrap" && method === "GET") {
       try {
@@ -2869,6 +2999,132 @@ export default {
         return new Response(JSON.stringify({ message: "Membership added." }), {
           headers: { "Content-Type": "application/json" },
         });
+      } catch (err) {
+        if ((err as Error).message === "Unauthenticated") {
+          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (path === "/api/admin/add-member" && method === "POST") {
+      try {
+        const account = await requireSession(env, request);
+        if (account.role === "worker") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const body = await request.json();
+        const name = safeText(body?.name);
+        const phone = safeText(body?.phone);
+        const statusVal = safeText(body?.status, "clear");
+        const dueMonths = safeNumber(body?.dueMonths, 0);
+        if (!name) throw new Error("Name is required.");
+        const avatarKey = await saveAvatar(env, account.gym_id, body?.photoData);
+        const paymentNote = dueMonths > 0 ? `${dueMonths} month(s) due` : "Paid";
+
+        const res = await env.DB.prepare(
+          `INSERT INTO members (gym_id, full_name, phone, status, avatar_url, due_months, payment_note)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+          .bind(account.gym_id, name, phone, statusVal, avatarKey, dueMonths, paymentNote)
+          .run();
+
+        const id = getLastInsertId(res, "member");
+        return new Response(JSON.stringify({ message: "Member added", id }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        if ((err as Error).message === "Unauthenticated") {
+          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (path.startsWith("/api/admin/member/") && method === "DELETE") {
+      try {
+        const account = await requireSession(env, request);
+        if (account.role !== "admin" && account.role !== "owner") {
+          return new Response(JSON.stringify({ error: "Forbidden" }), {
+            status: 403,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const id = safeNumber(path.split("/").pop(), 0);
+        if (!id) throw new Error("Invalid member ID.");
+        await env.DB.prepare(
+          `DELETE FROM attendance_logs WHERE member_id = ? AND gym_id = ?`
+        ).bind(id, account.gym_id).run();
+        await env.DB.prepare(`DELETE FROM members WHERE id = ? AND gym_id = ?`)
+          .bind(id, account.gym_id)
+          .run();
+        return new Response(JSON.stringify({ message: "Member removed" }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (err) {
+        if ((err as Error).message === "Unauthenticated") {
+          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response(JSON.stringify({ error: (err as Error).message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (path === "/api/admin/record-attendance" && method === "POST") {
+      try {
+        const account = await requireSession(env, request);
+        const body = await request.json();
+        const memberId = safeNumber(body?.memberId, 0);
+        if (!memberId) throw new Error("memberId is required");
+        const member = await env.DB.prepare(
+          `SELECT full_name, avatar_url, due_months, status FROM members WHERE id = ? AND gym_id = ?`
+        )
+          .bind(memberId, account.gym_id)
+          .first<any>();
+        if (!member) throw new Error("Member not found");
+
+        const now = new Date().toISOString();
+        const res = await env.DB.prepare(
+          `INSERT INTO attendance_logs (gym_id, worker_id, member_id, attendee_name, attendee_type, check_in, status)
+           VALUES (?, ?, ?, ?, 'member', ?, 'present')`
+        )
+          .bind(account.gym_id, account.role === "worker" ? account.id : null, memberId, member.full_name, now)
+          .run();
+
+        const id = getLastInsertId(res, "attendance");
+        return new Response(
+          JSON.stringify({
+            message: "Recorded",
+            id,
+            check_in: now,
+            attendee_name: member.full_name,
+            avatar_url: member.avatar_url,
+            due_months: member.due_months,
+            member_status: member.status,
+          }),
+          { headers: { "Content-Type": "application/json" } },
+        );
       } catch (err) {
         if ((err as Error).message === "Unauthenticated") {
           return new Response(JSON.stringify({ error: "Unauthenticated" }), {
