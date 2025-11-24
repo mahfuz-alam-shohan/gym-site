@@ -1,2764 +1,27 @@
 export interface Env {
   DB: D1Database;
-  BUCKET: R2Bucket; // reserved for future exports/backups
+  BUCKET: R2Bucket;
 }
 
-/* ----------------------- Shared HTML head ----------------------- */
+/* ========================================================================
+   1. SHARED UTILITIES & TYPES
+   ======================================================================== */
 
-function baseHead(title: string): string {
-  return `<!doctype html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>${title}</title>
-      <style>
-        :root {
-          color-scheme: light;
-          --surface: #ffffff;
-          --surface-soft: #f9fafb;
-          --muted: #f3f4f6;
-          --primary: #2563eb;
-          --primary-soft: #e0ecff;
-          --text: #0f172a;
-          --border: #d4dbe9;
-          --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
-          --danger: #dc2626;
-          --success: #16a34a;
-        }
-
-        * { box-sizing: border-box; }
-
-        html, body {
-          margin: 0;
-          padding: 0;
-        }
-
-        body {
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
-          background: radial-gradient(circle at top, #eff4ff 0, #f9fafb 40%, #eef2ff 100%);
-          color: var(--text);
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          -webkit-text-size-adjust: 100%;
-        }
-
-        .brand-mark {
-          width: 32px;
-          height: 32px;
-          border-radius: 12px;
-          background: radial-gradient(circle at 30% 20%, #93c5fd, #1d4ed8);
-          display: grid;
-          place-items: center;
-          color: #eff6ff;
-          font-weight: 800;
-          font-size: 18px;
-        }
-
-        header {
-          padding: 18px 20px 10px;
-        }
-
-        .header-inner {
-          max-width: 1080px;
-          margin: 0 auto;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-        }
-
-        .brand {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .brand-text h1 {
-          margin: 0;
-          font-size: 22px;
-          letter-spacing: -0.03em;
-        }
-
-        .brand-text p {
-          margin: 2px 0 0;
-          font-size: 13px;
-          color: #64748b;
-        }
-
-        .tagline {
-          font-size: 12px;
-          padding: 6px 10px;
-          border-radius: 999px;
-          background: rgba(37,99,235,0.06);
-          color: #1d4ed8;
-          font-weight: 600;
-          white-space: nowrap;
-        }
-
-        main {
-          flex: 1;
-          display: flex;
-          justify-content: center;
-          padding: 10px 10px 32px;
-        }
-
-        .shell {
-          width: 100%;
-          max-width: 1080px;
-        }
-
-        .card {
-          background: var(--surface);
-          border-radius: 18px;
-          padding: 20px 18px 18px;
-          border: 1px solid rgba(148, 163, 184, 0.22);
-          box-shadow: var(--shadow-soft);
-        }
-
-        input, select, textarea {
-          padding: 11px 13px;
-          border-radius: 11px;
-          border: 1px solid var(--border);
-          background: #fdfefe;
-          font-size: 16px; /* stop iOS zoom */
-          transition: border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
-        }
-
-        input:focus, select:focus, textarea:focus {
-          outline: none;
-          border-color: var(--primary);
-          box-shadow: 0 0 0 1px rgba(37,99,235,0.12);
-          background: #ffffff;
-        }
-
-        textarea { resize: vertical; }
-
-        button {
-          border: none;
-          border-radius: 999px;
-          padding: 11px 18px;
-          font-weight: 700;
-          font-size: 14px;
-          cursor: pointer;
-          transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        button.primary {
-          background: linear-gradient(135deg, #2563eb, #1d4ed8);
-          color: #f9fafb;
-          box-shadow: 0 12px 30px rgba(37, 99, 235, 0.35);
-        }
-
-        button.secondary {
-          background: #e5e7eb;
-          color: #111827;
-        }
-
-        button.ghost {
-          background: transparent;
-          color: #6b7280;
-        }
-
-        button:active {
-          transform: translateY(1px);
-          box-shadow: none;
-        }
-
-        @media (max-width: 640px) {
-          .card { padding: 16px 14px 14px; }
-          .header-inner { flex-direction: column; align-items: flex-start; }
-          .tagline { align-self: flex-start; }
-          button { width: 100%; justify-content: center; }
-        }
-      </style>
-    </head>`;
+interface APIResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
 }
 
-/* ----------------------- Onboarding page ----------------------- */
-
-function renderOnboarding(): Response {
-  const html = `${baseHead("Gym Onboarding")}
-    <body>
-      <header>
-        <div class="header-inner">
-          <div class="brand">
-            <div class="brand-mark">G</div>
-            <div class="brand-text">
-              <h1>Gym setup assistant</h1>
-              <p>First-time setup: gym, roles and membership types.</p>
-            </div>
-          </div>
-          <div class="tagline">Step 1 · Onboarding</div>
-        </div>
-      </header>
-      <main>
-        <div class="shell">
-          <div class="card">
-            <div id="steps" class="steps"></div>
-            <form id="wizard">
-              <style>
-                .steps {
-                  display: grid;
-                  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                  gap: 8px;
-                  margin-bottom: 14px;
-                }
-                .step {
-                  padding: 9px 10px;
-                  border-radius: 12px;
-                  border: 1px solid var(--border);
-                  background: #f9fafb;
-                  display: flex;
-                  align-items: center;
-                  gap: 8px;
-                  opacity: 0.7;
-                  transition: all 0.15s ease;
-                }
-                .step.active {
-                  border-color: var(--primary);
-                  background: var(--primary-soft);
-                  opacity: 1;
-                }
-                .step-number {
-                  width: 26px;
-                  height: 26px;
-                  border-radius: 999px;
-                  background: var(--primary);
-                  color: #f9fafb;
-                  display: grid;
-                  place-items: center;
-                  font-weight: 700;
-                  font-size: 13px;
-                }
-                .step-title { font-size: 14px; font-weight: 600; }
-                .step-caption { font-size: 12px; color: #64748b; }
-                .step-content { margin-top: 6px; }
-                .grid {
-                  display: grid;
-                  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-                  gap: 12px;
-                }
-                .field { display: flex; flex-direction: column; gap: 4px; }
-                label { font-weight: 600; font-size: 13px; color: #0f172a; }
-                .hint { font-size: 12px; color: #64748b; }
-                .notice {
-                  background: #eff6ff;
-                  border-radius: 12px;
-                  padding: 10px 12px;
-                  font-size: 13px;
-                  color: #0b3c96;
-                  border: 1px solid #bfdbfe;
-                  display: flex;
-                  align-items: flex-start;
-                  gap: 8px;
-                }
-                .notice::before { content: "ℹ︎"; font-weight: 700; margin-top: 1px; }
-                .workers { display: grid; gap: 10px; margin-top: 10px; }
-                .worker-card {
-                  border: 1px solid var(--border);
-                  border-radius: 12px;
-                  padding: 12px;
-                  background: #fdfdfd;
-                }
-                .worker-header {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  gap: 8px;
-                  margin-bottom: 8px;
-                }
-                .pill {
-                  display: inline-flex;
-                  align-items: center;
-                  gap: 6px;
-                  background: rgba(37, 99, 235, 0.06);
-                  border-radius: 999px;
-                  padding: 6px 10px;
-                  font-size: 11px;
-                  font-weight: 600;
-                  color: #1d4ed8;
-                }
-                .plans { display: grid; gap: 10px; margin-top: 4px; }
-                .plan-card {
-                  border-radius: 14px;
-                  border: 1px solid var(--border);
-                  padding: 12px 12px 10px;
-                  background: #fdfefe;
-                }
-                .plan-header {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  gap: 8px;
-                  margin-bottom: 6px;
-                }
-                .inline {
-                  display: grid;
-                  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-                  gap: 8px;
-                }
-                .chip-row {
-                  display: flex;
-                  flex-wrap: wrap;
-                  gap: 6px;
-                  margin-top: 6px;
-                }
-                .chip {
-                  background: #eff6ff;
-                  color: #1d4ed8;
-                  padding: 4px 8px;
-                  border-radius: 999px;
-                  font-size: 11px;
-                  font-weight: 600;
-                }
-                .summary {
-                  display: grid;
-                  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                  gap: 10px;
-                }
-                .summary-item {
-                  border-radius: 12px;
-                  border: 1px solid var(--border);
-                  padding: 10px 12px;
-                  background: #fdfefe;
-                  font-size: 13px;
-                }
-                .summary-item-title { font-weight: 700; margin-bottom: 3px; }
-                .summary-item-body { color: #475569; }
-                .status {
-                  margin-top: 10px;
-                  border-radius: 12px;
-                  padding: 10px 12px;
-                  border: 1px solid #bbf7d0;
-                  background: #ecfdf3;
-                  color: #166534;
-                  font-size: 13px;
-                  display: none;
-                }
-                .status.error {
-                  border-color: #fecaca;
-                  background: #fef2f2;
-                  color: #991b1b;
-                }
-                .actions {
-                  display: flex;
-                  justify-content: space-between;
-                  align-items: center;
-                  margin-top: 8px;
-                  gap: 10px;
-                  flex-wrap: wrap;
-                }
-                .subtext { font-size: 12px; color: #6b7280; }
-                @media (max-width: 640px) {
-                  .actions { flex-direction: column-reverse; align-items: stretch; }
-                }
-              </style>
-
-              <!-- STEP 0: Gym + role accounts -->
-              <div class="step-content" data-step="0">
-                <div class="grid">
-                  <div class="field">
-                    <label for="gymName">Gym name</label>
-                    <input id="gymName" required placeholder="e.g. Skyline Fitness" />
-                    <div class="hint">This name will appear on dashboards and exports.</div>
-                  </div>
-                </div>
-
-                <div class="notice" style="margin-top:10px;">
-                  Define separate login accounts for each role. Each email + password is independent.
-                </div>
-
-                <div class="grid" style="margin-top:10px;">
-                  <div class="field">
-                    <label>Admin account (required)</label>
-                    <input id="adminName" required placeholder="Admin full name" />
-                    <input id="adminEmail" type="email" required placeholder="admin@example.com" style="margin-top:6px;" />
-                    <input id="adminPassword" type="password" required minlength="6" placeholder="Admin password" style="margin-top:6px;" />
-                    <div class="hint">Admin has full control of this gym’s dashboard.</div>
-                  </div>
-                  <div class="field">
-                    <label>Owner account (optional)</label>
-                    <input id="ownerName" placeholder="Owner full name" />
-                    <input id="ownerEmail" type="email" placeholder="owner@example.com" style="margin-top:6px;" />
-                    <input id="ownerPassword" type="password" placeholder="Owner password" style="margin-top:6px;" />
-                    <div class="hint">If set, owner login can view everything.</div>
-                  </div>
-                  <div class="field">
-                    <label>Manager account (optional)</label>
-                    <input id="managerName" placeholder="Manager full name" />
-                    <input id="managerEmail" type="email" placeholder="manager@example.com" style="margin-top:6px;" />
-                    <input id="managerPassword" type="password" placeholder="Manager password" style="margin-top:6px;" />
-                    <div class="hint">Manager handles daily operations and staff.</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- STEP 1: schedule -->
-              <div class="step-content" data-step="1" style="display:none;">
-                <div class="grid">
-                  <div class="field">
-                    <label for="gymType">Gym type</label>
-                    <select id="gymType" required>
-                      <option value="combined">Combined (all members)</option>
-                      <option value="male">Male only</option>
-                      <option value="female">Female only</option>
-                    </select>
-                    <div class="hint">This helps you filter attendance and member lists later.</div>
-                  </div>
-                  <div class="field">
-                    <label for="openingTime">Opening time</label>
-                    <input id="openingTime" type="time" required />
-                  </div>
-                  <div class="field">
-                    <label for="closingTime">Closing time</label>
-                    <input id="closingTime" type="time" required />
-                  </div>
-                </div>
-              </div>
-
-              <!-- STEP 2: workers -->
-              <div class="step-content" data-step="2" style="display:none;">
-                <div class="notice">
-                  Set how many workers you have. Duty slots will be generated and can be adjusted. Login accounts for trainers can be added later.
-                </div>
-                <div class="grid" style="margin-top:8px;">
-                  <div class="field">
-                    <label for="workerCount">Number of workers</label>
-                    <select id="workerCount"></select>
-                    <div class="hint">You can add or adjust workers later in the dashboard.</div>
-                  </div>
-                  <div class="field">
-                    <label for="shiftPreset">Default shift length</label>
-                    <select id="shiftPreset">
-                      <option value="6">6 hours</option>
-                      <option value="8" selected>8 hours</option>
-                      <option value="10">10 hours</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="workers" id="workers"></div>
-              </div>
-
-              <!-- STEP 3: memberships -->
-              <div class="step-content" data-step="3" style="display:none;">
-                <div class="notice">
-                  Add membership styles you offer. You can change prices and details any time.
-                </div>
-                <div class="plans" id="plans"></div>
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:6px;">
-                  <button type="button" class="secondary" id="addPlan">Add membership type</button>
-                </div>
-              </div>
-
-              <!-- STEP 4: summary -->
-              <div class="step-content" data-step="4" style="display:none;">
-                <div class="summary" id="summary"></div>
-                <div id="status" class="status"></div>
-              </div>
-
-              <div class="actions">
-                <button type="button" class="secondary" id="backBtn">← Back</button>
-                <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:1; max-width:320px;">
-                  <button type="button" class="primary" id="nextBtn">Next step →</button>
-                  <div class="subtext" id="stepHint"></div>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-      </main>
-      <script>
-        // -------- STEP META --------
-        var stepTitles = [
-          "Gym & role logins",
-          "Schedule",
-          "Team",
-          "Memberships",
-          "Review"
-        ];
-        var stepCaptions = [
-          "Separate login for admin / owner / manager",
-          "Opening hours & type",
-          "Workers & duty slots",
-          "Packages & pricing",
-          "Check everything & finish"
-        ];
-
-        // -------- DOM HOOKS --------
-        var stepContainer = document.getElementById("steps");
-        var stepContents = Array.prototype.slice.call(
-          document.querySelectorAll(".step-content")
-        );
-        var nextBtn = document.getElementById("nextBtn");
-        var backBtn = document.getElementById("backBtn");
-        var stepHint = document.getElementById("stepHint");
-
-        var workersContainer = document.getElementById("workers");
-        var workerCountSelect = document.getElementById("workerCount");
-        var shiftPresetSelect = document.getElementById("shiftPreset");
-
-        var statusBox = document.getElementById("status");
-        var summaryBox = document.getElementById("summary");
-
-        var plansContainer = document.getElementById("plans");
-        var addPlanBtn = document.getElementById("addPlan");
-
-        var currentStep = 0;
-        var membershipPlans = [];
-
-        // -------- HELPERS --------
-        function populateWorkerCount() {
-          var html = "";
-          for (var i = 1; i <= 20; i++) {
-            html +=
-              '<option value="' +
-              i +
-              '"' +
-              (i === 3 ? " selected" : "") +
-              ">" +
-              i +
-              "</option>";
-          }
-          workerCountSelect.innerHTML = html;
-        }
-
-        function renderSteps() {
-          var html = "";
-          for (var i = 0; i < stepTitles.length; i++) {
-            var active = i === currentStep ? " active" : "";
-            html +=
-              '<div class="step' +
-              active +
-              '"><div class="step-number">' +
-              (i + 1) +
-              '</div><div><div class="step-title">' +
-              stepTitles[i] +
-              '</div><div class="step-caption">' +
-              stepCaptions[i] +
-              "</div></div></div>";
-          }
-          stepContainer.innerHTML = html;
-          stepHint.textContent = stepCaptions[currentStep];
-        }
-
-        function timeFromPreset(index, preset) {
-          var startHour = 6 + (index % 3) * 3;
-          var start = (startHour < 10 ? "0" : "") + startHour + ":00";
-          var endHour = (startHour + preset) % 24;
-          var end = (endHour < 10 ? "0" : "") + endHour + ":00";
-          return { start: start, end: end };
-        }
-
-        function renderWorkers() {
-          var count = Number(workerCountSelect.value || 0);
-          var preset = Number(shiftPresetSelect.value || 8);
-          var html = "";
-          for (var i = 0; i < count; i++) {
-            var times = timeFromPreset(i, preset);
-            html +=
-              '<div class="worker-card">' +
-              '<div class="worker-header">' +
-              '<div style="font-weight:600; font-size:14px;">Worker ' +
-              (i + 1) +
-              "</div>" +
-              '<span class="pill">Default shift ' +
-              times.start +
-              " – " +
-              times.end +
-              "</span>" +
-              "</div>" +
-              '<div class="grid">' +
-              '<div class="field">' +
-              '<label for="worker-name-' +
-              i +
-              '">Full name</label>' +
-              '<input id="worker-name-' +
-              i +
-              '" placeholder="e.g. Trainer ' +
-              (i + 1) +
-              '" />' +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="worker-role-' +
-              i +
-              '">Role</label>' +
-              '<select id="worker-role-' +
-              i +
-              '">' +
-              '<option value="trainer">Trainer</option>' +
-              '<option value="front-desk">Front desk</option>' +
-              '<option value="maintenance">Maintenance</option>' +
-              '<option value="manager">Manager</option>' +
-              "</select>" +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="worker-start-' +
-              i +
-              '">Duty starts</label>' +
-              '<input id="worker-start-' +
-              i +
-              '" type="time" value="' +
-              times.start +
-              '" />' +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="worker-end-' +
-              i +
-              '">Duty ends</label>' +
-              '<input id="worker-end-' +
-              i +
-              '" type="time" value="' +
-              times.end +
-              '" />' +
-              "</div>" +
-              "</div>" +
-              "</div>";
-          }
-          workersContainer.innerHTML = html;
-        }
-
-        function renderPlans() {
-          var html = "";
-          for (var i = 0; i < membershipPlans.length; i++) {
-            var plan = membershipPlans[i];
-            var removeButton =
-              i > 0
-                ? '<button type="button" class="secondary" data-remove="' +
-                  i +
-                  '" style="padding:6px 10px; font-size:12px;">Remove</button>'
-                : "";
-            html +=
-              '<div class="plan-card">' +
-              '<div class="plan-header">' +
-              '<div style="font-weight:600; font-size:14px;">Plan ' +
-              (i + 1) +
-              "</div>" +
-              removeButton +
-              "</div>" +
-              '<div class="inline">' +
-              '<div class="field">' +
-              '<label for="plan-name-' +
-              i +
-              '">Name</label>' +
-              '<input id="plan-name-' +
-              i +
-              '" value="' +
-              plan.name +
-              '" />' +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="plan-price-' +
-              i +
-              '">Price</label>' +
-              '<input id="plan-price-' +
-              i +
-              '" type="number" min="0" value="' +
-              plan.price +
-              '" />' +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="plan-billing-' +
-              i +
-              '">Billing</label>' +
-              '<select id="plan-billing-' +
-              i +
-              '">' +
-              '<option value="daily"' +
-              (plan.billing === "daily" ? " selected" : "") +
-              ">Per day</option>" +
-              '<option value="weekly"' +
-              (plan.billing === "weekly" ? " selected" : "") +
-              ">Weekly</option>" +
-              '<option value="monthly"' +
-              (plan.billing === "monthly" ? " selected" : "") +
-              ">Monthly</option>" +
-              '<option value="yearly"' +
-              (plan.billing === "yearly" ? " selected" : "") +
-              ">Yearly</option>" +
-              "</select>" +
-              "</div>" +
-              '<div class="field">' +
-              '<label for="plan-access-' +
-              i +
-              '">Access</label>' +
-              '<select id="plan-access-' +
-              i +
-              '">' +
-              '<option value="full"' +
-              (plan.access === "full" ? " selected" : "") +
-              ">Full facility</option>" +
-              '<option value="daytime"' +
-              (plan.access === "daytime" ? " selected" : "") +
-              ">Daytime</option>" +
-              '<option value="classes"' +
-              (plan.access === "classes" ? " selected" : "") +
-              ">Classes only</option>" +
-              '<option value="swim"' +
-              (plan.access === "swim" ? " selected" : "") +
-              ">Pool & spa</option>" +
-              "</select>" +
-              "</div>" +
-              "</div>" +
-              '<div class="field" style="margin-top:8px;">' +
-              '<label for="plan-perks-' +
-              i +
-              '">Perks</label>' +
-              '<textarea id="plan-perks-' +
-              i +
-              '" rows="2">' +
-              (plan.perks || "") +
-              "</textarea>" +
-              "</div>" +
-              '<div class="chip-row">' +
-              '<span class="chip">Billing: ' +
-              plan.billing +
-              "</span>" +
-              '<span class="chip">Access: ' +
-              plan.access +
-              "</span>" +
-              "</div>" +
-              "</div>";
-          }
-          plansContainer.innerHTML = html;
-
-          var removeButtons = plansContainer.querySelectorAll("[data-remove]");
-          for (var j = 0; j < removeButtons.length; j++) {
-            removeButtons[j].addEventListener("click", function (event) {
-              var index = Number(event.target.getAttribute("data-remove"));
-              membershipPlans.splice(index, 1);
-              renderPlans();
-            });
-          }
-        }
-
-        function syncPlansFromInputs() {
-          for (var i = 0; i < membershipPlans.length; i++) {
-            var nameEl = document.getElementById("plan-name-" + i);
-            var priceEl = document.getElementById("plan-price-" + i);
-            var billingEl = document.getElementById("plan-billing-" + i);
-            var accessEl = document.getElementById("plan-access-" + i);
-            var perksEl = document.getElementById("plan-perks-" + i);
-            if (!membershipPlans[i]) membershipPlans[i] = {};
-            membershipPlans[i].name = nameEl ? nameEl.value : membershipPlans[i].name;
-            membershipPlans[i].price = priceEl ? priceEl.value : membershipPlans[i].price;
-            membershipPlans[i].billing = billingEl ? billingEl.value : membershipPlans[i].billing;
-            membershipPlans[i].access = accessEl ? accessEl.value : membershipPlans[i].access;
-            membershipPlans[i].perks = perksEl ? perksEl.value : membershipPlans[i].perks;
-          }
-        }
-
-        function goToStep(index) {
-          for (var i = 0; i < stepContents.length; i++) {
-            stepContents[i].style.display = i === index ? "" : "none";
-          }
-          currentStep = index;
-          renderSteps();
-          backBtn.style.visibility = index === 0 ? "hidden" : "visible";
-          nextBtn.textContent =
-            index === stepContents.length - 1 ? "Finish setup" : "Next step →";
-        }
-
-        function validateCurrentStep() {
-          var container = stepContents[currentStep];
-          if (!container) return true;
-          var inputs = container.querySelectorAll("input, select");
-          for (var i = 0; i < inputs.length; i++) {
-            var input = inputs[i];
-            if (input.hasAttribute("required") && !input.value) {
-              if (typeof input.reportValidity === "function") {
-                input.reportValidity();
-              }
-              input.focus();
-              return false;
-            }
-          }
-          return true;
-        }
-
-        function gatherData() {
-          syncPlansFromInputs();
-
-          function v(id) {
-            var el = document.getElementById(id);
-            return el && typeof el.value === "string" ? el.value.trim() : "";
-          }
-
-          var gymTypeEl = document.getElementById("gymType");
-          var openingEl = document.getElementById("openingTime");
-          var closingEl = document.getElementById("closingTime");
-
-          var data = {
-            gymName: v("gymName"),
-
-            adminName: v("adminName"),
-            adminEmail: v("adminEmail"),
-            adminPassword: v("adminPassword"),
-
-            ownerName: v("ownerName"),
-            ownerEmail: v("ownerEmail"),
-            ownerPassword: v("ownerPassword"),
-
-            managerName: v("managerName"),
-            managerEmail: v("managerEmail"),
-            managerPassword: v("managerPassword"),
-
-            gymType: gymTypeEl ? (gymTypeEl.value || "").trim() : "",
-            openingTime: openingEl ? (openingEl.value || "").trim() : "",
-            closingTime: closingEl ? (closingEl.value || "").trim() : "",
-
-            workerCount: Number(workerCountSelect.value || 0),
-            workers: [],
-            memberships: membershipPlans
-          };
-
-          for (var i = 0; i < data.workerCount; i++) {
-            var nameEl = document.getElementById("worker-name-" + i);
-            var roleEl = document.getElementById("worker-role-" + i);
-            var startEl = document.getElementById("worker-start-" + i);
-            var endEl = document.getElementById("worker-end-" + i);
-
-            data.workers.push({
-              name: nameEl ? nameEl.value : "",
-              role: roleEl ? roleEl.value : "",
-              dutyStart: startEl ? startEl.value : "",
-              dutyEnd: endEl ? endEl.value : ""
-            });
-          }
-
-          return data;
-        }
-
-        function showSummary() {
-          var data = gatherData();
-          var previewTables = [
-            "gyms (identity & hours)",
-            "accounts (admin / manager / owner / worker logins)",
-            "workers (duty slots)",
-            "membership_plans (pricing & billing)",
-            "members (members linked to plans)",
-            "attendance_logs (check-ins)",
-            "balance_dues (due tracking)"
-          ];
-
-          var html =
-            '<div class="summary-item">' +
-            '<div class="summary-item-title">Gym</div>' +
-            '<div class="summary-item-body">' +
-            (data.gymName || "Unnamed gym") +
-            "<br /><span style='color:#64748b;'>" +
-            (data.gymType || "Type not set") +
-            " • " +
-            (data.openingTime || "--:--") +
-            " – " +
-            (data.closingTime || "--:--") +
-            "</span></div></div>";
-
-          html +=
-            '<div class="summary-item">' +
-            '<div class="summary-item-title">Accounts</div>' +
-            '<div class="summary-item-body">' +
-            "<strong>Admin:</strong> " +
-            (data.adminEmail || "not set") +
-            "<br />" +
-            "<strong>Owner:</strong> " +
-            (data.ownerEmail || "none") +
-            "<br />" +
-            "<strong>Manager:</strong> " +
-            (data.managerEmail || "none") +
-            "</div></div>";
-
-          html +=
-            '<div class="summary-item">' +
-            '<div class="summary-item-title">Team</div>' +
-            '<div class="summary-item-body">' +
-            data.workerCount +
-            " workers configured</div></div>";
-
-          html +=
-            '<div class="summary-item">' +
-            '<div class="summary-item-title">Memberships</div>' +
-            '<div class="summary-item-body">' +
-            data.memberships.length +
-            " membership types<br />" +
-            data.memberships
-              .map(function (m) {
-                return m.name + " (" + m.billing + ")";
-              })
-              .join(", ") +
-            "</div></div>";
-
-          html +=
-            '<div class="summary-item">' +
-            '<div class="summary-item-title">Tables to create</div>' +
-            '<div class="summary-item-body"><ul style="padding-left:16px; margin:4px 0 0;">' +
-            previewTables
-              .map(function (t) {
-                return "<li>" + t + "</li>";
-              })
-              .join("") +
-            "</ul></div></div>";
-
-          summaryBox.innerHTML = html;
-        }
-
-        // -------- INIT --------
-        populateWorkerCount();
-        renderSteps();
-        renderWorkers();
-        renderPlans();
-        goToStep(0);
-
-        workerCountSelect.addEventListener("change", renderWorkers);
-        shiftPresetSelect.addEventListener("change", renderWorkers);
-
-        addPlanBtn.addEventListener("click", function () {
-          syncPlansFromInputs();
-          membershipPlans.push({
-            name: "New plan",
-            price: "0",
-            billing: "monthly",
-            access: "full",
-            perks: ""
-          });
-          renderPlans();
-        });
-
-        nextBtn.addEventListener("click", function () {
-          if (!validateCurrentStep()) return;
-
-          if (currentStep < stepContents.length - 1) {
-            if (currentStep === stepContents.length - 2) {
-              showSummary();
-            }
-            goToStep(currentStep + 1);
-            return;
-          }
-
-          var payload = gatherData();
-          statusBox.style.display = "block";
-          statusBox.classList.remove("error");
-          statusBox.textContent = "Creating gym and all accounts...";
-
-          fetch("/api/setup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-          })
-            .then(function (response) {
-              return response.json().then(function (data) {
-                return { ok: response.ok, data: data };
-              });
-            })
-            .then(function (result) {
-              if (!result.ok) {
-                throw new Error(result.data.error || "Failed to create gym");
-              }
-              statusBox.textContent = "Gym created. Redirecting to dashboard...";
-              window.location.href = "/admin";
-            })
-            .catch(function (error) {
-              statusBox.classList.add("error");
-              statusBox.textContent = error.message || "Something went wrong.";
-            });
-        });
-
-        backBtn.addEventListener("click", function () {
-          if (currentStep === 0) return;
-          goToStep(currentStep - 1);
-        });
-      </script>
-    </body>
-  </html>`;
-  return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=UTF-8", "Cache-Control": "no-store" },
+// Helper to standardise API responses
+function json(data: any, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
   });
 }
 
-/* ----------------------- Login page ----------------------- */
-
-function renderLogin(): Response {
-  const html = `${baseHead("Gym Login")}
-    <body>
-      <header>
-        <div class="header-inner">
-          <div class="brand">
-            <div class="brand-mark">G</div>
-            <div class="brand-text">
-              <h1>Gym admin login</h1>
-              <p>Sign in with your role account to manage your gym.</p>
-            </div>
-          </div>
-          <div class="tagline">Secure access</div>
-        </div>
-      </header>
-      <main>
-        <div class="shell">
-          <div class="card" style="max-width: 420px; margin: 0 auto;">
-            <h2 style="margin-top:0; margin-bottom:4px; font-size:18px;">Welcome back</h2>
-            <p style="margin:0 0 16px; font-size:13px; color:#6b7280;">
-              Use the email and password for your admin / owner / manager / worker account.
-            </p>
-            <div class="field" style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px;">
-              <label for="email">Email</label>
-              <input id="email" type="email" placeholder="you@example.com" />
-            </div>
-            <div class="field" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;">
-              <label for="password">Password</label>
-              <input id="password" type="password" placeholder="••••••••" />
-            </div>
-            <button class="primary" id="loginBtn" style="width:100%; justify-content:center; margin-bottom:6px;">Sign in</button>
-            <div id="status" style="font-size:12px; color:#991b1b; min-height:16px;"></div>
-          </div>
-        </div>
-      </main>
-      <script>
-        var btn = document.getElementById("loginBtn");
-        var statusBox = document.getElementById("status");
-        btn.addEventListener("click", function () {
-          statusBox.textContent = "";
-          var emailEl = document.getElementById("email");
-          var passEl = document.getElementById("password");
-          var email = emailEl && emailEl.value ? emailEl.value.trim() : "";
-          var password = passEl && passEl.value ? passEl.value.trim() : "";
-          if (!email || !password) {
-            statusBox.textContent = "Enter both email and password.";
-            return;
-          }
-          fetch("/api/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email, password: password })
-          })
-            .then(function (res) {
-              return res.json().then(function (data) {
-                return { ok: res.ok, data: data };
-              });
-            })
-            .then(function (result) {
-              if (!result.ok) throw new Error(result.data.error || "Login failed");
-              window.location.href = "/admin";
-            })
-            .catch(function (err) {
-              statusBox.textContent = err.message || "Login failed.";
-            });
-        });
-      </script>
-    </body>
-  </html>`;
-  return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=UTF-8", "Cache-Control": "no-store" },
-  });
-}
-
-/* ----------------------- Dashboard page ----------------------- */
-
-function renderAdminDashboard(accountName: string, role: string): Response {
-  const html = `${baseHead("Gym Admin Dashboard")}
-    <body>
-      <header>
-        <div class="header-inner">
-          <div class="brand">
-            <div class="brand-mark">G</div>
-            <div class="brand-text">
-              <h1>Gym dashboard</h1>
-              <p>Manage attendance, memberships, workers and roles.</p>
-            </div>
-          </div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <div style="font-size:12px; text-align:right;">
-              <div style="font-weight:600;">${accountName || "Account"}</div>
-              <div style="color:#6b7280;">${role}</div>
-            </div>
-            <button class="ghost" id="logoutBtn">Log out</button>
-          </div>
-        </div>
-      </header>
-      <main>
-        <div class="shell">
-          <style>
-            .sidebar {
-              width: 220px;
-              max-width: 40%;
-              background: var(--surface);
-              border-radius: 16px;
-              border: 1px solid rgba(148,163,184,0.35);
-              padding: 12px 10px;
-              display: flex;
-              flex-direction: column;
-              gap: 6px;
-              height: fit-content;
-            }
-            .nav-item {
-              padding: 8px 10px;
-              border-radius: 10px;
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              font-size: 13px;
-              cursor: pointer;
-              color: #475569;
-            }
-            .nav-item span { font-weight: 500; }
-            .nav-item.active {
-              background: var(--primary-soft);
-              color: #1d4ed8;
-            }
-            .main-panel {
-              flex: 1;
-              border-radius: 18px;
-              background: var(--surface);
-              border: 1px solid rgba(148,163,184,0.35);
-              padding: 14px 14px 16px;
-              box-shadow: var(--shadow-soft);
-              overflow: hidden;
-            }
-            .panel-header {
-              display:flex;
-              justify-content:space-between;
-              align-items:center;
-              margin-bottom:8px;
-            }
-            .panel-title {
-              font-size:16px;
-              font-weight:600;
-            }
-            .panel-subtitle {
-              font-size:12px;
-              color:#6b7280;
-            }
-            .cards-row {
-              display:grid;
-              grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-              gap:10px;
-              margin-bottom:12px;
-            }
-            .metric-card {
-              background: var(--surface-soft);
-              border-radius:12px;
-              border:1px solid var(--border);
-              padding:10px 10px;
-              font-size:13px;
-            }
-            .metric-label {
-              color:#6b7280;
-              font-size:12px;
-            }
-            .metric-value {
-              font-size:18px;
-              font-weight:700;
-            }
-            .metric-extra {
-              margin-top:3px;
-              font-size:11px;
-              color:#16a34a;
-            }
-            .section {
-              margin-top:10px;
-            }
-            .section h3 {
-              margin:0 0 6px;
-              font-size:14px;
-            }
-            .section-inner {
-              border-radius:12px;
-              border:1px solid var(--border);
-              padding:8px 10px;
-              background:#f9fafb;
-            }
-            .list-row {
-              display:flex;
-              justify-content:space-between;
-              align-items:center;
-              padding:6px 0;
-              border-bottom:1px dashed rgba(148,163,184,0.5);
-              font-size:12px;
-            }
-            .list-row:last-child{ border-bottom:none; }
-            .pill-soft {
-              display:inline-flex;
-              padding:3px 7px;
-              border-radius:999px;
-              font-size:11px;
-              background:#e5e7eb;
-              color:#374151;
-            }
-            .pill-soft.green {
-              background:#dcfce7;
-              color:#166534;
-            }
-            .pill-soft.blue {
-              background:#dbeafe;
-              color:#1d4ed8;
-            }
-            .pill-soft.orange {
-              background:#ffedd5;
-              color:#c05621;
-            }
-            .form-grid {
-              display:grid;
-              grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-              gap:10px;
-            }
-            .field {
-              display:flex;
-              flex-direction:column;
-              gap:4px;
-              font-size:12px;
-            }
-            .field label { font-weight:600; font-size:12px; }
-            .field small { font-size:11px; color:#6b7280; }
-            .btn-row {
-              display:flex;
-              justify-content:flex-end;
-              gap:8px;
-              margin-top:8px;
-            }
-            .danger-text { color:var(--danger); font-size:12px; }
-            .status-bar {
-              font-size:12px;
-              margin-top:6px;
-              min-height:16px;
-            }
-            @media(max-width:768px){
-              .shell{ flex-direction:column; }
-              .sidebar{ width:100%; max-width:none; flex-direction:row; overflow-x:auto; }
-              .nav-item{ flex:1; justify-content:center; }
-            }
-            .attendance-card {
-              background: var(--surface);
-              border: 1px solid rgba(148,163,184,0.35);
-              border-radius: 16px;
-              padding: 12px;
-              box-shadow: var(--shadow-soft);
-              margin-bottom: 14px;
-            }
-            .attendance-grid {
-              display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-              gap: 10px;
-              align-items: start;
-            }
-            .attendance-search { display:flex; flex-direction:column; gap:8px; }
-            .search-results { display:grid; gap:8px; max-height:240px; overflow:auto; padding-right:4px; }
-            .search-item {
-              display:flex;
-              gap:10px;
-              align-items:center;
-              padding:8px 10px;
-              border:1px solid var(--border);
-              border-radius:12px;
-              background:#f8fafc;
-              cursor:pointer;
-              transition: border-color 0.12s ease, background 0.12s ease;
-            }
-            .search-item:hover { border-color: var(--primary); background: #eef2ff; }
-            .search-avatar {
-              width:42px;
-              height:42px;
-              border-radius:12px;
-              object-fit:cover;
-              background:#e5e7eb;
-            }
-            .search-lines { flex:1; min-width:0; }
-            .search-lines strong { display:block; font-size:14px; }
-            .search-lines small { display:block; color:#475569; font-size:12px; line-height:1.3; }
-            .attendance-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-            .pill-outline {
-              display:inline-flex;
-              align-items:center;
-              padding:4px 8px;
-              border-radius:999px;
-              border:1px dashed var(--border);
-              font-size:11px;
-              color:#475569;
-              background:#f8fafc;
-            }
-            .table-simple { width:100%; border-collapse:collapse; font-size:12px; }
-            .table-simple th, .table-simple td { padding:8px 6px; border-bottom:1px solid var(--border); text-align:left; }
-            .avatar-small { width:28px; height:28px; border-radius:9px; object-fit:cover; background:#e5e7eb; }
-            .badge-due { background:#fef2f2; color:#b91c1c; padding:3px 7px; border-radius:999px; font-weight:600; font-size:11px; }
-            .badge-clear { background:#ecfdf3; color:#166534; padding:3px 7px; border-radius:999px; font-weight:600; font-size:11px; }
-            .member-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
-            .member-card { border:1px solid var(--border); border-radius:12px; padding:8px; background:#f8fafc; font-size:12px; display:flex; gap:8px; align-items:center; }
-            .member-actions { display:flex; gap:6px; flex-wrap:wrap; }
-            .ghost-danger { background:transparent; color:var(--danger); border:1px dashed var(--danger); }
-            .member-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px; }
-            .member-form .field { font-size:12px; }
-            .member-form input[type="file"] { padding:8px 6px; }
-            .layout-row { display:flex; gap:16px; min-height:520px; }
-            @media(max-width:768px){
-              .attendance-grid{ grid-template-columns:1fr; }
-              .layout-row{ flex-direction:column; }
-            }
-            .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-bottom:12px; }
-            .setting-tile { border:1px solid var(--border); border-radius:12px; padding:14px; background:#f8fafc; text-align:left; font-size:13px; display:flex; flex-direction:column; gap:6px; box-shadow:none; }
-            .setting-tile strong { font-size:14px; }
-            .setting-panel { border:1px solid var(--border); border-radius:12px; padding:12px; background:#f9fafb; margin-top:8px; }
-            .setting-panel h4 { margin:0 0 6px; }
-            .payments-card { border:1px solid var(--border); border-radius:14px; padding:12px; background:#fdfdfd; box-shadow:var(--shadow-soft); }
-            .payments-header { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
-            .payments-table { width:100%; border-collapse:collapse; font-size:12px; }
-            .payments-table th, .payments-table td { padding:8px 6px; border-bottom:1px solid var(--border); text-align:left; }
-            .payments-table tr.highlight { background: #fff7ed; }
-            .badge-soft { display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; font-size:11px; background:#eef2ff; color:#4338ca; }
-            .badge-soft.due { background:#fef2f2; color:#b91c1c; }
-            .badge-soft.clear { background:#ecfdf3; color:#166534; }
-            .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,0.35); display:flex; justify-content:center; align-items:center; padding:16px; z-index:20; }
-            .modal { width:100%; max-width:520px; background:var(--surface); border-radius:16px; padding:16px; box-shadow:var(--shadow-soft); border:1px solid var(--border); }
-            .modal h3 { margin:0 0 6px; font-size:16px; }
-            .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
-            .modal-grid { display:grid; grid-template-columns:1fr; gap:10px; }
-            .fees-summary { font-size:13px; background:#f8fafc; border:1px dashed var(--border); border-radius:12px; padding:10px; }
-          </style>
-
-          <div class="layout-row">
-
-          <aside class="sidebar">
-            <div class="nav-item" data-tab="attendance">
-              <span>Attendance</span><span>●</span>
-            </div>
-            <div class="nav-item active" data-tab="overview">
-              <span>Overview</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="payments">
-              <span>Payments</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="members">
-              <span>Members</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="memberships">
-              <span>Memberships</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="workers">
-              <span>Workers</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="accounts">
-              <span>Accounts</span><span>●</span>
-            </div>
-            <div class="nav-item" data-tab="settings">
-              <span>Settings</span><span>●</span>
-            </div>
-          </aside>
-
-          <section class="main-panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title" id="panelTitle">Overview</div>
-                <div class="panel-subtitle" id="panelSubtitle">Quick snapshot of your gym</div>
-              </div>
-              <div style="font-size:11px; color:#6b7280;" id="gymLabel"></div>
-            </div>
-
-            <div id="tab-attendance" style="display:none;">
-              <div class="attendance-card">
-                <div class="attendance-grid">
-                  <div class="attendance-search">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                      <div>
-                        <div class="panel-title" style="margin:0;">Quick attendance</div>
-                        <div class="panel-subtitle">Search member by ID and mark present</div>
-                      </div>
-                      <span class="pill-outline">Available to all roles</span>
-                    </div>
-                    <input id="attendanceId" placeholder="Type member ID or name" />
-                    <div class="search-results" id="attendanceResults"></div>
-                    <div class="attendance-actions">
-                      <span id="attendanceSelected" class="pill-outline">No member selected</span>
-                      <button class="primary" id="submitAttendance">Submit attendance</button>
-                    </div>
-                    <div class="status-bar" id="attendanceStatus"></div>
-                  </div>
-                  <div class="section" style="margin:0;">
-                    <h3 style="margin:0 0 6px; font-size:14px;">Today’s attendance</h3>
-                    <div class="section-inner" style="background:var(--surface); border-radius:12px;">
-                      <div style="overflow-x:auto;">
-                        <table class="table-simple" id="attendanceTable">
-                          <thead>
-                            <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
-                          </thead>
-                          <tbody id="attendanceTbody">
-                            <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-overview">
-              <div class="cards-row">
-                <div class="metric-card">
-                  <div class="metric-label">Active memberships</div>
-                  <div class="metric-value" id="metricMembers">0</div>
-                  <div class="metric-extra" id="metricMembersNote">No members yet</div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-label">Membership plans</div>
-                  <div class="metric-value" id="metricPlans">0</div>
-                  <div class="metric-extra">Standard / Premium ready</div>
-                </div>
-                <div class="metric-card">
-                  <div class="metric-label">Workers</div>
-                  <div class="metric-value" id="metricWorkers">0</div>
-                  <div class="metric-extra">Trainers & support team</div>
-                </div>
-              </div>
-
-              <div class="section">
-                <h3>Today’s attendance</h3>
-                <div class="section-inner" style="background:#fdfdfd;">
-                  <div style="overflow-x:auto;">
-                    <table class="table-simple" id="attendanceTableOverview">
-                      <thead>
-                        <tr><th style="width:60px;">ID</th><th>Member</th><th>Status</th><th>Time</th></tr>
-                      </thead>
-                      <tbody id="attendanceOverviewBody">
-                        <tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-payments" style="display:none;">
-              <div class="payments-card">
-                <div class="payments-header">
-                  <div>
-                    <div class="panel-title">Payment center</div>
-                    <div class="panel-subtitle">Ranked by highest dues first</div>
-                  </div>
-                  <button class="primary" id="openFees">Fees</button>
-                </div>
-                <div style="overflow-x:auto; margin-top:10px;">
-                  <table class="payments-table">
-                    <thead>
-                      <tr>
-                        <th style="width:60px;">ID</th>
-                        <th>Member</th>
-                        <th>Plan</th>
-                        <th>Due months</th>
-                        <th>Estimated due</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody id="paymentsTableBody">
-                      <tr><td colspan="6" style="text-align:center; color:#6b7280;">Loading dues...</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-members" style="display:none;">
-              <div class="section">
-                <h3>Members</h3>
-                <div class="section-inner" id="memberList" style="background:#fdfdfd;">
-                  <div class="list-row"><span>Loading members...</span></div>
-                </div>
-              </div>
-              <div class="section" style="margin-top:12px;">
-                <h3>Add or update member</h3>
-                <div class="section-inner">
-                  <div class="member-form">
-                    <div class="field">
-                      <label for="member-name">Full name</label>
-                      <input id="member-name" placeholder="e.g. Rahim Uddin" />
-                    </div>
-                    <div class="field">
-                      <label for="member-phone">Phone number</label>
-                      <input id="member-phone" placeholder="01XXXXXXXXX" />
-                    </div>
-                    <div class="field">
-                      <label for="member-due">Due months</label>
-                      <input id="member-due" type="number" min="0" value="0" />
-                      <small>Auto-tracked per member</small>
-                    </div>
-                    <div class="field">
-                      <label for="member-plan">Membership plan</label>
-                      <select id="member-plan"></select>
-                      <small>Used to calculate fee coverage</small>
-                    </div>
-                    <div class="field">
-                      <label for="member-status">Payment status</label>
-                      <select id="member-status">
-                        <option value="clear">Clear</option>
-                        <option value="due">Due</option>
-                        <option value="partial">Partial</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="member-photo">Photo</label>
-                      <input id="member-photo" type="file" accept="image/*" />
-                      <small>Small avatar used in search</small>
-                    </div>
-                  </div>
-                  <div class="btn-row" style="margin-top:10px;">
-                    <button class="primary" id="btnAddMember">Save member</button>
-                  </div>
-                  <div class="status-bar" id="memberStatus"></div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-memberships" style="display:none;">
-              <div class="section">
-                <h3>Existing membership plans</h3>
-                <div class="section-inner" id="membershipList">
-                  <div class="list-row"><span>Loading...</span></div>
-                </div>
-              </div>
-              <div class="section" style="margin-top:12px;">
-                <h3>Add new membership plan</h3>
-                <div class="section-inner">
-                  <div class="form-grid">
-                    <div class="field">
-                      <label for="m-name">Name</label>
-                      <input id="m-name" placeholder="e.g. Evening pass" />
-                    </div>
-                    <div class="field">
-                      <label for="m-price">Price</label>
-                      <input id="m-price" type="number" min="0" placeholder="e.g. 1200" />
-                    </div>
-                    <div class="field">
-                      <label for="m-billing">Billing</label>
-                      <select id="m-billing">
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly" selected>Monthly</option>
-                        <option value="yearly">Yearly</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="m-access">Access</label>
-                      <select id="m-access">
-                        <option value="full">Full facility</option>
-                        <option value="daytime">Daytime</option>
-                        <option value="classes">Classes only</option>
-                        <option value="swim">Pool & spa</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="field" style="margin-top:8px;">
-                    <label for="m-perks">Perks</label>
-                    <textarea id="m-perks" rows="2" placeholder="Describe what this plan includes"></textarea>
-                  </div>
-                  <div class="btn-row">
-                    <button class="primary" id="btnAddMembership">Add plan</button>
-                  </div>
-                  <div class="status-bar" id="membershipStatus"></div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-workers" style="display:none;">
-              <div class="section">
-                <h3>Workers</h3>
-                <div class="section-inner" id="workerList">
-                  <div class="list-row"><span>No workers yet</span></div>
-                </div>
-              </div>
-              <div class="section" style="margin-top:12px;">
-                <h3>Add worker</h3>
-                <div class="section-inner">
-                  <div class="form-grid">
-                    <div class="field">
-                      <label for="w-name">Full name</label>
-                      <input id="w-name" placeholder="e.g. Trainer Mahfuz" />
-                    </div>
-                    <div class="field">
-                      <label for="w-role">Role</label>
-                      <select id="w-role">
-                        <option value="trainer">Trainer</option>
-                        <option value="front-desk">Front desk</option>
-                        <option value="maintenance">Maintenance</option>
-                        <option value="manager">Manager</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="w-start">Duty starts</label>
-                      <input id="w-start" type="time" />
-                    </div>
-                    <div class="field">
-                      <label for="w-end">Duty ends</label>
-                      <input id="w-end" type="time" />
-                    </div>
-                  </div>
-                  <div class="btn-row">
-                    <button class="primary" id="btnAddWorker">Add worker</button>
-                  </div>
-                  <div class="status-bar" id="workerStatus"></div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-accounts" style="display:none;">
-              <div class="section">
-                <h3>Accounts (logins)</h3>
-                <div class="section-inner" id="accountList">
-                  <div class="list-row"><span>Loading...</span></div>
-                </div>
-              </div>
-              <div class="section" style="margin-top:12px;">
-                <h3>Create new account</h3>
-                <div class="section-inner">
-                  <div class="form-grid">
-                    <div class="field">
-                      <label for="a-name">Full name</label>
-                      <input id="a-name" placeholder="e.g. New manager" />
-                    </div>
-                    <div class="field">
-                      <label for="a-email">Email</label>
-                      <input id="a-email" type="email" placeholder="user@example.com" />
-                      <small>Used for login</small>
-                    </div>
-                    <div class="field">
-                      <label for="a-role">Role</label>
-                      <select id="a-role">
-                        <option value="manager">Manager</option>
-                        <option value="owner">Owner</option>
-                        <option value="admin">Admin</option>
-                        <option value="worker">Worker</option>
-                      </select>
-                    </div>
-                    <div class="field">
-                      <label for="a-password">Password</label>
-                      <input id="a-password" type="password" placeholder="Set a password" />
-                    </div>
-                  </div>
-                  <div class="btn-row">
-                    <button class="primary" id="btnAddAccount">Create account</button>
-                  </div>
-                  <div class="status-bar" id="accountStatus"></div>
-                </div>
-              </div>
-            </div>
-
-            <div id="tab-settings" style="display:none;">
-              <div class="section">
-                <h3>Settings</h3>
-                <div class="section-inner">
-                  <div class="settings-grid" id="settingsTiles">
-                    <button class="setting-tile" data-setting-target="membership-designer">
-                      <strong>Memberships</strong>
-                      <span>Create and update plans</span>
-                    </button>
-                    <button class="setting-tile" data-setting-target="change-password">
-                      <strong>Change password</strong>
-                      <span>Update your login credentials</span>
-                    </button>
-                    <button class="setting-tile" data-setting-target="profile-picture">
-                      <strong>Add profile picture</strong>
-                      <span>Upload a photo for your account</span>
-                    </button>
-                    ${role === "admin" ? `<button class="setting-tile" data-setting-target="removals">
-                      <strong>Remove records</strong>
-                      <span>Delete members, workers or accounts</span>
-                    </button>` : ""}
-                  </div>
-
-                  <div class="setting-panel" id="panel-membership-designer" style="display:none;">
-                    <h4>Membership designer</h4>
-                    <p style="margin:0 0 8px; font-size:13px;">Open the membership workspace to design plans, billing cycles and perks.</p>
-                    <button class="primary" id="openMembershipDesigner">Go to memberships</button>
-                  </div>
-
-                  <div class="setting-panel" id="panel-change-password" style="display:none;">
-                    <h4>Change password</h4>
-                    <div class="form-grid">
-                      <div class="field">
-                        <label for="setting-current-password">Current password</label>
-                        <input id="setting-current-password" type="password" placeholder="Enter current password" />
-                      </div>
-                      <div class="field">
-                        <label for="setting-new-password">New password</label>
-                        <input id="setting-new-password" type="password" placeholder="Enter new password" />
-                      </div>
-                    </div>
-                    <div class="btn-row">
-                      <button class="primary" id="settingSavePassword">Update password</button>
-                    </div>
-                    <div class="status-bar" id="settingPasswordStatus"></div>
-                  </div>
-
-                  <div class="setting-panel" id="panel-profile-picture" style="display:none;">
-                    <h4>Profile picture</h4>
-                    <p style="margin:0 0 8px; font-size:13px;">Upload a clear headshot to personalize your account.</p>
-                    <input id="setting-profile-photo" type="file" accept="image/*" />
-                    <div class="btn-row">
-                      <button class="primary" id="settingSavePhoto">Save photo</button>
-                    </div>
-                    <div class="status-bar" id="settingPhotoStatus"></div>
-                  </div>
-
-                  ${role === "admin" ? `<div class="setting-panel" id="panel-removals" style="display:none;">
-                    <h4>Remove records</h4>
-                    <p style="margin:0 0 8px; font-size:13px;">Only admins can delete members, workers or other accounts. Admin accounts cannot be removed.</p>
-                    <div class="section" style="margin-top:0;">
-                      <h3 style="font-size:13px; margin:0 0 6px;">Members</h3>
-                      <div class="section-inner" id="removalMembers"></div>
-                    </div>
-                    <div class="section" style="margin-top:10px;">
-                      <h3 style="font-size:13px; margin:0 0 6px;">Workers</h3>
-                      <div class="section-inner" id="removalWorkers"></div>
-                    </div>
-                    <div class="section" style="margin-top:10px;">
-                      <h3 style="font-size:13px; margin:0 0 6px;">Accounts</h3>
-                      <div class="section-inner" id="removalAccounts"></div>
-                    </div>
-                  </div>` : ""}
-                </div>
-              </div>
-            </div>
-          </section>
-          <div id="feesModal" class="modal-backdrop" style="display:none;">
-            <div class="modal">
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                <h3>Collect fees</h3>
-                <button class="ghost" id="closeFees">Close</button>
-              </div>
-              <div class="modal-grid" style="margin-top:8px;">
-                <div class="field">
-                  <label for="feesMemberSearch">Member ID or name</label>
-                  <input id="feesMemberSearch" placeholder="Start typing to search" />
-                  <div class="search-results" id="feesSearchResults" style="display:none;"></div>
-                </div>
-                <div class="fees-summary" id="feesMemberSummary">Select a member to see dues.</div>
-                <div class="field">
-                  <label for="feesAmount">Amount received</label>
-                  <input id="feesAmount" type="number" min="0" placeholder="e.g. 2000" />
-                  <small>Used to validate months covered by the payment.</small>
-                </div>
-                <div class="field">
-                  <label for="feesMonthSelect">Months to clear</label>
-                  <select id="feesMonthSelect"></select>
-                  <small>Options are limited to the member’s pending months.</small>
-                </div>
-                <div class="status-bar" id="feesStatus"></div>
-              </div>
-              <div class="modal-actions">
-                <button class="secondary" id="resetFees">Reset</button>
-                <button class="primary" id="submitFees">Submit payment</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-      <script>
-        var CURRENT_ROLE = "${role}";
-        var navItems = document.querySelectorAll(".nav-item");
-        var tabs = {
-          attendance: document.getElementById("tab-attendance"),
-          overview: document.getElementById("tab-overview"),
-          payments: document.getElementById("tab-payments"),
-          members: document.getElementById("tab-members"),
-          memberships: document.getElementById("tab-memberships"),
-          workers: document.getElementById("tab-workers"),
-          accounts: document.getElementById("tab-accounts"),
-          settings: document.getElementById("tab-settings")
-        };
-        var titles = {
-          attendance: "Attendance",
-          overview: "Overview",
-          payments: "Payments",
-          members: "Members",
-          memberships: "Memberships",
-          workers: "Workers",
-          accounts: "Accounts",
-          settings: "Settings"
-        };
-        var subtitles = {
-          attendance: "Check in members and view daily attendance",
-          overview: "Quick snapshot of your gym",
-          payments: "Collect fees and clear dues",
-          members: "Member list, photos and due status",
-          memberships: "Configure plans and pricing",
-          workers: "Manage trainers and staff",
-          accounts: "Who can log in and manage",
-          settings: "Basic gym configuration"
-        };
-        var initialTab = CURRENT_ROLE === "admin" ? "overview" : "attendance";
-        var panelTitle = document.getElementById("panelTitle");
-        var panelSubtitle = document.getElementById("panelSubtitle");
-        var gymLabel = document.getElementById("gymLabel");
-        var attendanceResults = document.getElementById("attendanceResults");
-        var attendanceSelected = document.getElementById("attendanceSelected");
-        var attendanceStatus = document.getElementById("attendanceStatus");
-        var attendanceInput = document.getElementById("attendanceId");
-        var attendanceBody = document.getElementById("attendanceTbody");
-        var attendanceOverviewBody = document.getElementById("attendanceOverviewBody");
-        var attendanceButton = document.getElementById("submitAttendance");
-        var memberListEl = document.getElementById("memberList");
-        var memberStatusEl = document.getElementById("memberStatus");
-        var memberPhotoInput = document.getElementById("member-photo");
-        var paymentsTableBody = document.getElementById("paymentsTableBody");
-        var feesModal = document.getElementById("feesModal");
-        var feesMemberSearch = document.getElementById("feesMemberSearch");
-        var feesSearchResults = document.getElementById("feesSearchResults");
-        var feesMemberSummary = document.getElementById("feesMemberSummary");
-        var feesAmountInput = document.getElementById("feesAmount");
-        var feesMonthSelect = document.getElementById("feesMonthSelect");
-        var feesStatus = document.getElementById("feesStatus");
-        var openFeesBtn = document.getElementById("openFees");
-        var closeFeesBtn = document.getElementById("closeFees");
-        var resetFeesBtn = document.getElementById("resetFees");
-        var submitFeesBtn = document.getElementById("submitFees");
-        var memberPlanSelect = document.getElementById("member-plan");
-
-        function createAvatar(name) {
-          var initial = (name || "?").trim().charAt(0).toUpperCase() || "?";
-          var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">' +
-            '<rect width="72" height="72" rx="14" fill="%23e0e7ff" />' +
-            '<text x="50%" y="56%" text-anchor="middle" fill="%233b82f6" font-family="Arial" font-size="32" font-weight="700">' + initial + '</text>' +
-            '</svg>';
-          return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-        }
-
-        var membersData = [];
-        var workerData = [];
-        var accountData = [];
-        var plansData = [];
-        var nextMemberId = 1;
-        var attendanceRecords = [];
-        var selectedMemberId = null;
-        var selectedFeesMemberId = null;
-        var pendingPhotoData = null;
-
-        function populatePlanSelect() {
-          if (!memberPlanSelect) return;
-          var options = '<option value="">No plan linked</option>';
-          plansData.forEach(function(plan) {
-            options += '<option value="' + plan.id + '">' + plan.name + ' (' + plan.billing_cycle + ')</option>';
-          });
-          memberPlanSelect.innerHTML = options;
-        }
-
-        function dueSummary(member) {
-          var dueLine = member.dueMonths > 0 ? member.dueMonths + " month(s) due" : "No dues";
-          var statusLine = member.dueMonths > 0 ? "Payment pending" : "Payment clear";
-          if (member.paymentNote) {
-            statusLine = member.paymentNote;
-          }
-          return { dueLine: dueLine, statusLine: statusLine };
-        }
-
-        function monthlyPrice(member) {
-          var price = Number(member.planPrice || 0);
-          var billing = (member.planBilling || "monthly").toLowerCase();
-          if (!price) return 0;
-          if (billing === "monthly") return price;
-          if (billing === "weekly") return price * 4;
-          if (billing === "daily") return price * 30;
-          if (billing === "yearly") return price / 12;
-          return price;
-        }
-
-        function estimatedDue(member) {
-          var unit = monthlyPrice(member);
-          return Math.max(0, Math.round(unit * member.dueMonths));
-        }
-
-        function renderMemberList() {
-          if (!memberListEl) return;
-          if (!membersData.length) {
-            memberListEl.innerHTML = '<div class="list-row"><span>No members yet</span></div>';
-            return;
-          }
-          var html = '<div class="member-grid">' +
-            membersData.map(function(m) {
-              var summary = dueSummary(m);
-              return (
-                '<div class="member-card">' +
-                  '<img class="avatar-small" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
-                  '<div style="flex:1; min-width:0;">' +
-                    '<div style="font-weight:700; font-size:13px;">#' + m.id + ' · ' + m.name + '</div>' +
-                    '<div style="color:#475569; font-size:12px;">' + m.phone + '</div>' +
-                    '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:4px;">' +
-                      '<span class="pill-soft ' + (m.dueMonths > 0 ? 'orange' : 'green') + '">' + summary.dueLine + '</span>' +
-                      '<span class="pill-soft blue">' + summary.statusLine + '</span>' +
-                      (m.planName ? '<span class="pill-soft">' + m.planName + '</span>' : '') +
-                    '</div>' +
-                  '</div>' +
-                  '<div class="member-actions">' +
-                    (CURRENT_ROLE === "admin" ? '<button class="ghost-danger" data-remove-member="' + m.id + '">Delete</button>' : "") +
-                  '</div>' +
-                '</div>'
-              );
-            }).join("") +
-          '</div>';
-          memberListEl.innerHTML = html;
-          var removeButtons = memberListEl.querySelectorAll('[data-remove-member]');
-          removeButtons.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-              var id = Number(btn.getAttribute('data-remove-member'));
-              fetch('/api/admin/member/' + id, { method: 'DELETE' })
-                .then(function(res) {
-                  return res.json().then(function(data) { return { ok: res.ok, data: data }; });
-                })
-                .then(function(result) {
-                  if (!result.ok) throw new Error(result.data.error || 'Failed to remove');
-                  loadBootstrap();
-                })
-                .catch(function(err) {
-                  if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not remove member';
-                });
-            });
-          });
-
-          var removalMembers = document.getElementById("removalMembers");
-          if (removalMembers) {
-            if (!membersData.length) {
-              removalMembers.innerHTML = '<div class="list-row"><span>No members to remove</span></div>';
-            } else {
-              removalMembers.innerHTML = membersData
-                .map(function(m) {
-                  return (
-                    '<div class="list-row">' +
-                    '<span>#' + m.id + ' · ' + m.name + '</span>' +
-                    '<button class="ghost-danger" data-remove-member="' + m.id + '">Remove</button>' +
-                    '</div>'
-                  );
-                })
-                .join("");
-            }
-
-            var removalButtons = removalMembers.querySelectorAll('[data-remove-member]');
-            removalButtons.forEach(function(btn) {
-              btn.addEventListener('click', function() {
-                var id = Number(btn.getAttribute('data-remove-member'));
-                fetch('/api/admin/member/' + id, { method: 'DELETE' })
-                  .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
-                  .then(function(result) {
-                    if (!result.ok) throw new Error(result.data.error || 'Failed to remove');
-                    loadBootstrap();
-                  })
-                  .catch(function(err) {
-                    if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not remove member';
-                  });
-              });
-            });
-          }
-        }
-
-        function renderPaymentsTable() {
-          if (!paymentsTableBody) return;
-          if (!membersData.length) {
-            paymentsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#6b7280;">No members yet</td></tr>';
-            return;
-          }
-          var sorted = membersData.slice().sort(function(a, b) {
-            if (b.dueMonths !== a.dueMonths) return b.dueMonths - a.dueMonths;
-            return a.id - b.id;
-          });
-          paymentsTableBody.innerHTML = sorted.map(function(m) {
-            var summary = dueSummary(m);
-            var dueAmount = estimatedDue(m);
-            var statusClass = m.dueMonths > 0 ? 'badge-soft due' : 'badge-soft clear';
-            var planLabel = m.planName ? m.planName + (m.planBilling ? ' • ' + m.planBilling : '') : 'No plan linked';
-            return (
-              '<tr class="' + (m.dueMonths > 0 ? 'highlight' : '') + '">' +
-              '<td>#' + m.id + '</td>' +
-              '<td>' + m.name + '<br /><small style="color:#475569;">' + (m.phone || 'No phone') + '</small></td>' +
-              '<td>' + planLabel + '</td>' +
-              '<td>' + m.dueMonths + '</td>' +
-              '<td>' + (dueAmount ? dueAmount : '0') + '</td>' +
-              '<td><span class="' + statusClass + '">' + summary.dueLine + '</span></td>' +
-              '</tr>'
-            );
-          }).join("");
-        }
-
-        function resetFeesForm() {
-          selectedFeesMemberId = null;
-          if (feesMemberSearch) feesMemberSearch.value = '';
-          if (feesAmountInput) feesAmountInput.value = '';
-          if (feesMonthSelect) {
-            feesMonthSelect.innerHTML = '';
-            feesMonthSelect.disabled = false;
-          }
-          if (feesMemberSummary) feesMemberSummary.textContent = 'Select a member to see dues.';
-          if (feesSearchResults) {
-            feesSearchResults.style.display = 'none';
-            feesSearchResults.innerHTML = '';
-          }
-          if (feesStatus) feesStatus.textContent = '';
-        }
-
-        function populateFeesMonths(member) {
-          if (!feesMonthSelect) return;
-          var due = Number(member.dueMonths || 0);
-          if (due <= 0) {
-            feesMonthSelect.innerHTML = '<option value="0">No dues to clear</option>';
-            feesMonthSelect.disabled = true;
-            return;
-          }
-          feesMonthSelect.disabled = false;
-          var options = '';
-          for (var i = 1; i <= due; i++) {
-            options += '<option value="' + i + '">' + i + (i === 1 ? ' month' : ' months') + '</option>';
-          }
-          feesMonthSelect.innerHTML = options;
-        }
-
-        function setFeesSelection(member) {
-          selectedFeesMemberId = member ? member.id : null;
-          if (!member || !feesMemberSummary) {
-            feesMemberSummary.textContent = 'Select a member to see dues.';
-            return;
-          }
-          populateFeesMonths(member);
-          var dueLine = dueSummary(member).dueLine;
-          var dueAmount = estimatedDue(member);
-          var price = monthlyPrice(member);
-          var planLine = member.planName ? member.planName + (member.planBilling ? ' • ' + member.planBilling : '') : 'No plan';
-          feesMemberSummary.innerHTML =
-            '<strong>#' + member.id + ' · ' + member.name + '</strong><br />' +
-            'Plan: ' + planLine + '<br />' +
-            dueLine + ' • Estimated due: ' + dueAmount + (price ? ' (≈' + price + ' per month)' : '');
-          if (feesAmountInput) {
-            feesAmountInput.value = dueAmount ? String(dueAmount) : '';
-          }
-        }
-
-        function updateFeesSearch(query) {
-          if (!feesSearchResults) return;
-          var term = (query || '').toString().toLowerCase();
-          if (!term.trim()) {
-            feesSearchResults.style.display = 'none';
-            feesSearchResults.innerHTML = '';
-            return;
-          }
-          var filtered = membersData.filter(function(m) {
-            return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
-          }).slice(0, 8);
-          feesSearchResults.style.display = '';
-          if (!filtered.length) {
-            feesSearchResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
-            return;
-          }
-          feesSearchResults.innerHTML = filtered.map(function(m) {
-            var summary = dueSummary(m);
-            return (
-              '<div class="search-item" data-fees-id="' + m.id + '">' +
-              '<img class="search-avatar" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
-              '<div class="search-lines">' +
-              '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
-              '<small>' + summary.dueLine + ' • ' + (m.planName || 'No plan') + '</small>' +
-              '</div>' +
-              '</div>'
-            );
-          }).join('');
-
-          var items = feesSearchResults.querySelectorAll('[data-fees-id]');
-          items.forEach(function(item) {
-            item.addEventListener('click', function() {
-              var id = Number(item.getAttribute('data-fees-id'));
-              var m = membersData.find(function(mem) { return mem.id === id; });
-              setFeesSelection(m || null);
-              if (feesSearchResults) feesSearchResults.style.display = 'none';
-            });
-          });
-        }
-
-        function renderAttendanceTables() {
-          var bodies = [attendanceBody, attendanceOverviewBody];
-          bodies.forEach(function(body) {
-            if (!body) return;
-            if (!attendanceRecords.length) {
-              body.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#6b7280;">No attendance yet</td></tr>';
-              return;
-            }
-            body.innerHTML = attendanceRecords.map(function(row) {
-              var badge = row.dueMonths > 0 ? '<span class="badge-due">' + row.dueMonths + ' due</span>' : '<span class="badge-clear">Clear</span>';
-              return '<tr>' +
-                '<td>#' + row.memberId + '</td>' +
-                '<td style="display:flex; align-items:center; gap:8px;">' +
-                  '<img class="avatar-small" src="' + row.avatar + '" alt="" />' +
-                  '<div>' + row.name + '<div style="color:#475569; font-size:11px;">' + row.note + '</div></div>' +
-                '</td>' +
-                '<td>' + badge + '</td>' +
-                '<td>' + row.time + '</td>' +
-              '</tr>';
-            }).join("");
-          });
-        }
-
-        function renderWorkerListFromState() {
-          var workerList = document.getElementById("workerList");
-          if (!workerList) return;
-          if (!workerData.length) {
-            workerList.innerHTML = '<div class="list-row"><span>No workers yet</span></div>';
-            return;
-          }
-          workerList.innerHTML = workerData
-            .map(function(w) {
-              var removeBtn = CURRENT_ROLE === "admin" ? '<button class="ghost-danger" data-remove-worker="' +
-                w.id +
-                '">Remove</button>' : "";
-              return (
-                '<div class="list-row">' +
-                '<span>' + w.full_name + '</span>' +
-                '<span style="display:flex; align-items:center; gap:6px;">' +
-                '<span class="pill-soft">' +
-                w.role +
-                " • " +
-                (w.duty_start || "--:--") +
-                "-" +
-                (w.duty_end || "--:--") +
-                '</span>' +
-                removeBtn +
-                '</span>' +
-                '</div>'
-              );
-            })
-            .join("");
-
-          var workerRemoveButtons = workerList.querySelectorAll('[data-remove-worker]');
-          workerRemoveButtons.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-              var id = Number(btn.getAttribute('data-remove-worker'));
-              workerData = workerData.filter(function(w) { return w.id !== id; });
-              renderWorkerListFromState();
-            });
-          });
-
-          var removalWorkers = document.getElementById("removalWorkers");
-          if (removalWorkers) {
-            if (!workerData.length) {
-              removalWorkers.innerHTML = '<div class="list-row"><span>No workers to remove</span></div>';
-            } else {
-              removalWorkers.innerHTML = workerData
-                .map(function(w) {
-                  return (
-                    '<div class="list-row">' +
-                    '<span>' + (w.full_name || w.name || "Worker") + '</span>' +
-                    '<button class="ghost-danger" data-remove-worker="' + w.id + '">Remove</button>' +
-                    '</div>'
-                  );
-                })
-                .join("");
-
-              var removalButtons = removalWorkers.querySelectorAll('[data-remove-worker]');
-              removalButtons.forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                  var id = Number(btn.getAttribute('data-remove-worker'));
-                  workerData = workerData.filter(function(w) { return w.id !== id; });
-                  renderWorkerListFromState();
-                });
-              });
-            }
-          }
-        }
-
-        function renderAccountListFromState() {
-          var accountList = document.getElementById("accountList");
-          if (!accountList) return;
-          if (!accountData.length) {
-            accountList.innerHTML = '<div class="list-row"><span>No accounts yet</span></div>';
-            return;
-          }
-          accountList.innerHTML = accountData
-            .map(function(a) {
-              var isAdmin = (a.role || "").toLowerCase() === "admin";
-              var removeBtn = CURRENT_ROLE === "admin" && !isAdmin ? '<button class="ghost-danger" data-remove-account="' +
-                a.id +
-                '">Remove</button>' : "";
-              return (
-                '<div class="list-row">' +
-                '<span>' + a.full_name + ' (' + (a.email || "no email") + ')</span>' +
-                '<span style="display:flex; align-items:center; gap:6px;">' +
-                '<span class="pill-soft green">' + a.role + '</span>' +
-                removeBtn +
-                '</span>' +
-                '</div>'
-              );
-            })
-            .join("");
-
-          var accountRemoveButtons = accountList.querySelectorAll('[data-remove-account]');
-          accountRemoveButtons.forEach(function(btn) {
-            btn.addEventListener('click', function() {
-              var id = Number(btn.getAttribute('data-remove-account'));
-              accountData = accountData.filter(function(a) { return a.id !== id; });
-              renderAccountListFromState();
-            });
-          });
-
-          var removalAccounts = document.getElementById("removalAccounts");
-          if (removalAccounts) {
-            if (!accountData.length) {
-              removalAccounts.innerHTML = '<div class="list-row"><span>No accounts to remove</span></div>';
-            } else {
-              removalAccounts.innerHTML = accountData
-                .map(function(a) {
-                  var isAdmin = (a.role || "").toLowerCase() === "admin";
-                  var button = isAdmin ? '<span class="pill-soft">Admin protected</span>' : '<button class="ghost-danger" data-remove-account="' + a.id + '">Remove</button>';
-                  return (
-                    '<div class="list-row">' +
-                    '<span>' + a.full_name + ' (' + (a.email || "no email") + ')</span>' +
-                    button +
-                    '</div>'
-                  );
-                })
-                .join("");
-
-              var removalButtons = removalAccounts.querySelectorAll('[data-remove-account]');
-              removalButtons.forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                  var id = Number(btn.getAttribute('data-remove-account'));
-                  accountData = accountData.filter(function(a) { return a.id !== id; });
-                  renderAccountListFromState();
-                });
-              });
-            }
-          }
-        }
-
-        function updateSearchResults(query) {
-          if (!attendanceResults) return;
-          var term = (query || "").toString().toLowerCase();
-          if (!term.trim()) {
-            attendanceResults.innerHTML = "";
-            attendanceResults.style.display = "none";
-            return;
-          }
-          var filtered = membersData.filter(function(m) {
-            return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
-          }).slice(0, 8);
-          attendanceResults.style.display = "";
-          if (!filtered.length) {
-            attendanceResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
-            return;
-          }
-          attendanceResults.innerHTML = filtered.map(function(m) {
-            var summary = dueSummary(m);
-            return (
-              '<div class="search-item" data-member-id="' + m.id + '">' +
-                '<img class="search-avatar" src="' + (m.avatar || createAvatar(m.name)) + '" alt="" />' +
-                '<div class="search-lines">' +
-                  '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
-                  '<small>' + summary.dueLine + ' • ' + summary.statusLine + '<br />' + (m.paymentNote || m.phone || '') + '</small>' +
-                '</div>' +
-              '</div>'
-            );
-          }).join("");
-          var items = attendanceResults.querySelectorAll('[data-member-id]');
-          items.forEach(function(item) {
-            item.addEventListener('click', function() {
-              var id = Number(item.getAttribute('data-member-id'));
-              selectedMemberId = id;
-              var m = membersData.find(function(mem) { return mem.id === id; });
-              if (attendanceSelected && m) {
-                attendanceSelected.textContent = 'Selected #' + m.id + ' • ' + m.name;
-              }
-            });
-          });
-        }
-
-        if (attendanceInput) {
-          updateSearchResults(attendanceInput.value);
-          attendanceInput.addEventListener('input', function(e) {
-            updateSearchResults(e.target.value || "");
-          });
-        }
-
-        function showFeesModal() {
-          resetFeesForm();
-          if (feesModal) feesModal.style.display = 'flex';
-        }
-
-        function hideFeesModal() {
-          if (feesModal) feesModal.style.display = 'none';
-        }
-
-        if (openFeesBtn) {
-          openFeesBtn.addEventListener('click', function() {
-            showFeesModal();
-          });
-        }
-
-        if (closeFeesBtn) {
-          closeFeesBtn.addEventListener('click', function() {
-            hideFeesModal();
-          });
-        }
-
-        if (resetFeesBtn) {
-          resetFeesBtn.addEventListener('click', function() {
-            resetFeesForm();
-          });
-        }
-
-        if (feesMemberSearch) {
-          updateFeesSearch(feesMemberSearch.value);
-          feesMemberSearch.addEventListener('input', function(e) {
-            updateFeesSearch(e.target.value || '');
-          });
-        }
-
-        if (submitFeesBtn) {
-          submitFeesBtn.addEventListener('click', function() {
-            if (!selectedFeesMemberId) {
-              if (feesStatus) feesStatus.textContent = 'Select a member first.';
-              return;
-            }
-            var monthsPaid = Number(feesMonthSelect && feesMonthSelect.value ? feesMonthSelect.value : 0);
-            var amountPaid = Number(feesAmountInput && feesAmountInput.value ? feesAmountInput.value : 0);
-            if (feesStatus) feesStatus.textContent = 'Submitting payment...';
-            fetch('/api/admin/record-payment', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ memberId: selectedFeesMemberId, monthsPaid: monthsPaid, amountPaid: amountPaid })
-            })
-              .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || 'Could not record payment');
-                if (feesStatus) feesStatus.textContent = 'Payment recorded';
-                hideFeesModal();
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                if (feesStatus) feesStatus.textContent = err.message || 'Unable to save payment.';
-              });
-          });
-        }
-
-        if (attendanceButton) {
-          attendanceButton.addEventListener('click', function() {
-            if (!selectedMemberId) {
-              if (attendanceStatus) attendanceStatus.textContent = "Select a member first.";
-              return;
-            }
-            var member = membersData.find(function(m) { return m.id === selectedMemberId; });
-            if (!member) {
-              if (attendanceStatus) attendanceStatus.textContent = "Member not found.";
-              return;
-            }
-            if (attendanceStatus) attendanceStatus.textContent = "Recording attendance...";
-            fetch('/api/admin/record-attendance', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ memberId: member.id })
-            })
-              .then(function(res) { return res.json().then(function(data) { return { ok: res.ok, data: data }; }); })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || 'Could not save');
-                if (attendanceStatus) attendanceStatus.textContent = "Attendance recorded for #" + member.id + ".";
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                if (attendanceStatus) attendanceStatus.textContent = err.message || 'Unable to record attendance.';
-              });
-          });
-        }
-
-        if (memberPhotoInput) {
-          memberPhotoInput.addEventListener('change', function(event) {
-            var file = event.target.files && event.target.files[0];
-            if (!file) { pendingPhotoData = null; return; }
-            var reader = new FileReader();
-            reader.onload = function(ev) { pendingPhotoData = ev.target && ev.target.result ? String(ev.target.result) : null; };
-            reader.readAsDataURL(file);
-          });
-        }
-
-        var settingTiles = document.querySelectorAll('[data-setting-target]');
-        var settingPanels = {
-          'membership-designer': document.getElementById('panel-membership-designer'),
-          'change-password': document.getElementById('panel-change-password'),
-          'profile-picture': document.getElementById('panel-profile-picture'),
-          removals: document.getElementById('panel-removals')
-        };
-
-        function showSettingPanel(target) {
-          Object.keys(settingPanels).forEach(function(key) {
-            var panel = settingPanels[key];
-            if (panel) panel.style.display = key === target ? '' : 'none';
-          });
-        }
-
-        settingTiles.forEach(function(tile) {
-          tile.addEventListener('click', function() {
-            var target = tile.getAttribute('data-setting-target');
-            if (target === 'membership-designer') {
-              switchTab('memberships');
-              return;
-            }
-            showSettingPanel(target);
-          });
-        });
-
-        var openMembershipDesigner = document.getElementById('openMembershipDesigner');
-        if (openMembershipDesigner) {
-          openMembershipDesigner.addEventListener('click', function() {
-            switchTab('memberships');
-          });
-        }
-
-        var settingSavePassword = document.getElementById('settingSavePassword');
-        if (settingSavePassword) {
-          settingSavePassword.addEventListener('click', function() {
-            var current = (document.getElementById('setting-current-password').value || '').trim();
-            var next = (document.getElementById('setting-new-password').value || '').trim();
-            var status = document.getElementById('settingPasswordStatus');
-            if (!current || !next) {
-              status.textContent = 'Provide both current and new passwords.';
-              return;
-            }
-            status.textContent = 'Password updated locally (connect API to persist).';
-          });
-        }
-
-        var settingSavePhoto = document.getElementById('settingSavePhoto');
-        if (settingSavePhoto) {
-          settingSavePhoto.addEventListener('click', function() {
-            var photo = document.getElementById('setting-profile-photo');
-            var status = document.getElementById('settingPhotoStatus');
-            if (!photo || !photo.files || !photo.files.length) {
-              status.textContent = 'Choose a photo to upload.';
-              return;
-            }
-            status.textContent = 'Photo attached. Hook up upload API to save permanently.';
-          });
-        }
-
-        var addMemberBtn = document.getElementById("btnAddMember");
-        if (addMemberBtn) {
-          addMemberBtn.addEventListener('click', function() {
-            var name = (document.getElementById('member-name').value || '').trim();
-            var phone = (document.getElementById('member-phone').value || '').trim();
-            var dueMonths = Number(document.getElementById('member-due').value || 0);
-            var planId = memberPlanSelect ? Number(memberPlanSelect.value || 0) : 0;
-            var status = (document.getElementById('member-status').value || 'clear');
-            if (!name) {
-              if (memberStatusEl) memberStatusEl.textContent = 'Name is required.';
-              return;
-            }
-            if (memberStatusEl) memberStatusEl.textContent = 'Saving member...';
-            fetch('/api/admin/add-member', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: name,
-                phone: phone,
-                dueMonths: dueMonths,
-                planId: planId || null,
-                status: status,
-                photoData: pendingPhotoData
-              })
-            })
-              .then(function(res) {
-                return res.json().then(function(data) { return { ok: res.ok, data: data }; });
-              })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || 'Failed to save member');
-                if (memberStatusEl) memberStatusEl.textContent = 'Member saved (#' + result.data.id + ').';
-                if (memberPhotoInput) memberPhotoInput.value = '';
-                pendingPhotoData = null;
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                if (memberStatusEl) memberStatusEl.textContent = err.message || 'Could not save member.';
-              });
-          });
-        }
-
-        renderMemberList();
-        renderAttendanceTables();
-        renderWorkerListFromState();
-        renderAccountListFromState();
-
-        navItems.forEach(function(item) {
-          var tab = item.getAttribute("data-tab");
-          if (CURRENT_ROLE !== "admin") {
-            if (tab === "memberships" || tab === "accounts") {
-              item.style.display = "none";
-            }
-          }
-        });
-
-        function switchTab(tab) {
-          for (var key in tabs) {
-            if (!tabs.hasOwnProperty(key)) continue;
-            tabs[key].style.display = key === tab ? "" : "none";
-          }
-          navItems.forEach(function(item) {
-            item.classList.toggle("active", item.getAttribute("data-tab") === tab);
-          });
-          panelTitle.textContent = titles[tab];
-          panelSubtitle.textContent = subtitles[tab];
-        }
-
-        navItems.forEach(function(item) {
-          item.addEventListener("click", function() {
-            var tab = item.getAttribute("data-tab");
-            switchTab(tab);
-          });
-        });
-
-        switchTab(initialTab);
-
-        document.getElementById("logoutBtn").addEventListener("click", function() {
-          fetch("/api/logout", { method: "POST" }).finally(function() {
-            window.location.href = "/";
-          });
-        });
-
-        function loadBootstrap() {
-          fetch("/api/admin/bootstrap")
-            .then(function(res) {
-              return res.json().then(function(data) {
-                return { ok: res.ok, data: data };
-              });
-            })
-            .then(function(result) {
-              if (!result.ok) throw new Error(result.data.error || "Failed");
-              var data = result.data;
-
-              if (data.gym) {
-                gymLabel.textContent =
-                  data.gym.name +
-                  " • " +
-                  data.gym.gym_type +
-                  " • " +
-                  data.gym.opening_time +
-                  "–" +
-                  data.gym.closing_time;
-              }
-
-              membersData = Array.isArray(data.members)
-                ? data.members.map(function(m) {
-                    return {
-                      id: m.id,
-                      name: m.full_name,
-                      phone: m.phone || '',
-                      dueMonths: Number(m.due_months || 0),
-                      status: m.status || 'clear',
-                      avatar: m.avatar_url ? '/media/' + m.avatar_url : createAvatar(m.full_name),
-                      paymentNote: m.payment_note || '',
-                      planId: m.membership_plan_id || null,
-                      planName: m.plan_name || '',
-                      planBilling: m.plan_billing || '',
-                      planPrice: Number(m.plan_price || 0)
-                    };
-                  })
-                : membersData;
-              nextMemberId = (membersData[membersData.length - 1]?.id || 0) + 1;
-              plansData = Array.isArray(data.plans) ? data.plans : plansData;
-              var memberCount = data.memberCount || membersData.length;
-              attendanceRecords = Array.isArray(data.attendance)
-                ? data.attendance.map(function(row) {
-                    var time = row.check_in
-                      ? new Date(row.check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                      : '';
-                    var dueMonths = Number(row.due_months || 0);
-                    var statusVal = row.member_status || 'clear';
-                    return {
-                      id: row.id,
-                      memberId: row.member_id,
-                      name: row.attendee_name,
-                      dueMonths: dueMonths,
-                      status: statusVal,
-                      avatar: row.avatar_url ? '/media/' + row.avatar_url : createAvatar(row.attendee_name),
-                      note: dueMonths > 0 ? dueMonths + ' month(s) pending' : 'Up to date',
-                      time: time
-                    };
-                  })
-                : attendanceRecords;
-              document.getElementById("metricMembers").textContent = memberCount;
-              document.getElementById("metricPlans").textContent = plansData.length || 0;
-              workerData = Array.isArray(data.workers) ? data.workers : workerData;
-              document.getElementById("metricWorkers").textContent = workerData.length || 0;
-              var note = document.getElementById("metricMembersNote");
-              if (memberCount === 0) {
-                note.textContent = "No members yet";
-              } else {
-                note.textContent = memberCount + " active member(s)";
-              }
-
-              var membershipList = document.getElementById("membershipList");
-              if (!plansData.length) {
-                membershipList.innerHTML = '<div class="list-row"><span>No plans yet</span></div>';
-              } else {
-                membershipList.innerHTML = plansData
-                  .map(function(p) {
-                    return (
-                      '<div class="list-row"><span>' +
-                      p.name +
-                      '</span><span class="pill-soft blue">' +
-                      p.billing_cycle +
-                      " • " +
-                      p.price +
-                      "</span></div>"
-                    );
-                  })
-                  .join("");
-              }
-
-              populatePlanSelect();
-
-              accountData = Array.isArray(data.accounts) ? data.accounts : accountData;
-
-              renderMemberList();
-              renderPaymentsTable();
-              renderWorkerListFromState();
-              renderAccountListFromState();
-            })
-            .catch(function(err) {
-              console.error(err);
-            });
-        }
-
-        var btnAddMembership = document.getElementById("btnAddMembership");
-        if (btnAddMembership) {
-          btnAddMembership.addEventListener("click", function() {
-            if (CURRENT_ROLE === "worker") return;
-            var name = (document.getElementById("m-name").value || "").trim();
-            var price = (document.getElementById("m-price").value || "").trim();
-            var billing = (document.getElementById("m-billing").value || "");
-            var access = (document.getElementById("m-access").value || "");
-            var perks = (document.getElementById("m-perks").value || "").trim();
-            var status = document.getElementById("membershipStatus");
-            status.textContent = "";
-            if (!name || !price) {
-              status.textContent = "Name and price are required.";
-              return;
-            }
-            fetch("/api/admin/add-membership", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: name,
-                price: Number(price),
-                billing: billing,
-                access: access,
-                perks: perks
-              })
-            })
-              .then(function(res) {
-                return res.json().then(function(data) {
-                  return { ok: res.ok, data: data };
-                });
-              })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || "Failed to add plan");
-                status.textContent = "Plan added.";
-                document.getElementById("m-name").value = "";
-                document.getElementById("m-price").value = "";
-                document.getElementById("m-perks").value = "";
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                status.textContent = err.message || "Error adding plan.";
-              });
-          });
-        }
-
-        var btnAddWorker = document.getElementById("btnAddWorker");
-        if (btnAddWorker) {
-          btnAddWorker.addEventListener("click", function() {
-            if (CURRENT_ROLE === "worker") return;
-            var name = (document.getElementById("w-name").value || "").trim();
-            var role = (document.getElementById("w-role").value || "trainer");
-            var dutyStart = (document.getElementById("w-start").value || "").trim();
-            var dutyEnd = (document.getElementById("w-end").value || "").trim();
-            var status = document.getElementById("workerStatus");
-            status.textContent = "";
-            if (!name) {
-              status.textContent = "Worker name is required.";
-              return;
-            }
-            fetch("/api/admin/add-worker", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: name,
-                role: role,
-                dutyStart: dutyStart,
-                dutyEnd: dutyEnd
-              })
-            })
-              .then(function(res) {
-                return res.json().then(function(data) {
-                  return { ok: res.ok, data: data };
-                });
-              })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || "Failed to add worker");
-                status.textContent = "Worker added.";
-                document.getElementById("w-name").value = "";
-                document.getElementById("w-start").value = "";
-                document.getElementById("w-end").value = "";
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                status.textContent = err.message || "Error adding worker.";
-              });
-          });
-        }
-
-        var btnAddAccount = document.getElementById("btnAddAccount");
-        if (btnAddAccount) {
-          btnAddAccount.addEventListener("click", function() {
-            if (CURRENT_ROLE !== "admin" && CURRENT_ROLE !== "owner") return;
-            var name = (document.getElementById("a-name").value || "").trim();
-            var email = (document.getElementById("a-email").value || "").trim();
-            var role = (document.getElementById("a-role").value || "manager");
-            var password = (document.getElementById("a-password").value || "").trim();
-            var status = document.getElementById("accountStatus");
-            status.textContent = "";
-            if (!name || !email || !password) {
-              status.textContent = "Name, email and password are required.";
-              return;
-            }
-            fetch("/api/admin/add-account", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                name: name,
-                email: email,
-                role: role,
-                password: password
-              })
-            })
-              .then(function(res) {
-                return res.json().then(function(data) {
-                  return { ok: res.ok, data: data };
-                });
-              })
-              .then(function(result) {
-                if (!result.ok) throw new Error(result.data.error || "Failed to create account");
-                status.textContent = "Account created.";
-                document.getElementById("a-name").value = "";
-                document.getElementById("a-email").value = "";
-                document.getElementById("a-password").value = "";
-                loadBootstrap();
-              })
-              .catch(function(err) {
-                status.textContent = err.message || "Error creating account.";
-              });
-          });
-        }
-
-        switchTab("overview");
-        loadBootstrap();
-      </script>
-    </body>
-  </html>`;
-  return new Response(html, {
-    headers: { "Content-Type": "text/html; charset=UTF-8", "Cache-Control": "no-store" },
-  });
-}
-
-/* ----------------------- Utils ----------------------- */
-
+// Helper to hash passwords
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(password);
@@ -2768,922 +31,881 @@ async function hashPassword(password: string): Promise<string> {
     .join("");
 }
 
+// Helper to verify passwords
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const hashed = await hashPassword(password);
   return hashed === hash;
 }
 
-function safeText(value: unknown, fallback = ""): string {
-  if (typeof value === "string") {
-    const v = value.trim();
-    return v === "" ? fallback : v;
-  }
-  return fallback;
+/* ========================================================================
+   2. HTML HEAD & STYLES (The UI System)
+   ======================================================================== */
+
+function baseHead(title: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>${title}</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --primary-soft: #eff6ff;
+      --bg-body: #f8fafc;
+      --bg-card: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --radius: 12px;
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg-body); color: var(--text-main); font-size: 14px; line-height: 1.5;
+      padding-bottom: 80px; /* Space for mobile nav */
+    }
+
+    /* Layout */
+    .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    .card { background: var(--bg-card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; margin-bottom: 16px; border: 1px solid var(--border); }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .flex { display: flex; align-items: center; gap: 10px; }
+    .flex-col { display: flex; flex-direction: column; gap: 10px; }
+    .justify-between { justify-content: space-between; }
+    .hidden { display: none !important; }
+
+    /* Typography */
+    h1, h2, h3 { margin: 0 0 10px 0; letter-spacing: -0.025em; }
+    h1 { font-size: 24px; font-weight: 800; color: var(--text-main); }
+    h2 { font-size: 18px; font-weight: 600; }
+    p { margin: 0 0 10px 0; color: var(--text-muted); }
+    .text-sm { font-size: 12px; }
+    .text-danger { color: var(--danger); }
+
+    /* Forms */
+    label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 13px; color: var(--text-main); }
+    input, select, textarea {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: #fff; font-size: 15px; transition: border-color 0.15s; appearance: none;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+
+    /* Buttons */
+    button {
+      cursor: pointer; border: none; font-weight: 600; border-radius: 8px; padding: 10px 16px;
+      font-size: 14px; transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-danger { background: #fee2e2; color: var(--danger); }
+    .btn-ghost { background: transparent; color: var(--text-muted); padding: 6px 10px; }
+    button:disabled { opacity: 0.7; cursor: not-allowed; }
+
+    /* Components */
+    .badge {
+      padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge.green { background: #dcfce7; color: #15803d; }
+    .badge.red { background: #fee2e2; color: #b91c1c; }
+    .badge.blue { background: #dbeafe; color: #1d4ed8; }
+
+    .avatar {
+      width: 40px; height: 40px; border-radius: 10px; background: var(--border); object-fit: cover;
+      display: flex; align-items: center; justify-content: center; font-weight: bold; color: var(--text-muted);
+    }
+
+    /* Navigation */
+    .navbar {
+      position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-around; padding: 10px 0; padding-bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 50; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.05);
+    }
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-muted);
+      font-size: 10px; font-weight: 600; text-decoration: none; padding: 4px 12px; border-radius: 8px;
+    }
+    .nav-item svg { width: 24px; height: 24px; }
+    .nav-item.active { color: var(--primary); background: var(--primary-soft); }
+
+    /* Desktop Sidebar Override */
+    @media (min-width: 768px) {
+      body { padding-left: 240px; padding-bottom: 0; }
+      .navbar {
+        top: 0; left: 0; bottom: 0; right: auto; width: 240px; flex-direction: column;
+        justify-content: flex-start; border-top: none; border-right: 1px solid var(--border);
+        padding: 20px 12px; gap: 8px;
+      }
+      .nav-item { flex-direction: row; font-size: 14px; padding: 12px; width: 100%; }
+      .nav-logo { margin-bottom: 24px; padding-left: 12px; }
+    }
+
+    /* Utils */
+    .toast-container { position: fixed; top: 16px; right: 16px; z-index: 100; display: flex; flex-direction: column; gap: 8px; }
+    .toast { background: #1e293b; color: white; padding: 12px 16px; border-radius: 8px; font-size: 13px; animation: slideIn 0.3s ease; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* Table */
+    .table-wrapper { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 12px; border-bottom: 1px solid var(--border); }
+    td { padding: 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+  </style>
+</head>`;
 }
 
-function safeTime(value: unknown, fallback = "00:00"): string {
-  const t = safeText(value, fallback);
-  return t || fallback;
-}
-
-function safeNumber(value: unknown, fallback = 0): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function parseDataUrl(dataUrl: string): { mime: string; bytes: Uint8Array } | null {
-  if (!dataUrl || typeof dataUrl !== "string") return null;
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return null;
-  const mime = match[1];
-  const base64 = match[2];
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return { mime, bytes };
-}
-
-function parseCookies(request: Request): Record<string, string> {
-  const cookieHeader = request.headers.get("Cookie");
-  const cookies: Record<string, string> = {};
-  if (!cookieHeader) return cookies;
-  const parts = cookieHeader.split(";");
-  for (const part of parts) {
-    const [name, ...rest] = part.split("=");
-    if (!name) continue;
-    cookies[name.trim()] = decodeURIComponent(rest.join("=").trim());
-  }
-  return cookies;
-}
-
-function getLastInsertId(result: any, entity: string): number {
-  const meta = result && result.meta;
-  const raw =
-    meta && typeof meta.last_row_id !== "undefined"
-      ? meta.last_row_id
-      : (result && (result.lastInsertRowId as any));
-  const id = Number(raw);
-  if (!Number.isFinite(id) || id <= 0) {
-    throw new Error(`Could not determine ${entity} ID from D1 result.`);
-  }
-  return id;
-}
-
-/* ----------------------- DB setup ----------------------- */
+/* ========================================================================
+   3. DATABASE SETUP & SCHEMA
+   ======================================================================== */
 
 async function setupDatabase(env: Env) {
-  if (!env.DB) throw new Error("D1 binding DB is missing from the environment.");
-
   const statements = [
+    // Gyms
     `CREATE TABLE IF NOT EXISTS gyms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      gym_type TEXT NOT NULL,
-      opening_time TEXT NOT NULL,
-      closing_time TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+      type TEXT DEFAULT 'mixed',
+      created_at TEXT DEFAULT (datetime('now'))
     )`,
+    // Accounts (Staff/Admin)
     `CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
-      role TEXT NOT NULL,
-      full_name TEXT NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('admin', 'owner', 'manager', 'worker')),
+      name TEXT NOT NULL,
       email TEXT NOT NULL,
       password_hash TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id)
+      FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE
     )`,
-    `CREATE TABLE IF NOT EXISTS workers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      gym_id INTEGER NOT NULL,
-      full_name TEXT NOT NULL,
-      role TEXT NOT NULL,
-      duty_start TEXT NOT NULL,
-      duty_end TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id)
-    )`,
-    `CREATE TABLE IF NOT EXISTS membership_plans (
+    // Membership Plans
+    `CREATE TABLE IF NOT EXISTS plans (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
       name TEXT NOT NULL,
-      price REAL NOT NULL,
-      billing_cycle TEXT NOT NULL,
-      access_scope TEXT,
-      perks TEXT,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id)
+      price INTEGER NOT NULL,
+      billing TEXT NOT NULL, 
+      FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE
     )`,
+    // Members
     `CREATE TABLE IF NOT EXISTS members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
+      plan_id INTEGER,
       full_name TEXT NOT NULL,
-      email TEXT,
       phone TEXT,
-      membership_plan_id INTEGER,
-      start_date TEXT,
-      end_date TEXT,
-      status TEXT DEFAULT 'clear',
+      status TEXT DEFAULT 'active',
+      due_date TEXT, 
       avatar_url TEXT,
-      due_months INTEGER DEFAULT 0,
-      payment_note TEXT,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id),
-      FOREIGN KEY (membership_plan_id) REFERENCES membership_plans(id)
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE,
+      FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE SET NULL
     )`,
-    `CREATE TABLE IF NOT EXISTS attendance_logs (
+    // Attendance
+    `CREATE TABLE IF NOT EXISTS attendance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
-      worker_id INTEGER,
-      member_id INTEGER,
-      attendee_name TEXT,
-      attendee_type TEXT NOT NULL,
+      member_id INTEGER NOT NULL,
       check_in TEXT NOT NULL,
-      check_out TEXT,
       status TEXT DEFAULT 'present',
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id),
-      FOREIGN KEY (worker_id) REFERENCES workers(id),
-      FOREIGN KEY (member_id) REFERENCES members(id)
+      FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
     )`,
-    `CREATE TABLE IF NOT EXISTS balance_dues (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      gym_id INTEGER NOT NULL,
-      member_name TEXT NOT NULL,
-      amount_due REAL NOT NULL,
-      due_date TEXT,
-      status TEXT DEFAULT 'unpaid',
-      updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id)
-    )`,
+    // Payments
     `CREATE TABLE IF NOT EXISTS payments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       gym_id INTEGER NOT NULL,
       member_id INTEGER NOT NULL,
-      amount_paid REAL DEFAULT 0,
-      months_cleared INTEGER DEFAULT 0,
-      previous_due_months INTEGER DEFAULT 0,
-      new_due_months INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-      FOREIGN KEY (gym_id) REFERENCES gyms(id),
-      FOREIGN KEY (member_id) REFERENCES members(id)
+      amount INTEGER NOT NULL,
+      date TEXT DEFAULT (datetime('now')),
+      note TEXT,
+      FOREIGN KEY (gym_id) REFERENCES gyms(id) ON DELETE CASCADE,
+      FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
     )`,
+    // Sessions
     `CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token TEXT PRIMARY KEY,
       account_id INTEGER NOT NULL,
-      token TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
       expires_at TEXT NOT NULL,
-      FOREIGN KEY (account_id) REFERENCES accounts(id)
-    )`,
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    )`
   ];
 
-  for (const sql of statements) {
-    await env.DB.prepare(sql).run();
-  }
+  // Enable FKs for this connection
+  await env.DB.prepare("PRAGMA foreign_keys = ON").run();
 
-  // Ensure newer columns exist when the database was created before a schema change.
-  await ensureColumn(env, "members", "avatar_url", "avatar_url TEXT");
-  await ensureColumn(env, "members", "due_months", "due_months INTEGER DEFAULT 0");
-  await ensureColumn(env, "members", "payment_note", "payment_note TEXT");
-
-  // Normalize legacy statuses to the current payment vocabulary.
-  await env.DB.prepare(
-    `UPDATE members SET status = 'clear' WHERE status = 'active' OR status IS NULL`,
-  ).run();
-}
-
-async function ensureColumn(env: Env, table: string, column: string, definition: string) {
-  const info = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
-  const hasColumn = info.results?.some((col) => col.name === column);
-  if (!hasColumn) {
-    await env.DB.prepare(`ALTER TABLE ${table} ADD COLUMN ${definition}`).run();
+  // Run schema creation
+  for (const stmt of statements) {
+    await env.DB.prepare(stmt).run();
   }
 }
 
-async function getGymCount(env: Env): Promise<number> {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS c FROM gyms").first<{ c: number }>();
-  return row?.c ?? 0;
-}
-
-/* ----------------------- Sessions ----------------------- */
-
-async function createSession(env: Env, accountId: number): Promise<string> {
-  const token = crypto.randomUUID();
-  const expires = new Date();
-  expires.setDate(expires.getDate() + 30);
-  const expiresStr = expires.toISOString();
-  await env.DB.prepare(
-    `INSERT INTO sessions (account_id, token, expires_at) VALUES (?, ?, ?)`,
-  ).bind(accountId, token, expiresStr).run();
-  return token;
-}
-
-async function getSessionAccount(
-  env: Env,
-  token: string | undefined | null,
-): Promise<{ id: number; full_name: string; role: string; gym_id: number } | null> {
-  if (!token) return null;
-  const row = await env.DB.prepare(
-    `SELECT a.id, a.full_name, a.role, a.gym_id
-     FROM sessions s
-     JOIN accounts a ON s.account_id = a.id
-     WHERE s.token = ?`,
-  ).bind(token).first<any>();
-  if (!row) return null;
-  return {
-    id: row.id,
-    full_name: row.full_name,
-    role: row.role,
-    gym_id: row.gym_id,
-  };
-}
-
-/* ----------------------- Setup handler ----------------------- */
-
-async function handleSetup(env: Env, raw: any): Promise<number> {
-  const workerCount = safeNumber(raw?.workerCount, 0);
-  const workers = Array.isArray(raw?.workers) ? raw.workers.slice(0, 50) : [];
-  const memberships = Array.isArray(raw?.memberships) ? raw.memberships.slice(0, 50) : [];
-
-  const gymName = safeText(raw?.gymName, "Gym");
-
-  const adminName = safeText(raw?.adminName, "Admin");
-  const adminEmail = safeText(raw?.adminEmail);
-  const adminPassword = safeText(raw?.adminPassword);
-
-  const ownerName = safeText(raw?.ownerName);
-  const ownerEmail = safeText(raw?.ownerEmail);
-  const ownerPassword = safeText(raw?.ownerPassword);
-
-  const managerName = safeText(raw?.managerName);
-  const managerEmail = safeText(raw?.managerEmail);
-  const managerPassword = safeText(raw?.managerPassword);
-
-  const gymType = safeText(raw?.gymType, "combined");
-  const openingTime = safeTime(raw?.openingTime, "06:00");
-  const closingTime = safeTime(raw?.closingTime, "22:00");
-
-  if (!gymName || !adminEmail || !adminPassword) {
-    throw new Error("Gym name, admin email, and admin password are required.");
-  }
-
-  // ---- INSERT GYM ----
-  const gymRes: any = await env.DB.prepare(
-    `INSERT INTO gyms (name, gym_type, opening_time, closing_time)
-     VALUES (?, ?, ?, ?)`
-  )
-    .bind(gymName, gymType, openingTime, closingTime)
-    .run();
-
-  const gymId = getLastInsertId(gymRes, "gym");
-
-  // ---- INSERT ADMIN ACCOUNT ----
-  const adminHash = await hashPassword(adminPassword);
-  const adminRes: any = await env.DB.prepare(
-    `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-     VALUES (?, 'admin', ?, ?, ?)`
-  )
-    .bind(gymId, adminName, adminEmail, adminHash)
-    .run();
-
-  const adminId = getLastInsertId(adminRes, "admin account");
-
-  // ---- OPTIONAL OWNER ----
-  if (ownerName && ownerEmail && ownerPassword) {
-    const ownerHash = await hashPassword(ownerPassword);
-    await env.DB.prepare(
-      `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-       VALUES (?, 'owner', ?, ?, ?)`
-    )
-      .bind(gymId, ownerName, ownerEmail, ownerHash)
-      .run();
-  }
-
-  // ---- OPTIONAL MANAGER ----
-  if (managerName && managerEmail && managerPassword) {
-    const managerHash = await hashPassword(managerPassword);
-    await env.DB.prepare(
-      `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-       VALUES (?, 'manager', ?, ?, ?)`
-    )
-      .bind(gymId, managerName, managerEmail, managerHash)
-      .run();
-  }
-
-  // ---- WORKERS ----
-  const workerStmt = env.DB.prepare(
-    `INSERT INTO workers (gym_id, full_name, role, duty_start, duty_end)
-     VALUES (?, ?, ?, ?, ?)`
-  );
-
-  for (let i = 0; i < workerCount; i++) {
-    const w = workers[i] ?? {};
-    const name = safeText(w?.name, `Worker ${i + 1}`);
-    const role = safeText(w?.role, "trainer");
-    const dutyStart = safeTime(w?.dutyStart, "00:00");
-    const dutyEnd = safeTime(w?.dutyEnd, "00:00");
-    await workerStmt.bind(gymId, name, role, dutyStart, dutyEnd).run();
-  }
-
-  // ---- MEMBERSHIP PLANS ----
-  const planStmt = env.DB.prepare(
-    `INSERT INTO membership_plans (gym_id, name, price, billing_cycle, access_scope, perks)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  );
-
-  for (let i = 0; i < memberships.length; i++) {
-    const p = memberships[i] ?? {};
-    const name = safeText(p?.name, `Plan ${i + 1}`);
-    const price = safeNumber(p?.price, 0);
-    const billing = safeText(p?.billing, "monthly");
-    const access = safeText(p?.access, "full");
-    const perks = safeText(p?.perks, "");
-    await planStmt.bind(gymId, name, price, billing, access, perks).run();
-  }
-
-  return adminId;
-}
-
-async function saveAvatar(env: Env, gymId: number, photoData?: string | null): Promise<string | null> {
-  if (!photoData) return null;
-  if (!env.BUCKET) return null;
-  const parsed = parseDataUrl(photoData);
-  if (!parsed) return null;
-  const key = `gyms/${gymId}/avatars/${crypto.randomUUID()}`;
-  await env.BUCKET.put(key, parsed.bytes, { httpMetadata: { contentType: parsed.mime } });
-  return key;
-}
-
-async function listMembers(env: Env, gymId: number) {
-  const res = await env.DB.prepare(
-    `SELECT m.id, m.full_name, m.phone, m.status, m.avatar_url, m.due_months, m.payment_note,
-            m.membership_plan_id, p.name AS plan_name, p.price AS plan_price, p.billing_cycle AS plan_billing
-     FROM members m
-     LEFT JOIN membership_plans p ON m.membership_plan_id = p.id
-     WHERE m.gym_id = ?
-     ORDER BY m.id DESC`,
-  )
-    .bind(gymId)
-    .all<any>();
-  return res.results || [];
-}
-
-async function listAttendance(env: Env, gymId: number) {
-  const res = await env.DB.prepare(
-    `SELECT l.id, l.member_id, l.attendee_name, l.check_in, l.status AS attendance_status,
-            m.avatar_url, m.due_months, m.status AS member_status
-     FROM attendance_logs l
-     LEFT JOIN members m ON l.member_id = m.id
-     WHERE l.gym_id = ?
-     ORDER BY l.id DESC
-     LIMIT 30`,
-  )
-    .bind(gymId)
-    .all<any>();
-  return res.results || [];
-}
-
-/* ----------------------- Admin APIs ----------------------- */
-
-async function requireSession(env: Env, request: Request) {
-  const cookies = parseCookies(request);
-  const token = cookies["gym_session"];
-  const account = await getSessionAccount(env, token);
-  if (!account) throw new Error("Unauthenticated");
-  return account;
-}
-
-async function adminBootstrap(env: Env, request: Request): Promise<Response> {
-  const account = await requireSession(env, request);
-
-  const gymRow = await env.DB.prepare(
-    `SELECT id, name, gym_type, opening_time, closing_time FROM gyms WHERE id = ?`,
-  ).bind(account.gym_id).first<any>();
-
-  const plans = await env.DB.prepare(
-    `SELECT id, name, price, billing_cycle, access_scope FROM membership_plans WHERE gym_id = ? ORDER BY id`,
-  ).bind(account.gym_id).all<any>();
-
-  const workers = await env.DB.prepare(
-    `SELECT id, full_name, role, duty_start, duty_end FROM workers WHERE gym_id = ? ORDER BY id`,
-  ).bind(account.gym_id).all<any>();
-
-  const accounts = await env.DB.prepare(
-    `SELECT id, full_name, role, email FROM accounts WHERE gym_id = ? ORDER BY role, id`,
-  ).bind(account.gym_id).all<any>();
-
-  const membersCountRow = await env.DB.prepare(
-    `SELECT COUNT(*) AS c FROM members WHERE gym_id = ?`,
-  ).bind(account.gym_id).first<{ c: number }>();
-
-  const members = await listMembers(env, account.gym_id);
-  const attendance = await listAttendance(env, account.gym_id);
-
-  return new Response(JSON.stringify({
-    gym: gymRow || null,
-    plans: plans.results || [],
-    workers: workers.results || [],
-    accounts: accounts.results || [],
-    memberCount: membersCountRow?.c ?? 0,
-    members,
-    attendance,
-  }), { headers: { "Content-Type": "application/json" } });
-}
-
-/* ----------------------- Worker entry ----------------------- */
+/* ========================================================================
+   4. WORKER HANDLER (ROUTER)
+   ======================================================================== */
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    const path = url.pathname;
-    const method = request.method;
-    const cookies = parseCookies(request);
+    await setupDatabase(env); // Ensure DB exists
 
-    await setupDatabase(env);
-
-    // --- setup (only when no gym exists) ---
-    if (method === "POST" && path === "/api/setup") {
-      try {
-        const gymCount = await getGymCount(env);
-        if (gymCount > 0) {
-          return new Response(JSON.stringify({ error: "Gym already exists." }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        const raw = await request.json();
-        const adminId = await handleSetup(env, raw);
-
-        const token = await createSession(env, Number(adminId));
-        return new Response(JSON.stringify({ message: "Gym created." }), {
-          headers: {
-            "Content-Type": "application/json",
-            "Set-Cookie": `gym_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
-          },
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({ error: (error as Error).message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // --- login ---
-    if (method === "POST" && path === "/api/login") {
-      try {
-        const body = await request.json();
-        const email = safeText(body?.email);
-        const password = safeText(body?.password);
-        if (!email || !password) {
-          return new Response(JSON.stringify({ error: "Email and password are required." }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const row = await env.DB.prepare(
-          `SELECT id, password_hash FROM accounts WHERE email = ? LIMIT 1`,
-        ).bind(email).first<any>();
-
-        if (!row) {
-          return new Response(JSON.stringify({ error: "Invalid email or password." }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const ok = await verifyPassword(password, row.password_hash);
-        if (!ok) {
-          return new Response(JSON.stringify({ error: "Invalid email or password." }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const token = await createSession(env, Number(row.id));
-        return new Response(JSON.stringify({ message: "Logged in." }), {
-          headers: {
-            "Content-Type": "application/json",
-            "Set-Cookie": `gym_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Secure`,
-          },
-        });
-      } catch (error) {
-        return new Response(JSON.stringify({ error: (error as Error).message }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // --- logout ---
-    if (method === "POST" && path === "/api/logout") {
-      const token = cookies["gym_session"];
-      if (token) {
-        await env.DB.prepare(`DELETE FROM sessions WHERE token = ?`).bind(token).run();
-      }
-      return new Response("Logged out", {
-        headers: {
-          "Set-Cookie": `gym_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`,
-        },
-      });
-    }
-
-    // --- file/media access ---
-    if (path.startsWith("/media/") && method === "GET") {
-      const key = decodeURIComponent(path.replace("/media/", ""));
-      if (!key) {
-        return new Response("Bad request", { status: 400 });
-      }
-      const obj = await env.BUCKET.get(key);
-      if (!obj) {
-        return new Response("Not found", { status: 404 });
-      }
-      return new Response(obj.body, {
-        headers: {
-          "Content-Type": obj.httpMetadata?.contentType || "application/octet-stream",
-          "Cache-Control": "public, max-age=3600",
-        },
-      });
-    }
-
-    // --- admin APIs ---
-    if (path === "/api/admin/bootstrap" && method === "GET") {
-      try {
-        return await adminBootstrap(env, request);
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: "Server error" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/add-membership" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role === "worker") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const body = await request.json();
-        const name = safeText(body?.name);
-        const price = safeNumber(body?.price, 0);
-        const billing = safeText(body?.billing, "monthly");
-        const access = safeText(body?.access, "full");
-        const perks = safeText(body?.perks);
-        if (!name) throw new Error("Name is required.");
-        await env.DB.prepare(
-          `INSERT INTO membership_plans (gym_id, name, price, billing_cycle, access_scope, perks)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        ).bind(account.gym_id, name, price, billing, access, perks).run();
-        return new Response(JSON.stringify({ message: "Membership added." }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/add-member" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role === "worker") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const body = await request.json();
-        const name = safeText(body?.name);
-        const phone = safeText(body?.phone);
-        const allowedStatuses = ["clear", "due", "partial"];
-        const statusInput = safeText(body?.status, "clear");
-        const statusVal = allowedStatuses.includes(statusInput)
-          ? statusInput
-          : "clear";
-        const dueMonths = safeNumber(body?.dueMonths, 0);
-        const planId = safeNumber(body?.planId, 0) || null;
-        if (!name) throw new Error("Name is required.");
-        const avatarKey = await saveAvatar(env, account.gym_id, body?.photoData);
-        const paymentNote = dueMonths > 0 ? `${dueMonths} month(s) due` : "Paid";
-
-        const res = await env.DB.prepare(
-          `INSERT INTO members (gym_id, full_name, phone, status, avatar_url, due_months, payment_note, membership_plan_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-        )
-          .bind(account.gym_id, name, phone, statusVal, avatarKey, dueMonths, paymentNote, planId)
-          .run();
-
-        const id = getLastInsertId(res, "member");
-        return new Response(JSON.stringify({ message: "Member added", id }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path.startsWith("/api/admin/member/") && method === "DELETE") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role !== "admin" && account.role !== "owner") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        const id = safeNumber(path.split("/").pop(), 0);
-        if (!id) throw new Error("Invalid member ID.");
-        await env.DB.prepare(
-          `DELETE FROM attendance_logs WHERE member_id = ? AND gym_id = ?`
-        ).bind(id, account.gym_id).run();
-        await env.DB.prepare(`DELETE FROM members WHERE id = ? AND gym_id = ?`)
-          .bind(id, account.gym_id)
-          .run();
-        return new Response(JSON.stringify({ message: "Member removed" }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/record-attendance" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        const body = await request.json();
-        const memberId = safeNumber(body?.memberId, 0);
-        if (!memberId) throw new Error("memberId is required");
-        const member = await env.DB.prepare(
-          `SELECT full_name, avatar_url, due_months, status FROM members WHERE id = ? AND gym_id = ?`
-        )
-          .bind(memberId, account.gym_id)
-          .first<any>();
-        if (!member) throw new Error("Member not found");
-
-        const now = new Date().toISOString();
-        const res = await env.DB.prepare(
-          `INSERT INTO attendance_logs (gym_id, worker_id, member_id, attendee_name, attendee_type, check_in, status)
-           VALUES (?, ?, ?, ?, 'member', ?, 'present')`
-        )
-          .bind(account.gym_id, account.role === "worker" ? account.id : null, memberId, member.full_name, now)
-          .run();
-
-        const id = getLastInsertId(res, "attendance");
-        return new Response(
-          JSON.stringify({
-            message: "Recorded",
-            id,
-            check_in: now,
-            attendee_name: member.full_name,
-            avatar_url: member.avatar_url,
-            due_months: member.due_months,
-            member_status: member.status,
-          }),
-          { headers: { "Content-Type": "application/json" } },
-        );
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/record-payment" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role === "worker") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const body = await request.json();
-        const memberId = safeNumber(body?.memberId, 0);
-        const monthsPaid = Math.max(0, safeNumber(body?.monthsPaid, 0));
-        const amountPaid = Math.max(0, safeNumber(body?.amountPaid, 0));
-        if (!memberId) throw new Error("memberId is required");
-
-        const member = await env.DB.prepare(
-          `SELECT m.id, m.full_name, m.due_months, m.status, m.membership_plan_id,
-                  p.price AS plan_price, p.billing_cycle AS plan_billing
-           FROM members m
-           LEFT JOIN membership_plans p ON m.membership_plan_id = p.id
-           WHERE m.id = ? AND m.gym_id = ?`
-        )
-          .bind(memberId, account.gym_id)
-          .first<any>();
-
-        if (!member) throw new Error("Member not found");
-        const currentDue = safeNumber(member?.due_months, 0);
-        if (currentDue <= 0) {
-          return new Response(JSON.stringify({ message: "Member has no dues." }), {
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const planPrice = safeNumber(member?.plan_price, 0);
-        const billing = safeText(member?.plan_billing, "monthly").toLowerCase();
-        const monthsFromAmount = (() => {
-          if (!planPrice || !amountPaid) return 0;
-          if (billing === "monthly") return Math.floor(amountPaid / planPrice);
-          if (billing === "weekly") return Math.floor((amountPaid / planPrice) * 4);
-          if (billing === "daily") return Math.floor((amountPaid / planPrice) * 30);
-          if (billing === "yearly") return Math.floor((amountPaid / planPrice) * 12);
-          return 0;
-        })();
-
-        if (amountPaid > 0 && planPrice > 0 && monthsFromAmount === 0) {
-          throw new Error("Payment amount does not cover a full billing cycle.");
-        }
-
-        let monthsToClear = monthsPaid > 0 ? monthsPaid : monthsFromAmount;
-        if (monthsFromAmount > 0 && monthsToClear > monthsFromAmount) {
-          monthsToClear = monthsFromAmount;
-        }
-        if (monthsToClear <= 0) throw new Error("Enter a valid payment amount or months to clear.");
-        monthsToClear = Math.min(monthsToClear, currentDue);
-
-        const newDueMonths = Math.max(0, currentDue - monthsToClear);
-        const newStatus = newDueMonths === 0 ? "clear" : "due";
-        const note = newDueMonths === 0 ? "Paid" : `${newDueMonths} month(s) due`;
-
-        await env.DB.prepare(
-          `UPDATE members SET due_months = ?, status = ?, payment_note = ? WHERE id = ? AND gym_id = ?`
-        )
-          .bind(newDueMonths, newStatus, note, memberId, account.gym_id)
-          .run();
-
-        await env.DB.prepare(
-          `INSERT INTO payments (gym_id, member_id, amount_paid, months_cleared, previous_due_months, new_due_months)
-           VALUES (?, ?, ?, ?, ?, ?)`
-        )
-          .bind(account.gym_id, memberId, amountPaid, monthsToClear, currentDue, newDueMonths)
-          .run();
-
-        return new Response(
-          JSON.stringify({ message: "Payment recorded", newDueMonths, cleared: monthsToClear }),
-          { headers: { "Content-Type": "application/json" } },
-        );
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/add-worker" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role === "worker") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const body = await request.json();
-        const name = safeText(body?.name);
-        const role = safeText(body?.role, "trainer");
-        const dutyStart = safeTime(body?.dutyStart, "00:00");
-        const dutyEnd = safeTime(body?.dutyEnd, "00:00");
-        if (!name) throw new Error("Name is required.");
-        await env.DB.prepare(
-          `INSERT INTO workers (gym_id, full_name, role, duty_start, duty_end)
-           VALUES (?, ?, ?, ?, ?)`,
-        ).bind(account.gym_id, name, role, dutyStart, dutyEnd).run();
-        return new Response(JSON.stringify({ message: "Worker added." }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    if (path === "/api/admin/add-account" && method === "POST") {
-      try {
-        const account = await requireSession(env, request);
-        if (account.role !== "admin" && account.role !== "owner") {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-
-        const body = await request.json();
-        const name = safeText(body?.name);
-        const email = safeText(body?.email);
-        const role = safeText(body?.role, "manager");
-        const password = safeText(body?.password);
-        if (!name || !email || !password) throw new Error("Name, email and password are required.");
-        const hash = await hashPassword(password);
-        await env.DB.prepare(
-          `INSERT INTO accounts (gym_id, role, full_name, email, password_hash)
-           VALUES (?, ?, ?, ?, ?)`,
-        ).bind(account.gym_id, role, name, email, hash).run();
-        return new Response(JSON.stringify({ message: "Account created." }), {
-          headers: { "Content-Type": "application/json" },
-        });
-      } catch (err) {
-        if ((err as Error).message === "Unauthenticated") {
-          return new Response(JSON.stringify({ error: "Unauthenticated" }), {
-            status: 401,
-            headers: { "Content-Type": "application/json" },
-          });
-        }
-        return new Response(JSON.stringify({ error: (err as Error).message }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    // --- pages ---
-    if (path === "/admin" && method === "GET") {
-      const sessionAccount = await getSessionAccount(env, cookies["gym_session"]);
-      if (!sessionAccount) {
-        return new Response("", { status: 302, headers: { Location: "/" } });
-      }
-      return renderAdminDashboard(sessionAccount.full_name, sessionAccount.role);
-    }
-
-    if (path === "/" && method === "GET") {
-      const count = await getGymCount(env);
-      if (count === 0) {
-        return renderOnboarding();
-      }
-      const sessionAccount = await getSessionAccount(env, cookies["gym_session"]);
-      if (sessionAccount) {
-        return new Response("", { status: 302, headers: { Location: "/admin" } });
-      }
+    // 4.1. PUBLIC ROUTES
+    if (url.pathname === "/" && request.method === "GET") {
+      const gymCount = await env.DB.prepare("SELECT COUNT(*) as c FROM gyms").first<any>();
+      if (!gymCount || gymCount.c === 0) return renderSetup();
+      
+      const session = await getSession(request, env);
+      if (session) return Response.redirect(url.origin + "/dashboard", 302);
       return renderLogin();
     }
 
-    return new Response("Not found", { status: 404 });
-  },
+    if (url.pathname === "/api/setup" && request.method === "POST") return handleSetup(request, env);
+    if (url.pathname === "/api/login" && request.method === "POST") return handleLogin(request, env);
+    
+    // 4.2. STATIC ASSETS (Avatars)
+    if (url.pathname.startsWith("/media/") && request.method === "GET") {
+      if (!env.BUCKET) return new Response("No storage", { status: 404 });
+      const key = url.pathname.replace("/media/", "");
+      const obj = await env.BUCKET.get(key);
+      if (!obj) return new Response("Not found", { status: 404 });
+      return new Response(obj.body, { headers: { "Content-Type": obj.httpMetadata?.contentType || "image/jpeg" } });
+    }
+
+    // 4.3. PROTECTED ROUTES (Middleware)
+    const session = await getSession(request, env);
+    if (!session) {
+      if (url.pathname.startsWith("/api/")) return json({ error: "Unauthorized" }, 401);
+      return Response.redirect(url.origin + "/", 302);
+    }
+
+    // 4.4. APP ROUTES
+    if (url.pathname === "/dashboard") return renderDashboard(session);
+    if (url.pathname === "/api/logout") return handleLogout(env, session.token);
+
+    // 4.5. API ROUTES (Data)
+    try {
+      if (url.pathname === "/api/bootstrap") return handleBootstrap(env, session);
+      if (url.pathname === "/api/member/add") return handleAddMember(request, env, session);
+      if (url.pathname === "/api/member/delete") return handleDeleteMember(request, env, session);
+      if (url.pathname === "/api/attendance/checkin") return handleCheckIn(request, env, session);
+      if (url.pathname === "/api/payment/add") return handleAddPayment(request, env, session);
+      if (url.pathname === "/api/plan/add") return handleAddPlan(request, env, session);
+      if (url.pathname === "/api/staff/add") return handleAddStaff(request, env, session);
+    } catch (e: any) {
+      return json({ error: e.message || "Server Error" }, 500);
+    }
+
+    return new Response("Not Found", { status: 404 });
+  }
 };
+
+/* ========================================================================
+   5. BACKEND CONTROLLERS
+   ======================================================================== */
+
+async function getSession(req: Request, env: Env) {
+  const cookie = req.headers.get("Cookie");
+  if (!cookie) return null;
+  const match = cookie.match(/gym_token=([^;]+)/);
+  if (!match) return null;
+  const token = match[1];
+
+  const session = await env.DB.prepare(`
+    SELECT s.token, a.id, a.gym_id, a.role, a.name, a.email 
+    FROM sessions s 
+    JOIN accounts a ON s.account_id = a.id 
+    WHERE s.token = ?
+  `).bind(token).first<any>();
+
+  if (!session) return null;
+  return session;
+}
+
+async function handleSetup(req: Request, env: Env) {
+  const body: any = await req.json();
+  const { gymName, adminName, adminEmail, adminPass } = body;
+
+  try {
+    // 1. Create Gym - Use RETURNING to get ID reliably
+    const gym = await env.DB.prepare("INSERT INTO gyms (name) VALUES (?) RETURNING id").bind(gymName).first<any>();
+    
+    // 2. Create Admin
+    const passHash = await hashPassword(adminPass);
+    const acc = await env.DB.prepare(
+      "INSERT INTO accounts (gym_id, role, name, email, password_hash) VALUES (?, 'admin', ?, ?, ?) RETURNING id"
+    ).bind(gym.id, adminName, adminEmail, passHash).first<any>();
+
+    // 3. Create Session
+    const token = crypto.randomUUID();
+    await env.DB.prepare("INSERT INTO sessions (token, account_id, expires_at) VALUES (?, ?, ?)")
+      .bind(token, acc.id, new Date(Date.now() + 86400000 * 30).toISOString()).run();
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: {
+        "Set-Cookie": `gym_token=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000`
+      }
+    });
+  } catch (e: any) {
+    return json({ error: "Setup failed: " + e.message }, 500);
+  }
+}
+
+async function handleLogin(req: Request, env: Env) {
+  const { email, password } = await req.json() as any;
+  const acc = await env.DB.prepare("SELECT * FROM accounts WHERE email = ?").bind(email).first<any>();
+  
+  if (!acc || !(await verifyPassword(password, acc.password_hash))) {
+    return json({ error: "Invalid credentials" }, 401);
+  }
+
+  const token = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO sessions (token, account_id, expires_at) VALUES (?, ?, ?)")
+    .bind(token, acc.id, new Date(Date.now() + 86400000 * 30).toISOString()).run();
+
+  return new Response(JSON.stringify({ success: true }), {
+    headers: { "Set-Cookie": `gym_token=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=2592000` }
+  });
+}
+
+async function handleLogout(env: Env, token: string) {
+  await env.DB.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+  return new Response(null, {
+    status: 302,
+    headers: { "Location": "/", "Set-Cookie": "gym_token=; Max-Age=0; Path=/" }
+  });
+}
+
+// Loads all initial data for the dashboard
+async function handleBootstrap(env: Env, session: any) {
+  const { gym_id } = session;
+  
+  // Parallel fetch for speed
+  const [members, plans, attendance, stats] = await Promise.all([
+    env.DB.prepare(`
+      SELECT m.*, p.name as plan_name, p.price as plan_price
+      FROM members m LEFT JOIN plans p ON m.plan_id = p.id 
+      WHERE m.gym_id = ? ORDER BY m.full_name ASC
+    `).bind(gym_id).all(),
+    env.DB.prepare("SELECT * FROM plans WHERE gym_id = ?").bind(gym_id).all(),
+    env.DB.prepare(`
+      SELECT a.*, m.full_name, m.avatar_url 
+      FROM attendance a JOIN members m ON a.member_id = m.id 
+      WHERE a.gym_id = ? ORDER BY a.check_in DESC LIMIT 50
+    `).bind(gym_id).all(),
+    env.DB.prepare(`
+      SELECT 
+        (SELECT count(*) FROM members WHERE gym_id = ?) as member_count,
+        (SELECT count(*) FROM attendance WHERE gym_id = ? AND date(check_in) = date('now')) as today_count
+    `).bind(gym_id, gym_id).first()
+  ]);
+
+  return json({
+    user: session,
+    members: members.results,
+    plans: plans.results,
+    attendance: attendance.results,
+    stats: stats
+  });
+}
+
+async function handleAddMember(req: Request, env: Env, session: any) {
+  const fd = await req.json() as any;
+  
+  let avatarUrl = null;
+  // Handle basic base64 image upload if provided
+  if (fd.photoData && env.BUCKET) {
+    const bin = Uint8Array.from(atob(fd.photoData.split(',')[1]), c => c.charCodeAt(0));
+    const key = `avatars/${crypto.randomUUID()}.jpg`;
+    await env.BUCKET.put(key, bin, { httpMetadata: { contentType: 'image/jpeg' }});
+    avatarUrl = key;
+  }
+
+  // Use RETURNING to get the new member immediately
+  const newMember = await env.DB.prepare(`
+    INSERT INTO members (gym_id, full_name, phone, plan_id, avatar_url, due_date)
+    VALUES (?, ?, ?, ?, ?, date('now')) RETURNING *
+  `).bind(session.gym_id, fd.name, fd.phone, fd.planId || null, avatarUrl).first();
+
+  return json({ success: true, member: newMember });
+}
+
+async function handleCheckIn(req: Request, env: Env, session: any) {
+  const { memberId } = await req.json() as any;
+  
+  // Record attendance
+  const entry = await env.DB.prepare(`
+    INSERT INTO attendance (gym_id, member_id, check_in)
+    VALUES (?, ?, datetime('now', 'localtime')) RETURNING *
+  `).bind(session.gym_id, memberId).first<any>();
+
+  // Fetch enriched data to return to UI
+  const details = await env.DB.prepare("SELECT full_name, avatar_url FROM members WHERE id = ?").bind(memberId).first<any>();
+
+  return json({ success: true, entry: { ...entry, ...details } });
+}
+
+async function handleDeleteMember(req: Request, env: Env, session: any) {
+  if (session.role !== 'admin' && session.role !== 'owner') return json({ error: "Forbidden" }, 403);
+  const { id } = await req.json() as any;
+  await env.DB.prepare("DELETE FROM members WHERE id = ? AND gym_id = ?").bind(id, session.gym_id).run();
+  return json({ success: true });
+}
+
+async function handleAddPayment(req: Request, env: Env, session: any) {
+  const { memberId, amount, months } = await req.json() as any;
+  
+  // 1. Record payment
+  await env.DB.prepare("INSERT INTO payments (gym_id, member_id, amount) VALUES (?, ?, ?)")
+    .bind(session.gym_id, memberId, amount).run();
+
+  // 2. Extend due date
+  // Logic: If due_date is in past, set to NOW + X months. If future, add X months to it.
+  const member = await env.DB.prepare("SELECT due_date FROM members WHERE id = ?").bind(memberId).first<any>();
+  let baseDate = new Date();
+  const currentDue = new Date(member.due_date);
+  
+  if (currentDue > baseDate) baseDate = currentDue; // Extend from future date
+  
+  baseDate.setMonth(baseDate.getMonth() + parseInt(months));
+  const newDueStr = baseDate.toISOString().split('T')[0];
+
+  await env.DB.prepare("UPDATE members SET due_date = ?, status = 'active' WHERE id = ?")
+    .bind(newDueStr, memberId).run();
+
+  return json({ success: true, new_due_date: newDueStr });
+}
+
+async function handleAddPlan(req: Request, env: Env, session: any) {
+  const { name, price } = await req.json() as any;
+  const plan = await env.DB.prepare("INSERT INTO plans (gym_id, name, price, billing) VALUES (?, ?, ?, 'monthly') RETURNING *")
+    .bind(session.gym_id, name, price).first();
+  return json({ success: true, plan });
+}
+
+async function handleAddStaff(req: Request, env: Env, session: any) {
+  if (session.role !== 'admin' && session.role !== 'owner') return json({ error: "Forbidden" }, 403);
+  const { name, email, password, role } = await req.json() as any;
+  const hash = await hashPassword(password);
+  
+  await env.DB.prepare("INSERT INTO accounts (gym_id, name, email, role, password_hash) VALUES (?, ?, ?, ?, ?)")
+    .bind(session.gym_id, name, email, role, hash).run();
+  
+  return json({ success: true });
+}
+
+/* ========================================================================
+   6. FRONTEND PAGES (Single File Generators)
+   ======================================================================== */
+
+function renderSetup(): Response {
+  const html = `${baseHead("Gym Setup")}
+  <body class="flex" style="justify-content: center; min-height: 100vh; background: #eff6ff;">
+    <div class="card" style="width: 100%; max-width: 400px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <div style="font-size: 40px;">🏋️</div>
+        <h1>Welcome</h1>
+        <p>Let's set up your gym system.</p>
+      </div>
+      <form id="setupForm" class="flex-col">
+        <div><label>Gym Name</label><input name="gymName" required placeholder="My Fitness Center"></div>
+        <div><label>Admin Name</label><input name="adminName" required placeholder="Your Name"></div>
+        <div><label>Admin Email</label><input name="adminEmail" type="email" required placeholder="admin@gym.com"></div>
+        <div><label>Password</label><input name="adminPass" type="password" required></div>
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Create Gym &rarr;</button>
+      </form>
+    </div>
+    <script>
+      document.getElementById('setupForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button');
+        btn.textContent = 'Creating...'; btn.disabled = true;
+        const body = Object.fromEntries(new FormData(e.target));
+        const res = await fetch('/api/setup', { method: 'POST', body: JSON.stringify(body) });
+        if(res.ok) window.location.href = '/dashboard';
+        else { alert('Error creating gym'); btn.disabled = false; btn.textContent = 'Try Again'; }
+      };
+    </script>
+  </body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+function renderLogin(): Response {
+  const html = `${baseHead("Login")}
+  <body class="flex" style="justify-content: center; min-height: 100vh; background: #f8fafc;">
+    <div class="card" style="width: 100%; max-width: 360px;">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h1 style="color: var(--primary);">Gym Login</h1>
+        <p>Sign in to manage your center</p>
+      </div>
+      <form id="loginForm" class="flex-col">
+        <div><label>Email</label><input name="email" type="email" required></div>
+        <div><label>Password</label><input name="password" type="password" required></div>
+        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 10px;">Sign In</button>
+        <p id="error" class="text-danger text-sm" style="text-align: center; display:none;">Invalid credentials</p>
+      </form>
+    </div>
+    <script>
+      document.getElementById('loginForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const body = Object.fromEntries(new FormData(e.target));
+        const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(body) });
+        if(res.ok) window.location.href = '/dashboard';
+        else document.getElementById('error').style.display = 'block';
+      };
+    </script>
+  </body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
+
+function renderDashboard(session: any): Response {
+  const html = `${baseHead("Dashboard")}
+  <body>
+    <nav class="navbar">
+      <div class="nav-logo hidden" style="display:block; font-weight:800; font-size:18px; color:var(--primary);">
+        FitManager <span style="font-size:10px; color:#64748b; display:block; font-weight:400;">${session.name}</span>
+      </div>
+      <a href="#" class="nav-item active" onclick="app.nav('home')">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+        Home
+      </a>
+      <a href="#" class="nav-item" onclick="app.nav('members')">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+        Members
+      </a>
+      <a href="#" class="nav-item" onclick="app.nav('checkin')">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        Check-In
+      </a>
+      <a href="/api/logout" class="nav-item" style="color:var(--danger)">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+        Logout
+      </a>
+    </nav>
+
+    <div class="container">
+      <div id="loading" style="text-align: center; padding: 40px; color: var(--text-muted);">Loading Gym Data...</div>
+      
+      <div id="view-home" class="view hidden">
+        <div class="grid">
+          <div class="card">
+            <h2>Active Members</h2>
+            <div class="flex" style="align-items: baseline;">
+              <span id="stat-members" style="font-size: 32px; font-weight: 800;">-</span>
+              <span class="text-sm">total</span>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Today's Attendance</h2>
+            <div class="flex" style="align-items: baseline;">
+              <span id="stat-today" style="font-size: 32px; font-weight: 800; color: var(--success);">-</span>
+              <span class="text-sm">check-ins</span>
+            </div>
+          </div>
+        </div>
+
+        <h3>Latest Activity</h3>
+        <div class="card" style="padding: 0;">
+          <table id="table-attendance">
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="view-members" class="view hidden">
+        <div class="flex justify-between" style="margin-bottom: 16px;">
+          <h1>Members</h1>
+          <button class="btn-primary" onclick="app.modals.addMember.open()">+ Add New</button>
+        </div>
+        <input type="text" id="search-members" placeholder="Search by name or phone..." onkeyup="app.renderMembers()" style="margin-bottom: 16px;">
+        <div class="grid" id="grid-members"></div>
+      </div>
+
+      <div id="view-checkin" class="view hidden">
+        <div class="card" style="max-width: 500px; margin: 0 auto; text-align: center;">
+          <h1>Quick Check-In</h1>
+          <p>Select a member to mark them as present.</p>
+          <input id="checkin-search" placeholder="Type member name..." style="font-size: 18px; padding: 16px; margin-bottom: 16px;">
+          <div id="checkin-results" class="flex-col" style="text-align: left;"></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="modal-add-member" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div class="card" style="width: 100%; max-width: 400px;">
+        <h2>New Member</h2>
+        <form onsubmit="app.actions.addMember(event)" class="flex-col">
+          <input name="name" required placeholder="Full Name">
+          <input name="phone" required placeholder="Phone Number">
+          <select name="planId" id="select-plan-add"><option value="">No Plan</option></select>
+          <label class="btn-secondary" style="justify-content: flex-start;">
+            📷 Upload Photo <input type="file" name="photo" accept="image/*" hidden onchange="this.previousElementSibling.textContent = '✅ Photo Selected'">
+          </label>
+          <div class="flex" style="margin-top: 10px;">
+            <button type="button" class="btn-secondary" style="flex:1" onclick="app.modals.addMember.close()">Cancel</button>
+            <button type="submit" class="btn-primary" style="flex:1">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="modal-payment" class="hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div class="card" style="width: 100%; max-width: 400px;">
+        <h2>Record Payment</h2>
+        <p id="pay-member-name"></p>
+        <form onsubmit="app.actions.addPayment(event)" class="flex-col">
+          <input type="hidden" name="memberId" id="pay-member-id">
+          <input name="amount" type="number" required placeholder="Amount Paid">
+          <select name="months" required>
+            <option value="1">1 Month</option>
+            <option value="3">3 Months</option>
+            <option value="6">6 Months</option>
+            <option value="12">1 Year</option>
+          </select>
+          <div class="flex" style="margin-top: 10px;">
+            <button type="button" class="btn-secondary" style="flex:1" onclick="document.getElementById('modal-payment').style.display='none'">Cancel</button>
+            <button type="submit" class="btn-primary" style="flex:1">Confirm</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast-container" id="toast-area"></div>
+
+    <script>
+      const app = {
+        data: { members: [], attendance: [], plans: [], stats: {} },
+        
+        init: async () => {
+          const res = await fetch('/api/bootstrap');
+          if (!res.ok) return window.location.href = '/'; // kick to login
+          const json = await res.json();
+          app.data = json;
+          document.getElementById('loading').classList.add('hidden');
+          app.renderAll();
+          app.nav('home');
+        },
+
+        nav: (viewName) => {
+          document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
+          document.getElementById('view-' + viewName).classList.remove('hidden');
+          document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+          // Simple active state logic
+          const map = { 'home':0, 'members':1, 'checkin':2 };
+          if(document.querySelectorAll('.nav-item')[map[viewName]]) 
+            document.querySelectorAll('.nav-item')[map[viewName]].classList.add('active');
+        },
+
+        toast: (msg, type = 'success') => {
+          const el = document.createElement('div');
+          el.className = 'toast';
+          el.textContent = (type === 'success' ? '✅ ' : '⚠️ ') + msg;
+          document.getElementById('toast-area').appendChild(el);
+          setTimeout(() => el.remove(), 3000);
+        },
+
+        renderAll: () => {
+          app.renderStats();
+          app.renderAttendanceTable();
+          app.renderMembers();
+          app.renderPlanSelect();
+        },
+
+        renderStats: () => {
+          document.getElementById('stat-members').textContent = app.data.stats.member_count || 0;
+          document.getElementById('stat-today').textContent = app.data.stats.today_count || 0;
+        },
+
+        renderAttendanceTable: () => {
+          const tbody = document.querySelector('#table-attendance tbody');
+          tbody.innerHTML = app.data.attendance.length ? '' : '<tr><td colspan="3" style="text-align:center">No records today</td></tr>';
+          
+          app.data.attendance.forEach(row => {
+            const time = new Date(row.check_in).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const tr = document.createElement('tr');
+            tr.innerHTML = \`
+              <td width="50"><img src="\${row.avatar_url ? '/media/'+row.avatar_url : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ddd%22/><text x=%2250%22 y=%2250%22 dy=%22.35em%22 text-anchor=%22middle%22 font-size=%2240%22>👤</text></svg>'}" class="avatar"></td>
+              <td><strong>\${row.full_name}</strong><br><span class="text-sm">\${time}</span></td>
+              <td style="text-align:right"><span class="badge green">Present</span></td>
+            \`;
+            tbody.appendChild(tr);
+          });
+        },
+
+        renderMembers: () => {
+          const q = document.getElementById('search-members').value.toLowerCase();
+          const grid = document.getElementById('grid-members');
+          grid.innerHTML = '';
+          
+          const filtered = app.data.members.filter(m => m.full_name.toLowerCase().includes(q) || (m.phone && m.phone.includes(q)));
+          
+          filtered.forEach(m => {
+            const isDue = new Date(m.due_date) < new Date();
+            const planName = m.plan_name || 'No Plan';
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = \`
+              <div class="flex justify-between">
+                <div class="flex">
+                  <img src="\${m.avatar_url ? '/media/'+m.avatar_url : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 fill=%22%23ddd%22/><text x=%2250%22 y=%2250%22 dy=%22.35em%22 text-anchor=%22middle%22 font-size=%2240%22>👤</text></svg>'}" class="avatar">
+                  <div>
+                    <div style="font-weight:700">\${m.full_name}</div>
+                    <div class="text-sm">\${m.phone || 'No Phone'}</div>
+                  </div>
+                </div>
+                <div class="badge \${isDue ? 'red' : 'green'}">\${isDue ? 'DUE' : 'PAID'}</div>
+              </div>
+              <div style="margin-top:10px; font-size:12px; color:var(--text-muted);">
+                Plan: <strong>\${planName}</strong><br>
+                Due: \${m.due_date || 'N/A'}
+              </div>
+              <div class="flex" style="margin-top:12px;">
+                <button class="btn-secondary" style="flex:1; font-size:12px" onclick="app.modals.payment.open(\${m.id})">💰 Pay</button>
+                <button class="btn-danger" style="width:auto" onclick="app.actions.deleteMember(\${m.id})">🗑️</button>
+              </div>
+            \`;
+            grid.appendChild(card);
+          });
+        },
+
+        renderPlanSelect: () => {
+          const sel = document.getElementById('select-plan-add');
+          sel.innerHTML = '<option value="">Select a Plan...</option>';
+          app.data.plans.forEach(p => {
+            sel.innerHTML += \`<option value="\${p.id}">\${p.name} - \${p.price}</option>\`;
+          });
+        },
+
+        modals: {
+          addMember: {
+            open: () => document.getElementById('modal-add-member').style.display = 'flex',
+            close: () => document.getElementById('modal-add-member').style.display = 'none'
+          },
+          payment: {
+            open: (id) => {
+              const m = app.data.members.find(x => x.id === id);
+              if(!m) return;
+              document.getElementById('pay-member-id').value = id;
+              document.getElementById('pay-member-name').textContent = 'For: ' + m.full_name;
+              document.getElementById('modal-payment').style.display = 'flex';
+            }
+          }
+        },
+
+        actions: {
+          addMember: async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.textContent = 'Saving...'; btn.disabled = true;
+
+            const fd = new FormData(e.target);
+            const data = Object.fromEntries(fd);
+            
+            // Handle Photo Base64
+            const file = fd.get('photo');
+            if (file && file.size > 0) {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = async () => {
+                data.photoData = reader.result; 
+                app.actions._submitMember(data);
+              }
+            } else {
+              app.actions._submitMember(data);
+            }
+          },
+
+          _submitMember: async (data) => {
+            const res = await fetch('/api/member/add', { method: 'POST', body: JSON.stringify(data) });
+            if (res.ok) {
+              const json = await res.json();
+              app.data.members.unshift(json.member); // Update state locally
+              app.data.stats.member_count++;
+              app.renderMembers();
+              app.renderStats();
+              app.modals.addMember.close();
+              app.toast('Member Added');
+              document.querySelector('#modal-add-member form').reset();
+            } else {
+              alert('Error adding member');
+            }
+            // Reset button
+            const btn = document.querySelector('#modal-add-member button[type="submit"]');
+            btn.textContent = 'Save'; btn.disabled = false;
+          },
+
+          deleteMember: async (id) => {
+            if(!confirm('Delete this member? History will be lost.')) return;
+            const res = await fetch('/api/member/delete', { method: 'POST', body: JSON.stringify({id}) });
+            if(res.ok) {
+              app.data.members = app.data.members.filter(m => m.id !== id);
+              app.data.stats.member_count--;
+              app.renderAll();
+              app.toast('Member deleted');
+            }
+          },
+
+          addPayment: async (e) => {
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            const res = await fetch('/api/payment/add', { method: 'POST', body: JSON.stringify(data) });
+            if(res.ok) {
+              const json = await res.json();
+              // Update local state
+              const m = app.data.members.find(x => x.id == data.memberId);
+              if(m) m.due_date = json.new_due_date;
+              app.renderMembers();
+              document.getElementById('modal-payment').style.display = 'none';
+              app.toast('Payment Recorded');
+              e.target.reset();
+            }
+          },
+
+          checkIn: async (id) => {
+            const res = await fetch('/api/attendance/checkin', { method: 'POST', body: JSON.stringify({memberId: id}) });
+            if(res.ok) {
+              const json = await res.json();
+              app.data.attendance.unshift(json.entry);
+              app.data.stats.today_count++;
+              app.renderStats();
+              app.renderAttendanceTable();
+              document.getElementById('checkin-search').value = '';
+              document.getElementById('checkin-results').innerHTML = '';
+              app.toast('Checked In: ' + json.entry.full_name);
+              app.nav('home'); // Go to dashboard to see it
+            }
+          }
+        }
+      };
+
+      // Checkin Search Logic
+      document.getElementById('checkin-search').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        const div = document.getElementById('checkin-results');
+        div.innerHTML = '';
+        if(q.length < 2) return;
+        
+        const matches = app.data.members.filter(m => m.full_name.toLowerCase().includes(q)).slice(0,5);
+        matches.forEach(m => {
+          const btn = document.createElement('div');
+          btn.style.cssText = 'padding:10px; border:1px solid #eee; margin-bottom:5px; border-radius:8px; cursor:pointer; background:white';
+          btn.innerHTML = \`<strong>\${m.full_name}</strong> <span style="font-size:12px; color:#666">\${m.phone||''}</span>\`;
+          btn.onclick = () => app.actions.checkIn(m.id);
+          div.appendChild(btn);
+        });
+      });
+
+      // Start App
+      app.init();
+    </script>
+  </body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
