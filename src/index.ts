@@ -135,7 +135,7 @@ function baseHead(title: string): string {
     .modal-content { background: white; width: 100%; max-width: 440px; padding: 24px; border-radius: 16px; animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); }
     @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Check-in suggestions */
+    /* Check-in / payment search list */
     .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:last-child { border-bottom: none; }
@@ -165,7 +165,6 @@ function baseHead(title: string): string {
    3. DATABASE SETUP (The "Fixer")
    ======================================================================== */
 
-// This function defines the Schema
 async function initDB(env: Env) {
   const q = [
     `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
@@ -224,12 +223,9 @@ export default {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
         
-        // 1. Set Config
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
         
-        // 2. Create Admin
         const hash = await hashPassword(body.password);
-        // Clear users first to be safe
         await env.DB.prepare("DELETE FROM users").run(); 
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')")
           .bind(email, hash, body.adminName).run();
@@ -256,7 +252,7 @@ export default {
         });
       }
 
-      // 4. Factory Reset API (only reachable manually, no button on login)
+      // 4. Factory Reset API (no button on login)
       if (url.pathname === "/api/nuke") {
         await factoryReset(env);
         return new Response("Database Reset Complete. Go to / to setup again.", { status: 200 });
@@ -276,7 +272,7 @@ export default {
       // Dashboard HTML
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // Live search for check-in: search by id / name / phone
+      // Live search for members (check-in / payments)
       if (url.pathname === "/api/members/search" && req.method === "POST") {
         const body = await req.json() as any;
         const qRaw = (body.query || "").toString().trim();
@@ -310,9 +306,8 @@ export default {
         return json({ results });
       }
 
-      // Data Bootstrap (Load everything at once)
+      // Data Bootstrap
       if (url.pathname === "/api/bootstrap") {
-        // Load all config
         const configRows = await env.DB.prepare("SELECT key, value FROM config").all();
         const config: Record<string, string> = {};
         for (const row of configRows.results || []) {
@@ -330,7 +325,6 @@ export default {
           membershipPlans = ["Standard", "Premium"];
         }
 
-        // Members with computed due + status
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all();
         const membersProcessed: any[] = [];
 
@@ -369,7 +363,6 @@ export default {
           });
         }
 
-        // Today's attendance (for Attendance tab + Recent on home)
         const attendanceToday = await env.DB.prepare(`
           SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
@@ -378,7 +371,6 @@ export default {
           ORDER BY a.id DESC
         `).all();
 
-        // Full history (for History tab + charts)
         const attendanceHistory = await env.DB.prepare(`
           SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date
           FROM attendance a 
@@ -386,7 +378,6 @@ export default {
           ORDER BY a.id DESC
         `).all();
         
-        // Stats from DB
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first();
 
@@ -431,13 +422,12 @@ export default {
         return json({ success: true });
       }
 
-      // Check In (now prevents multiple attendance in same day)
+      // Check In (no duplicates per day)
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
 
-        // BLOCK duplicate attendance in same day
         const alreadyToday = await env.DB.prepare(`
           SELECT id FROM attendance
           WHERE member_id = ? AND date(check_in_time) = date('now')
@@ -460,17 +450,14 @@ export default {
       if (url.pathname === "/api/payment" && req.method === "POST") {
         const { memberId, amount, months } = await req.json() as any;
         
-        // 1. Log Payment
         await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)")
           .bind(memberId, amount, new Date().toISOString()).run();
         
-        // 2. Extend Expiry
         const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
         let newDate = new Date(member.expiry_date);
-        if (newDate < new Date()) newDate = new Date(); // If expired, start from today
+        if (newDate < new Date()) newDate = new Date();
         newDate.setMonth(newDate.getMonth() + parseInt(months));
         
-        // 3. Update Member
         await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?")
           .bind(newDate.toISOString(), memberId).run();
         return json({ success: true });
@@ -480,8 +467,8 @@ export default {
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
-        await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run(); // Cleanup
-        await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); // Cleanup
+        await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
+        await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run();
         return json({ success: true });
       }
 
@@ -624,12 +611,13 @@ function renderDashboard(user: any) {
       <div class="overlay" onclick="toggleSidebar()"></div>
 
       <aside class="sidebar">
-        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.1</span></div>
+        <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.2</span></div>
         <div class="nav">
-          <div class="nav-item active" onclick="app.nav('home')">📊 Overview</div>
+          <div class="nav-item" onclick="app.nav('home')">📊 Overview</div>
           <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item" onclick="app.nav('attendance')">⏰ Today</div>
+          <div class="nav-item active" onclick="app.nav('attendance')">⏰ Today</div>
           <div class="nav-item" onclick="app.nav('history')">📜 History</div>
+          <div class="nav-item" onclick="app.nav('payments')">💵 Payments</div>
           <div class="nav-item" onclick="app.nav('settings')">⚙ Settings</div>
         </div>
         <div class="user-footer">
@@ -641,12 +629,12 @@ function renderDashboard(user: any) {
 
       <main class="main-content">
         <div class="flex-between" style="padding: 24px 24px 0 24px;">
-           <h2 id="page-title" style="margin:0;">Dashboard</h2>
+           <h2 id="page-title" style="margin:0;">Today</h2>
            <button class="btn btn-primary" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
         </div>
 
         <div style="padding: 24px;">
-          <div id="view-home">
+          <div id="view-home" class="hidden">
             <div class="stats-grid">
               <div class="stat-card">
                 <span class="stat-label">Active Members</span>
@@ -713,7 +701,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
-          <div id="view-attendance" class="hidden">
+          <div id="view-attendance">
             <div class="card">
               <h3>Today's Attendance</h3>
               <div class="table-responsive">
@@ -732,6 +720,47 @@ function renderDashboard(user: any) {
                 <table>
                   <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div id="view-payments" class="hidden">
+            <div class="card">
+              <h3>Payments & Dues</h3>
+              <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">
+                Use search below to find a member and collect fees. Members with the worst due condition are listed in the table.
+              </p>
+              <div class="stats-grid">
+                <div class="stat-card">
+                  <span class="stat-label">Members With Due</span>
+                  <span class="stat-val" id="pay-stat-due">--</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Inactive Members</span>
+                  <span class="stat-val" id="pay-stat-inactive">--</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-label">Total Due Months</span>
+                  <span class="stat-val" id="pay-stat-totaldue">--</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="flex-between" style="margin-bottom:10px;">
+                <h3 style="margin:0;">Search Member for Payment</h3>
+              </div>
+              <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:0;" onkeyup="app.onPaymentSearchInput(event)">
+              <div id="pay-search-results" class="checkin-results" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="card">
+              <h3>Worst Dues (Most Critical Members)</h3>
+              <div class="table-responsive">
+                <table>
+                  <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th><th>Due</th><th>Pay</th></tr></thead>
+                  <tbody id="tbl-dues"></tbody>
                 </table>
               </div>
             </div>
@@ -831,6 +860,7 @@ function renderDashboard(user: any) {
       const app = {
         data: null,
         searchTimeout: null,
+        paymentSearchTimeout: null,
         charts: { dues: null, attendance: null },
 
         async init() {
@@ -838,6 +868,8 @@ function renderDashboard(user: any) {
           this.data = await res.json();
           this.render();
           this.applySettingsUI();
+          // Default landing: today's attendance
+          this.nav('attendance');
         },
         
         nav(v) {
@@ -848,10 +880,11 @@ function renderDashboard(user: any) {
             if (el.textContent.includes('Members') && v === 'members') el.classList.add('active');
             if (el.textContent.includes('Today') && v === 'attendance') el.classList.add('active');
             if (el.textContent.includes('History') && v === 'history') el.classList.add('active');
+            if (el.textContent.includes('Payments') && v === 'payments') el.classList.add('active');
             if (el.textContent.includes('Settings') && v === 'settings') el.classList.add('active');
           });
           
-          ['home', 'members', 'attendance', 'history', 'settings'].forEach(id => {
+          ['home', 'members', 'attendance', 'history', 'payments', 'settings'].forEach(id => {
             const view = document.getElementById('view-'+id);
             if (view) view.classList.add('hidden');
           });
@@ -871,7 +904,12 @@ function renderDashboard(user: any) {
           document.getElementById('stat-due').innerText = this.data.stats.dueMembers || 0;
           document.getElementById('stat-inactive').innerText = this.data.stats.inactiveMembers || 0;
 
-          // Members
+          // Payment view stats
+          document.getElementById('pay-stat-due').innerText = this.data.stats.dueMembers || 0;
+          document.getElementById('pay-stat-inactive').innerText = this.data.stats.inactiveMembers || 0;
+          document.getElementById('pay-stat-totaldue').innerText = this.data.stats.totalDueMonths || 0;
+
+          // Members table
           const tbody = document.getElementById('tbl-members');
           tbody.innerHTML = (this.data.members || []).map(m => {
             let statusBadge = '<span class="badge bg-green">Active</span>';
@@ -891,6 +929,7 @@ function renderDashboard(user: any) {
             </tr>\`;
           }).join('');
 
+          // Attendance data
           const today = this.data.attendanceToday || [];
           const history = this.data.attendanceHistory || [];
 
@@ -937,6 +976,27 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
           // History tab = all
           document.getElementById('tbl-attendance-history').innerHTML = historyRows;
+
+          // Dues table (worst condition)
+          const duesTbody = document.getElementById('tbl-dues');
+          const duesMembers = (this.data.members || [])
+            .filter(m => m.dueMonths && m.dueMonths > 0)
+            .sort((a,b) => (b.dueMonths || 0) - (a.dueMonths || 0));
+          duesTbody.innerHTML = duesMembers.length ? duesMembers.map(m => {
+            const dueText = m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due';
+            let statusBadge = '<span class="badge bg-amber">Due</span>';
+            if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
+            return \`
+              <tr>
+                <td>#\${m.id}</td>
+                <td>\${m.name}</td>
+                <td>\${m.plan}</td>
+                <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
+                <td>\${statusBadge}</td>
+                <td>\${dueText}</td>
+                <td><button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button></td>
+              </tr>\`;
+          }).join('') : '<tr><td colspan="7">No dues currently.</td></tr>';
 
           this.renderCharts();
         },
@@ -1105,6 +1165,46 @@ function renderDashboard(user: any) {
           }, 200);
         },
 
+        // Payment search
+        onPaymentSearchInput(event) {
+          const val = event.target.value;
+          this.searchPayment(val);
+        },
+
+        async searchPayment(term) {
+          const box = document.getElementById('pay-search-results');
+          if (!term || !term.trim()) {
+            box.innerHTML = '';
+            return;
+          }
+
+          if (this.paymentSearchTimeout) clearTimeout(this.paymentSearchTimeout);
+          this.paymentSearchTimeout = setTimeout(async () => {
+            const res = await fetch('/api/members/search', {
+              method: 'POST',
+              body: JSON.stringify({ query: term })
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const list = data.results || [];
+            if (!list.length) {
+              box.innerHTML = '<div class="checkin-item">No matches found</div>';
+              return;
+            }
+            box.innerHTML = list.map(m => {
+              const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
+              const due = m.dueMonths == null 
+                ? '-' 
+                : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
+              return \`
+                <div class="checkin-item" onclick="app.modals.pay.open(\${m.id})">
+                  <strong>#\${m.id} · \${m.name}</strong>
+                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due} · Tap to collect payment</small>
+                </div>\`;
+            }).join('');
+          }, 200);
+        },
+
         selectCheckin(id) {
           const input = document.getElementById('checkin-id');
           input.value = id;
@@ -1182,7 +1282,7 @@ function renderDashboard(user: any) {
             open:(id)=>{
               const m = app.data.members.find(x=>x.id===id);
               document.getElementById('pay-id').value=id;
-              document.getElementById('pay-name').innerText = m ? m.name : '';
+              document.getElementById('pay-name').innerText = m ? ('Taking payment for: ' + m.name + ' (#' + m.id + ')') : '';
               document.getElementById('modal-pay').style.display='flex';
             }, 
             close:()=>document.getElementById('modal-pay').style.display='none' 
