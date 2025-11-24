@@ -1965,9 +1965,15 @@ function renderAdminDashboard(accountName: string, role: string): Response {
         function updateSearchResults(query) {
           if (!attendanceResults) return;
           var term = (query || "").toString().toLowerCase();
+          if (!term.trim()) {
+            attendanceResults.innerHTML = "";
+            attendanceResults.style.display = "none";
+            return;
+          }
           var filtered = membersData.filter(function(m) {
             return m.name.toLowerCase().includes(term) || String(m.id).includes(term);
           }).slice(0, 8);
+          attendanceResults.style.display = "";
           if (!filtered.length) {
             attendanceResults.innerHTML = '<div class="pill-outline" style="justify-content:center;">No matches</div>';
             return;
