@@ -502,8 +502,10 @@ function renderLogin(gymName: string) {
         e.preventDefault();
         try {
           const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          if(res.ok) window.location.href = '/dashboard';
-          else { const d = await res.json(); throw new Error(d.error || "Login failed"); }
+          if(res.ok) {
+            sessionStorage.removeItem('gym_view'); // Clear old session on login
+            window.location.href = '/dashboard';
+          } else { const d = await res.json(); throw new Error(d.error || "Login failed"); }
         } catch(err) { document.getElementById('error').textContent = err.message; }
       }
     </script>
@@ -849,7 +851,11 @@ function renderDashboard(user: any) {
           this.render();
           this.applySettingsUI();
           if(currentUser.role === 'admin') this.loadUsers();
-          this.nav(this.can('attendance') ? 'attendance' : 'home');
+          
+          // Load last session view OR default
+          const last = sessionStorage.getItem('gym_view');
+          if (last && this.can(last)) this.nav(last);
+          else this.nav(this.can('attendance') ? 'attendance' : 'home');
         },
         
         can(perm) { return currentUser.role === 'admin' || currentUser.permissions.includes(perm); },
@@ -857,6 +863,9 @@ function renderDashboard(user: any) {
         nav(v) {
           if (v === 'users' && currentUser.role !== 'admin') return;
           if (v !== 'users' && !this.can(v)) return alert('Access Denied');
+          
+          sessionStorage.setItem('gym_view', v); // Save view
+          
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
           document.querySelectorAll('.nav .nav-item').forEach(el => { if(el.textContent.toLowerCase().includes(v==='home'?'overview':v)) el.classList.add('active'); });
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
