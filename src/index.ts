@@ -346,6 +346,7 @@ export default {
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
         const renewalFee = parseInt(config["renewal_fee"] || "0", 10);
+        const admissionFee = parseInt(config["admission_fee"] || "0", 10);
         const currency = config["currency"] || "BDT";
         const lang = config["lang"] || "en";
         
@@ -402,7 +403,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, admissionFee }
         });
       }
 
@@ -633,6 +634,7 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind(String(body.admissionFee)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
         return json({ success: true });
       }
@@ -915,9 +917,15 @@ function renderDashboard(user: any) {
                    </div>
                 </div>
 
-                <div class="w-full">
-                   <label id="lbl-ren-fee">Renewal Fee (Global)</label>
-                   <input name="renewalFee" type="number" min="0" required>
+                <div class="flex">
+                   <div class="w-full">
+                      <label id="lbl-adm-fee">Admission Fee</label>
+                      <input name="admissionFee" type="number" min="0" required>
+                   </div>
+                   <div class="w-full">
+                      <label id="lbl-ren-fee">Renewal Fee (Global)</label>
+                      <input name="renewalFee" type="number" min="0" required>
+                   </div>
                 </div>
                 
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
@@ -1318,6 +1326,7 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-lang').innerText = t('lang');
            document.getElementById('lbl-att-th').innerText = t('att_th');
            document.getElementById('lbl-inact-th').innerText = t('inact_th');
+           document.getElementById('lbl-adm-fee').innerText = t('adm_fee');
            document.getElementById('lbl-ren-fee').innerText = t('ren_fee');
            document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
            document.getElementById('btn-add-plan').innerText = t('add_plan');
@@ -1719,6 +1728,7 @@ function renderDashboard(user: any) {
           form.querySelector('select[name="lang"]').value = s.lang || 'en';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
+          form.querySelector('input[name="admissionFee"]').value = s.admissionFee;
           form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
           
           // Render Plan List
@@ -1767,6 +1777,7 @@ function renderDashboard(user: any) {
                   lang: form.querySelector('select[name="lang"]').value,
                   attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                   inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
+                  admissionFee: form.querySelector('input[name="admissionFee"]').value,
                   renewalFee: form.querySelector('input[name="renewalFee"]').value,
                   membershipPlans: plans
                }) 
@@ -1834,7 +1845,7 @@ function renderDashboard(user: any) {
                     checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
                  }
                  
-                 return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
+                 return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';">' +
                         '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + checkedInBadge +
                         '</div>';
                }).join('');
