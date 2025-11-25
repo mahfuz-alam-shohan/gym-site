@@ -40,10 +40,14 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
 
   const now = new Date();
   
+  // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
+  // Adjust for day of month
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
@@ -631,7 +635,7 @@ function renderDashboard(user: any) {
               <h3 id="lbl-today-att">Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Result</th><th>Due / Adv</th></tr></thead>
+                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -651,7 +655,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Result</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
@@ -853,6 +857,7 @@ function renderDashboard(user: any) {
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
         
+        <!-- NEW: History Controls -->
         <div class="hist-controls">
            <div class="flex" style="align-items:center;">
               <label style="margin:0; white-space:nowrap;">Year:</label>
@@ -870,7 +875,9 @@ function renderDashboard(user: any) {
            </div>
         </div>
 
-        <div id="calendar-container" class="calendar-wrapper" style="display:block;"></div>
+        <div id="calendar-container" class="calendar-wrapper" style="display:block;">
+           <!-- Specific Calendar will go here -->
+        </div>
       </div>
     </div>
 
@@ -933,7 +940,7 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null,
+        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false,
         
         async init() {
           const res = await fetch('/api/bootstrap');
@@ -1054,7 +1061,7 @@ function renderDashboard(user: any) {
              let dueStr = '-';
              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + dueStr + '</td></tr>';
+             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
@@ -1248,7 +1255,7 @@ function renderDashboard(user: any) {
         renderHistoryTable(filterDate) {
           const list = filterDate ? (this.data.attendanceHistory || []).filter(a => a.check_in_time.startsWith(filterDate)) : (this.data.attendanceHistory || []);
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-            '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'OK':'Expired') + '</td></tr>'
+            '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
@@ -1386,15 +1393,34 @@ function renderDashboard(user: any) {
 
         /* --- ACTIONS --- */
         async checkIn() {
+          if(this.isSubmitting) return;
+          this.isSubmitting = true;
+          
+          const btn = document.getElementById('btn-sub-chk');
+          if(btn) btn.disabled = true;
+          
           const id = document.getElementById('checkin-id').value;
-          const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId:id}) });
-          const json = await res.json();
-          const div = document.getElementById('checkin-res');
-          div.innerText = json.status==='success' ? ('✅ Welcome ' + json.name) : (json.error || '⛔ Error');
-          div.style.color = json.status==='success' ? 'var(--success)' : 'var(--danger)';
-          if(json.status==='success') setTimeout(()=>location.reload(), 800);
+          
+          try {
+              const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId:id}) });
+              const json = await res.json();
+              const div = document.getElementById('checkin-res');
+              div.innerText = json.status==='success' ? ('✅ Welcome ' + json.name) : (json.error || '⛔ Error');
+              div.style.color = json.status==='success' ? 'var(--success)' : 'var(--danger)';
+              if(json.status==='success') setTimeout(()=>location.reload(), 800);
+          } catch(e) {
+              // handle network error
+          } finally {
+              this.isSubmitting = false;
+              if(btn) btn.disabled = false;
+          }
         },
         onCheckinInput(e) {
+           if (e.key === 'Enter') {
+              this.checkIn();
+              return;
+           }
+           
            const val = e.target.value;
            if(this.searchTimeout) clearTimeout(this.searchTimeout);
            this.searchTimeout = setTimeout(async ()=>{
