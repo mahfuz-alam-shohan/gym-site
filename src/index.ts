@@ -84,7 +84,7 @@ function baseHead(title: string): string {
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
     
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
-    .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
     .btn-primary { background: var(--primary); color: white; }
     .btn-primary:hover { background: var(--primary-dark); }
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
@@ -111,7 +111,7 @@ function baseHead(title: string): string {
 
     .hidden { display: none !important; }
     .flex { display: flex; align-items: center; gap: 12px; }
-    .flex-between { display: flex; justify-content: space-between; align-items: center; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
     
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -135,7 +135,7 @@ function baseHead(title: string): string {
     .plan-row input { margin-bottom: 0; }
 
     /* Calendar Styles */
-    .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; flex-wrap: wrap; }
     .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
     .cal-header { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
     .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
@@ -164,7 +164,7 @@ function baseHead(title: string): string {
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
 
-      /* Mobile Optimization for Stats Tiles */
+      /* Mobile Optimization */
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
       .stat-card { padding: 12px; border-radius: 8px; }
       .stat-val { font-size: 18px; margin-top: 2px; }
@@ -172,6 +172,10 @@ function baseHead(title: string): string {
       
       .card { padding: 16px; border-radius: 8px; }
       h2, h3 { font-size: 18px; }
+      
+      .btn { padding: 6px 10px; font-size: 11px; }
+      .flex-between { gap: 8px; }
+      input, select { font-size: 13px; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -375,15 +379,11 @@ export default {
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
         
-        // NEW: Fetch recent transactions for the payments page log
-        const recentPayments = await env.DB.prepare("SELECT p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id ORDER BY p.date DESC LIMIT 50").all<any>();
-
         return json({
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
-          recentPayments: recentPayments.results || [],
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
         });
@@ -394,6 +394,34 @@ export default {
         const history = await env.DB.prepare("SELECT check_in_time, status FROM attendance WHERE member_id = ? ORDER BY check_in_time DESC").bind(memberId).all();
         const member = await env.DB.prepare("SELECT joined_at FROM members WHERE id = ?").bind(memberId).first<any>();
         return json({ history: history.results || [], joinedAt: member?.joined_at });
+      }
+
+      if (url.pathname === "/api/payments/history" && req.method === "POST") {
+        const body = await req.json() as any;
+        let query = "SELECT p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id WHERE 1=1";
+        const params: any[] = [];
+        
+        if (body.memberId) {
+            query += " AND p.member_id = ?";
+            params.push(body.memberId);
+        }
+        
+        if (body.date) {
+            query += " AND date(p.date) = ?";
+            params.push(body.date);
+        }
+        
+        query += " ORDER BY p.date DESC LIMIT 50";
+        const res = await env.DB.prepare(query).bind(...params).all<any>();
+        
+        // If searching for a specific member, we might want their name for the modal title even if they have no payments
+        let memberName = null;
+        if(body.memberId) {
+           const m = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(body.memberId).first<any>();
+           memberName = m?.name;
+        }
+
+        return json({ transactions: res.results || [], memberName });
       }
 
       if (url.pathname === "/api/members/search" && req.method === "POST") {
@@ -684,8 +712,9 @@ function renderDashboard(user: any) {
                     <div style="font-size:12px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Total Outstanding Dues</div>
                     <div id="total-outstanding-amount" style="font-size:28px; font-weight:800; color:var(--danger); margin-top:5px;">0</div>
                   </div>
-                  <div style="text-align:right">
-                    <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print List (PDF)</button>
+                  <div style="text-align:right" class="flex" style="gap:5px;">
+                    <button class="btn btn-outline" onclick="app.openPaymentHistory()" id="btn-history">📜 History</button>
+                    <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print PDF</button>
                   </div>
                </div>
             </div>
@@ -712,17 +741,6 @@ function renderDashboard(user: any) {
                   <tbody id="tbl-payment-list"></tbody>
                 </table>
               </div>
-            </div>
-
-            <!-- RECENT TRANSACTIONS TABLE -->
-            <div class="card">
-               <h3 style="margin-bottom:15px;">Recent Transactions</h3>
-               <div class="table-responsive">
-                  <table>
-                     <thead><tr><th>Date</th><th>Name</th><th>Amount</th></tr></thead>
-                     <tbody id="tbl-recent-transactions"></tbody>
-                  </table>
-               </div>
             </div>
           </div>
 
@@ -892,7 +910,6 @@ function renderDashboard(user: any) {
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
         
-        <!-- NEW: History Controls -->
         <div class="hist-controls">
            <div class="flex" style="align-items:center;">
               <label style="margin:0; white-space:nowrap;">Year:</label>
@@ -910,9 +927,31 @@ function renderDashboard(user: any) {
            </div>
         </div>
 
-        <div id="calendar-container" class="calendar-wrapper" style="display:block;">
-           <!-- Specific Calendar will go here -->
-        </div>
+        <div id="calendar-container" class="calendar-wrapper" style="display:block;"></div>
+      </div>
+    </div>
+    
+    <!-- TRANSACTION HISTORY MODAL -->
+    <div id="modal-payment-history" class="modal-backdrop">
+      <div class="modal-content" style="max-width:700px;">
+         <div class="flex-between" style="margin-bottom:20px;">
+            <h3 id="ph-title" style="margin:0;">Transaction History</h3>
+            <button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
+         </div>
+         
+         <div class="hist-controls">
+            <div class="flex" style="align-items:center;">
+               <input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()">
+               <button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button>
+            </div>
+         </div>
+         
+         <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+            <table style="width:100%;">
+               <thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead>
+               <tbody id="tbl-transaction-history"></tbody>
+            </table>
+         </div>
       </div>
     </div>
 
@@ -933,7 +972,8 @@ function renderDashboard(user: any) {
           user_acc: "User Access", add_user: "+ Add User",
           chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
           new_mem: "New Member", create: "Create",
-          rec_pay: "💰 Receive Payment", confirm: "Confirm"
+          rec_pay: "💰 Receive Payment", confirm: "Confirm",
+          trans_hist: "📜 History"
         },
         bn: {
           dash: "ড্যাশবোর্ড", over: "সারসংক্ষেপ", mem: "সদস্যবৃন্দ", att: "উপস্থিতি", hist: "ইতিহাস", pay: "পেমেন্ট", set: "সেটিংস", user: "ব্যবহারকারী",
@@ -950,7 +990,8 @@ function renderDashboard(user: any) {
           user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
           chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
           new_mem: "নতুন সদস্য", create: "তৈরি করুন",
-          rec_pay: "💰 পেমেন্ট গ্রহণ", confirm: "নিশ্চিত করুন"
+          rec_pay: "💰 পেমেন্ট গ্রহণ", confirm: "নিশ্চিত করুন",
+          trans_hist: "📜 ইতিহাস"
         }
       };
 
@@ -980,7 +1021,7 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false,
+        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null,
         
         async init() {
           const res = await fetch('/api/bootstrap');
@@ -1059,6 +1100,7 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-search-col').innerText = t('search_col');
            document.getElementById('lbl-pay-stat').innerText = t('pay_stat');
            document.getElementById('btn-print').innerText = t('print');
+           document.getElementById('btn-history').innerText = t('trans_hist');
            
            document.getElementById('lbl-sys-set').innerText = t('sys_set');
            document.getElementById('lbl-cur').innerText = t('cur');
@@ -1105,7 +1147,6 @@ function renderDashboard(user: any) {
 
           this.renderHistoryTable(null);
           this.renderPaymentsTable(); 
-          this.renderRecentTransactions();
           this.renderCharts();
           this.updateLabels();
         },
@@ -1155,11 +1196,12 @@ function renderDashboard(user: any) {
                '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
                '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
                '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
-               '<td>' +
-                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">History</button> ' +
+               '<td><div class="flex" style="gap:4px;">' +
+                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">Attn</button> ' +
+                 '<button class="btn btn-outline" onclick="app.openPaymentHistory(' + m.id + ')" title="Payment History">$</button> ' +
                  '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
                  '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
-               '</td>' +
+               '</div></td>' +
              '</tr>';
             }).join('') || '<tr><td colspan="8">No members found.</td></tr>';
         },
@@ -1211,15 +1253,50 @@ function renderDashboard(user: any) {
             document.getElementById('total-outstanding-amount').innerText = cur + ' ' + totalOutstanding;
         },
 
-        renderRecentTransactions() {
-            const list = this.data.recentPayments || [];
-            const cur = this.data.settings.currency || 'BDT';
-            const table = document.getElementById('tbl-recent-transactions');
-            if(!list.length) { table.innerHTML = '<tr><td colspan="3" style="text-align:center">No recent transactions.</td></tr>'; return; }
+        /* --- TRANSACTION HISTORY --- */
+        async openPaymentHistory(memberId = null) {
+           this.currentHistoryMemberId = memberId;
+           document.getElementById('trans-date').value = '';
+           document.getElementById('modal-payment-history').style.display='flex';
+           this.renderTransactionHistory();
+        },
 
-            table.innerHTML = list.map(p => 
-               '<tr><td>' + formatTime(p.date) + '</td><td><strong>' + p.name + '</strong></td><td>' + cur + ' ' + p.amount + '</td></tr>'
-            ).join('');
+        async renderTransactionHistory() {
+           const date = document.getElementById('trans-date').value;
+           const memberId = this.currentHistoryMemberId;
+           const tbody = document.getElementById('tbl-transaction-history');
+           const cur = this.data.settings.currency || 'BDT';
+           
+           tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>';
+           
+           const res = await fetch('/api/payments/history', { 
+               method:'POST', 
+               body:JSON.stringify({ memberId, date }) 
+           });
+           const data = await res.json();
+           
+           // Update Title
+           const titleEl = document.getElementById('ph-title');
+           if (memberId && data.memberName) {
+               titleEl.innerText = "History: " + data.memberName;
+           } else {
+               titleEl.innerText = "Transaction History";
+           }
+           
+           const list = data.transactions || [];
+           
+           if(list.length === 0) {
+              tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No records found.</td></tr>';
+              return;
+           }
+           
+           tbody.innerHTML = list.map(p => 
+               '<tr>' +
+                  '<td>' + formatTime(p.date) + '</td>' +
+                  '<td>' + p.name + ' (#' + p.member_id + ')</td>' +
+                  '<td style="font-weight:bold; color:#10b981;">' + cur + ' ' + p.amount + '</td>' +
+               '</tr>'
+           ).join('');
         },
 
         async showHistory(id, name) {
