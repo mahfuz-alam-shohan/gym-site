@@ -2,7 +2,7 @@ import { D1Database } from "@cloudflare/workers-types";
 
 export interface Env {
   DB: D1Database;
-} 
+}
 
 /* ========================================================================
    1. UTILITIES & SECURITY
@@ -163,6 +163,15 @@ function baseHead(title: string): string {
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
+
+      /* Mobile Optimization for Stats Tiles */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+      .stat-card { padding: 12px; border-radius: 8px; }
+      .stat-val { font-size: 18px; margin-top: 2px; }
+      .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      
+      .card { padding: 16px; border-radius: 8px; }
+      h2, h3 { font-size: 18px; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
