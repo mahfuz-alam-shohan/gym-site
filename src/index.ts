@@ -206,6 +206,7 @@ export default {
         // Default plans on setup
         const defaultPlans = JSON.stringify([{name:"Standard", price:500}, {name:"Premium", price:1000}]);
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
 
         return json({ success: true });
       }
@@ -284,6 +285,7 @@ export default {
 
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
+        const currency = config["currency"] || "BDT";
         
         let membershipPlans = [];
         try {
@@ -334,7 +336,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency }
         });
       }
 
@@ -347,13 +349,25 @@ export default {
       if (url.pathname === "/api/members/search" && req.method === "POST") {
         const body = await req.json() as any;
         const qRaw = (body.query || "").toString().trim();
-        const maybeId = Number(qRaw);
+        if (!qRaw) return json({ results: [] });
+        
         let res;
-        if (!isNaN(maybeId) && maybeId > 0) {
-          res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE id = ? OR name LIKE ? OR phone LIKE ? LIMIT 10").bind(maybeId, `%${qRaw}%`, `%${qRaw}%`).all();
+        const isNumeric = /^\d+$/.test(qRaw);
+        
+        if (isNumeric) {
+           // If number is short (likely ID search)
+           if (qRaw.length < 6) {
+              // Search IDs starting with these digits (Intelligent ID search)
+              res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(`${qRaw}%`).all();
+           } else {
+              // If number is long (likely Phone search)
+              res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE phone LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
+           }
         } else {
-          res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE name LIKE ? OR phone LIKE ? LIMIT 10").bind(`%${qRaw}%`, `%${qRaw}%`).all();
+           // If text (Name search)
+           res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE name LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
         }
+        
         const results = (res.results || []).map((m: any) => ({ ...m, dueMonths: calcDueMonths(m.expiry_date) }));
         return json({ results });
       }
@@ -409,6 +423,7 @@ export default {
         const body = await req.json() as any;
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         return json({ success: true });
       }
@@ -549,7 +564,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="stat-card">
                 <span class="stat-label">Total Revenue</span>
-                <span class="stat-val" style="color:var(--success)">$<span id="stat-rev">--</span></span>
+                <span class="stat-val" style="color:var(--success)"><span id="stat-rev">--</span></span>
               </div>
               <div class="stat-card">
                 <span class="stat-label">Members With Due</span>
@@ -645,9 +660,16 @@ function renderDashboard(user: any) {
             <div class="card">
               <h3>System Settings</h3>
               <form id="settings-form" onsubmit="app.saveSettings(event)">
-                
-                <label>Attendance Threshold (Days/Month to count active)</label>
-                <input name="attendanceThreshold" type="number" min="1" max="31" required>
+                <div class="flex">
+                   <div class="w-full">
+                      <label>Currency Symbol (e.g. $, BDT, Tk)</label>
+                      <input name="currency" type="text" placeholder="BDT">
+                   </div>
+                   <div class="w-full">
+                      <label>Attendance Threshold</label>
+                      <input name="attendanceThreshold" type="number" min="1" max="31" required>
+                   </div>
+                </div>
                 
                 <label>Inactive after X months of due</label>
                 <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
@@ -863,10 +885,11 @@ function renderDashboard(user: any) {
         },
 
         render() {
+          const cur = this.data.settings.currency || 'BDT';
           if(document.getElementById('stat-active')) {
             document.getElementById('stat-active').innerText = this.data.stats.active;
             document.getElementById('stat-today').innerText = this.data.stats.today;
-            document.getElementById('stat-rev').innerText = this.data.stats.revenue;
+            document.getElementById('stat-rev').innerText = cur + ' ' + this.data.stats.revenue;
             document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
           }
 
@@ -911,14 +934,15 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
-          this.renderPaymentsTable(); // Initial render for payments
+          this.renderPaymentsTable(); 
           
           this.renderCharts();
         },
 
         renderPaymentsTable() {
            const filter = document.getElementById('pay-filter').value;
-           let list = (this.data.members || []).slice(); // Copy array
+           const cur = this.data.settings.currency || 'BDT';
+           let list = (this.data.members || []).slice(); 
 
            // Filter logic
            if (filter === 'due') {
@@ -929,18 +953,15 @@ function renderDashboard(user: any) {
               list = list.filter(m => m.dueMonths && m.dueMonths < 0);
            }
 
-           // Sort logic: Dues first (desc), then Running, then Advanced (desc abs)
            list.sort((a, b) => {
               const getWeight = (m) => {
-                 if (m.dueMonths > 0) return 3; // Top priority
-                 if (!m.dueMonths || m.dueMonths === 0) return 2; // Running
-                 return 1; // Advance
+                 if (m.dueMonths > 0) return 3; 
+                 if (!m.dueMonths || m.dueMonths === 0) return 2; 
+                 return 1; 
               };
               const wA = getWeight(a);
               const wB = getWeight(b);
-              if (wA !== wB) return wB - wA; // Higher weight first
-
-              // If weights equal, sort by magnitude of months (Secondary)
+              if (wA !== wB) return wB - wA; 
               return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
            });
 
@@ -954,11 +975,11 @@ function renderDashboard(user: any) {
                  statusHtml = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
                  infoTxt = m.dueMonths + ' Mo Due';
-                 amtTxt = '<span style="color:red; font-weight:bold">' + (m.dueMonths * price) + '</span>';
+                 amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + (m.dueMonths * price) + '</span>';
               } else if (m.dueMonths < 0) {
                  statusHtml = '<span class="badge bg-blue">Advanced</span>';
                  infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
-                 amtTxt = '<span style="color:green">+' + Math.abs(m.dueMonths * price) + '</span>'; // Showing advanced value
+                 amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
               }
 
               return '<tr>' +
@@ -994,7 +1015,7 @@ function renderDashboard(user: any) {
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
-        /* --- USER MGMT FIX --- */
+        /* --- USER MGMT --- */
         openAddUser() {
            document.getElementById('modal-user').style.display='flex'; 
            document.getElementById('user-modal-title').innerText="Add New User";
@@ -1053,10 +1074,11 @@ function renderDashboard(user: any) {
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
 
-        /* --- SETTINGS: PLANS & PRICES --- */
+        /* --- SETTINGS --- */
         applySettingsUI() {
           const s = this.data.settings;
           const form = document.getElementById('settings-form');
+          form.querySelector('input[name="currency"]').value = s.currency || 'BDT';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
           
@@ -1101,6 +1123,7 @@ function renderDashboard(user: any) {
            await fetch('/api/settings', { 
               method:'POST', 
               body:JSON.stringify({
+                 currency: form.querySelector('input[name="currency"]').value,
                  attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                  inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
                  membershipPlans: plans
@@ -1119,8 +1142,7 @@ function renderDashboard(user: any) {
            const price = this.getPlanPrice(m.plan);
            
            if (price > 0) {
-              const months = Math.floor(amount / price); // or simple division if fractional allowed
-              // Using toFixed(1) or just integer months as per prompt logic (1500/500 = 3)
+              const months = Math.floor(amount / price); 
               document.getElementById('pay-months').value = months;
            }
         },
@@ -1151,7 +1173,7 @@ function renderDashboard(user: any) {
                 }
                 
                 return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
-                       '<strong>' + m.name + '</strong> ' + statusStr + 
+                       '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + 
                        '</div>';
               }).join('');
            }, 200);
@@ -1173,7 +1195,7 @@ function renderDashboard(user: any) {
                 let dueStr = 'Active';
                 if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>' + m.name + '</strong> - ' + dueStr + '</div>';
+                return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
               }).join('');
            }, 200);
         },
