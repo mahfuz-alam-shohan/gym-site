@@ -61,7 +61,7 @@ function baseHead(title: string): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>${title}</title>
+  <title>` + title + `</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -281,12 +281,10 @@ export default {
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
         
-        // Parse plans with backward compatibility
         let membershipPlans = [];
         try {
           const raw = JSON.parse(config["membership_plans"] || '[]');
           if(Array.isArray(raw)) {
-             // Convert old array of strings to objects if needed
              if(raw.length > 0 && typeof raw[0] === 'string') {
                 membershipPlans = raw.map(p => ({name: p, price: 0}));
              } else {
@@ -347,7 +345,18 @@ export default {
       if (url.pathname === "/api/members/add" && req.method === "POST") {
         const body = await req.json() as any;
         const expiry = new Date();
+        
+        // Handle Legacy Dues
+        // If user has old dues (e.g., 3 months), subtract that from NOW.
+        // Then add the payment they are making right now (e.g., 1 month).
+        // Result: Expiry is 2 months ago (still has dues, but recorded correctly).
+        if (body.legacyDues && parseInt(body.legacyDues) > 0) {
+           expiry.setMonth(expiry.getMonth() - parseInt(body.legacyDues));
+        }
+        
+        // Add the initial payment duration
         expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
+        
         await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
         return json({ success: true });
       }
@@ -367,10 +376,16 @@ export default {
       if (url.pathname === "/api/payment" && req.method === "POST") {
         const { memberId, amount, months } = await req.json() as any;
         await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amount, new Date().toISOString()).run();
+        
         const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
         let newDate = new Date(member.expiry_date);
-        if (newDate < new Date()) newDate = new Date();
+        
+        // CONTINUOUS TIMELINE LOGIC:
+        // We DO NOT reset newDate = new Date() if expired.
+        // We just add the paid months to the existing expiry date.
+        // This correctly handles clearing old dues month-by-month.
         newDate.setMonth(newDate.getMonth() + parseInt(months));
+        
         await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?").bind(newDate.toISOString(), memberId).run();
         return json({ success: true });
       }
@@ -678,8 +693,26 @@ function renderDashboard(user: any) {
           <label>Phone Number</label><input name="phone" required>
           <div class="flex">
             <div class="w-full"><label>Plan</label><select name="plan" id="plan-select"></select></div>
-            <div class="w-full"><label>Months</label><input name="duration" type="number" value="1" required></div>
           </div>
+          
+          <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
+             <label style="margin-bottom:8px; font-weight:bold;">Payment & Dues</label>
+             <div class="flex">
+                <div class="w-full">
+                   <label>Legacy Dues (Months)</label>
+                   <input name="legacyDues" type="number" value="0" min="0">
+                </div>
+                <div class="w-full">
+                   <label>Initial Payment (Months)</label>
+                   <input name="duration" type="number" value="1" min="1" required>
+                </div>
+             </div>
+             <div style="font-size:11px; color:#6b7280; line-height:1.4;">
+               <strong>Legacy:</strong> How many months they owed <em>before</em> today.<br>
+               <strong>Initial:</strong> How many months they are paying <em>right now</em>.
+             </div>
+          </div>
+
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
             <button type="submit" class="btn btn-primary">Create</button>
@@ -695,11 +728,11 @@ function renderDashboard(user: any) {
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
           
-          <label>Extend Expiry (Months)</label>
-          <input name="months" id="pay-months" type="number" value="1" required min="1" onchange="app.calcPayAmount()">
+          <label>Amount Paid</label>
+          <input name="amount" id="pay-amount" type="number" required onkeyup="app.calcMonthsFromAmount()" onchange="app.calcMonthsFromAmount()">
           
-          <label>Amount (Auto-calculated)</label>
-          <input name="amount" id="pay-amount" type="number" required>
+          <label>Extends Expiry By (Auto-calculated)</label>
+          <input name="months" id="pay-months" type="number" readonly style="background:#f3f4f6; cursor:not-allowed;">
           
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
@@ -1009,14 +1042,19 @@ function renderDashboard(user: any) {
         },
         
         /* --- PAY AUTO-FILL --- */
-        calcPayAmount() {
+        calcMonthsFromAmount() {
            if(!this.payingMemberId) return;
            const m = this.data.members.find(x => x.id === this.payingMemberId);
            if(!m) return;
            
+           const amount = Number(document.getElementById('pay-amount').value) || 0;
            const price = this.getPlanPrice(m.plan);
-           const months = Number(document.getElementById('pay-months').value) || 1;
-           document.getElementById('pay-amount').value = price * months;
+           
+           if (price > 0) {
+              const months = Math.floor(amount / price); // or simple division if fractional allowed
+              // Using toFixed(1) or just integer months as per prompt logic (1500/500 = 3)
+              document.getElementById('pay-months').value = months;
+           }
         },
 
         /* --- ACTIONS --- */
@@ -1076,8 +1114,8 @@ function renderDashboard(user: any) {
                const m = app.data.members.find(x=>x.id===id); 
                document.getElementById('pay-id').value=id; 
                document.getElementById('pay-name').innerText = m ? m.name : '';
-               document.getElementById('pay-months').value = 1;
-               app.calcPayAmount(); // Auto calc on open
+               document.getElementById('pay-amount').value = '';
+               document.getElementById('pay-months').value = 0;
                document.getElementById('modal-pay').style.display='flex'; 
              }, 
              close:()=>{
