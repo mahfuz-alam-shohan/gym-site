@@ -395,8 +395,17 @@ export default {
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
         
+        // Safely parse user permissions
+        let safePerms = [];
+        try {
+            safePerms = user.permissions ? JSON.parse(user.permissions) : [];
+        } catch (e) {
+            console.error("Error parsing perms", e);
+            safePerms = []; // Fallback
+        }
+
         return json({
-          user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
+          user: { ...user, permissions: safePerms },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
@@ -1187,6 +1196,12 @@ function renderDashboard(user: any) {
     </div>
 
     <script>
+      // GLOBAL ERROR HANDLER - Catches any script crash
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        alert('System Error: ' + msg + '\\nLine: ' + lineNo);
+        return false;
+      };
+
       const translations = {
         en: {
           dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
@@ -1227,7 +1242,7 @@ function renderDashboard(user: any) {
       };
 
       function t(key) {
-         const lang = app.data?.settings?.lang || 'en';
+         const lang = (app.data && app.data.settings && app.data.settings.lang) || 'en';
          return translations[lang][key] || key;
       }
 
@@ -1255,15 +1270,21 @@ function renderDashboard(user: any) {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
         
         async init() {
-          const res = await fetch('/api/bootstrap');
-          this.data = await res.json();
-          this.render();
-          this.applySettingsUI();
-          if(currentUser.role === 'admin') this.loadUsers();
-          
-          const last = sessionStorage.getItem('gym_view');
-          if (last && this.can(last)) this.nav(last);
-          else this.nav(this.can('attendance') ? 'attendance' : 'home');
+          try {
+            const res = await fetch('/api/bootstrap');
+            if(!res.ok) throw new Error("API Error: " + res.status);
+            this.data = await res.json();
+            this.render();
+            this.applySettingsUI();
+            if(currentUser.role === 'admin') this.loadUsers();
+            
+            const last = sessionStorage.getItem('gym_view');
+            if (last && this.can(last)) this.nav(last);
+            else this.nav(this.can('attendance') ? 'attendance' : 'home');
+          } catch(e) {
+            alert("Startup Failed: " + e.message);
+            console.error(e);
+          }
         },
         
         can(perm) { return currentUser.role === 'admin' || currentUser.permissions.includes(perm); },
@@ -1273,7 +1294,7 @@ function renderDashboard(user: any) {
           if (v !== 'users' && !this.can(v)) return alert('Access Denied');
           sessionStorage.setItem('gym_view', v);
           
-          const lang = this.data?.settings?.lang || 'en';
+          const lang = (this.data && this.data.settings && this.data.settings.lang) || 'en';
           const nav = document.getElementById('nav-container');
           let html = '';
           if(this.can('home')) html += '<div class="nav-item" onclick="app.nav(\\'home\\')">'+t('over')+'</div>';
@@ -1295,13 +1316,15 @@ function renderDashboard(user: any) {
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
             const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
           });
-          document.getElementById('view-'+v).classList.remove('hidden');
+          const target = document.getElementById('view-'+v);
+          if(target) target.classList.remove('hidden');
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
           this.updateLabels();
         },
 
         updateLabels() {
+           if(!this.data || !this.data.settings) return;
            // Update all ID-based labels
            document.getElementById('page-title').innerText = t('dash');
            document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
@@ -1358,18 +1381,19 @@ function renderDashboard(user: any) {
         },
 
         getPlanPrice(planName) {
-            const plans = this.data.settings.membershipPlans || [];
+            const plans = (this.data && this.data.settings && this.data.settings.membershipPlans) || [];
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.price) : 0;
         },
         
         getPlanAdmFee(planName) {
-            const plans = this.data.settings.membershipPlans || [];
+            const plans = (this.data && this.data.settings && this.data.settings.membershipPlans) || [];
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.admissionFee || 0) : 0;
         },
 
         render() {
+          if(!this.data || !this.data.settings) return;
           const cur = this.data.settings.currency || 'BDT';
           if(document.getElementById('stat-active')) {
             document.getElementById('stat-active').innerText = this.data.stats.active;
@@ -1457,7 +1481,7 @@ function renderDashboard(user: any) {
 
         renderPaymentsTable() {
             const filter = document.getElementById('pay-filter').value;
-            const cur = this.data.settings.currency || 'BDT';
+            const cur = (this.data && this.data.settings && this.data.settings.currency) || 'BDT';
             let list = (this.data.members || []).slice(); 
             if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
             else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
@@ -1584,7 +1608,7 @@ function renderDashboard(user: any) {
             const year = parseInt(document.getElementById('hist-year').value);
             const monthVal = parseInt(document.getElementById('hist-month').value);
             const container = document.getElementById('calendar-container');
-            const threshold = this.data.settings.attendanceThreshold || 3;
+            const threshold = (this.data && this.data.settings && this.data.settings.attendanceThreshold) || 3;
 
             // Yearly Summary View
             if (monthVal === -1) {
@@ -1663,7 +1687,7 @@ function renderDashboard(user: any) {
         
         renderHistoryTable(filterDate, dataList = null) {
           // If specific list provided (from API), use it. Otherwise fallback to local cache (bootstrap)
-          let list = dataList || this.data.attendanceHistory || [];
+          let list = dataList || (this.data && this.data.attendanceHistory) || [];
           
           // If we are filtering locally on bootstrap data (old way, keep for safety)
           if(filterDate && !dataList) {
@@ -1748,6 +1772,7 @@ function renderDashboard(user: any) {
 
         /* --- SETTINGS --- */
         applySettingsUI() {
+          if(!this.data || !this.data.settings) return;
           const s = this.data.settings;
           const form = document.getElementById('settings-form');
           form.querySelector('input[name="currency"]').value = s.currency || 'BDT';
@@ -1973,7 +1998,7 @@ function renderDashboard(user: any) {
         
         renderCharts() {
             if(typeof Chart === 'undefined') return;
-            const members = this.data.members || [];
+            const members = (this.data && this.data.members) || [];
             const ctx1 = document.getElementById('chart-dues');
             if(ctx1) new Chart(ctx1.getContext('2d'), { type: 'bar', data: { labels: ['No Due', '1 Mo', '2+ Mo', 'Inactive'], datasets: [{ data: [ members.filter(m=>!m.dueMonths||m.dueMonths<=0).length, members.filter(m=>m.dueMonths===1).length, members.filter(m=>m.dueMonths>=2 && m.status!=='inactive').length, members.filter(m=>m.status==='inactive').length ], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'] }] }, options: {plugins:{legend:{display:false}}} });
         },
@@ -2019,7 +2044,8 @@ function renderDashboard(user: any) {
                    document.getElementById('pay-renewal-section').style.display = 'block';
                    
                    // Auto-fill renewal fee from settings
-                   document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
+                   const renFee = (app.data && app.data.settings && app.data.settings.renewalFee) || 0;
+                   document.getElementById('pay-ren-fee').value = renFee;
                    
                    document.getElementById('lbl-pay-amount').innerText = "Plan Amount (Monthly Cost)";
                    document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
