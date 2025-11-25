@@ -337,7 +337,7 @@ export default {
         const currency = config["currency"] || "BDT";
         const lang = config["lang"] || "en";
         
-        let membershipPlans = [];
+        let membershipPlans: any[] = [];
         try {
           const raw = JSON.parse(config["membership_plans"] || '[]');
           if(Array.isArray(raw)) {
@@ -352,6 +352,7 @@ export default {
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const membersProcessed: any[] = [];
         let activeCount=0, dueMembersCount=0, inactiveMembersCount=0;
+        let totalOutstanding = 0;
 
         for (const m of membersRaw.results || []) {
           const dueMonths = calcDueMonths(m.expiry_date);
@@ -367,6 +368,12 @@ export default {
              } else { 
                newStatus = "active"; 
                activeCount++; 
+             }
+             
+             // Calc Outstanding
+             if (dueMonths > 0) {
+                 const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
+                 totalOutstanding += (dueMonths * planPrice);
              }
           }
           
@@ -384,7 +391,7 @@ export default {
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
-          stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
+          stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
         });
       }
@@ -615,7 +622,10 @@ function renderDashboard(user: any) {
       <main class="main-content">
         <div class="flex-between" style="padding: 24px 24px 0 24px;">
            <h2 id="page-title" style="margin:0;">Dashboard</h2>
-           <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button>
+           <div class="flex">
+              <button class="btn btn-primary" onclick="app.modals.quickPay.open()" id="btn-quick-pay">💰 Quick Pay</button>
+              <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button>
+           </div>
         </div>
 
         <div style="padding: 24px;">
@@ -637,6 +647,10 @@ function renderDashboard(user: any) {
               <div class="stat-card">
                 <span class="stat-label" id="lbl-mem-due">Members With Due</span>
                 <span class="stat-val" id="stat-due">--</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label" id="lbl-total-due-money">Total Due Amount</span>
+                <span class="stat-val" style="color:var(--danger)"><span id="stat-total-due">--</span></span>
               </div>
             </div>
             <div class="card">
@@ -819,6 +833,16 @@ function renderDashboard(user: any) {
         <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
       </div>
     </div>
+    
+    <!-- QUICK PAY SEARCH MODAL -->
+    <div id="modal-quick-pay" class="modal-backdrop">
+      <div class="modal-content">
+        <h3 style="text-align:center;" id="lbl-qp-title">💰 Quick Pay Search</h3>
+        <input id="qp-search" type="text" placeholder="Search Name/ID..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onQuickPayInput(event)">
+        <div id="qp-results" class="checkin-results"></div>
+        <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.quickPay.close()">Close</button>
+      </div>
+    </div>
 
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
@@ -959,8 +983,8 @@ function renderDashboard(user: any) {
       const translations = {
         en: {
           dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
-          act_mem: "Active Members", tod_vis: "Today's Visits", tot_rev: "Total Revenue", mem_due: "Members With Due",
-          due_ov: "Dues Overview", quick_chk: "⚡ Quick Check-In",
+          act_mem: "Active Members", tod_vis: "Today's Visits", tot_rev: "Total Revenue", mem_due: "Members With Due", total_due_amt: "Total Due Amount",
+          due_ov: "Dues Overview", quick_chk: "⚡ Quick Check-In", quick_pay: "💰 Quick Pay", quick_pay_search: "💰 Quick Pay Search",
           search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
           nm: "Name", joined: "Joined", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
           tod_att: "Today's Attendance", time: "Time", res: "Result",
@@ -977,8 +1001,8 @@ function renderDashboard(user: any) {
         },
         bn: {
           dash: "ড্যাশবোর্ড", over: "সারসংক্ষেপ", mem: "সদস্যবৃন্দ", att: "উপস্থিতি", hist: "ইতিহাস", pay: "পেমেন্ট", set: "সেটিংস", user: "ব্যবহারকারী",
-          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য",
-          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন",
+          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য", total_due_amt: "মোট বকেয়া পরিমাণ",
+          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন", quick_pay: "💰 দ্রুত পেমেন্ট", quick_pay_search: "💰 দ্রুত পেমেন্ট সার্চ",
           search_ph: "আইডি, নাম বা ফোন খুঁজুন...", add_mem: "+ সদস্য যোগ",
           nm: "নাম", joined: "ভর্তি", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
           tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
@@ -1074,10 +1098,12 @@ function renderDashboard(user: any) {
            // Update all ID-based labels
            document.getElementById('page-title').innerText = t('dash');
            document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
+           document.getElementById('btn-quick-pay').innerText = t('quick_pay');
            document.getElementById('lbl-active-mem').innerText = t('act_mem');
            document.getElementById('lbl-today-visits').innerText = t('tod_vis');
            document.getElementById('lbl-tot-rev').innerText = t('tot_rev');
            document.getElementById('lbl-mem-due').innerText = t('mem_due');
+           document.getElementById('lbl-total-due-money').innerText = t('total_due_amt');
            document.getElementById('lbl-due-overview').innerText = t('due_ov');
            
            document.getElementById('search').placeholder = t('search_ph');
@@ -1115,6 +1141,7 @@ function renderDashboard(user: any) {
            document.getElementById('btn-add-user').innerText = t('add_user');
            
            document.getElementById('lbl-chk-title').innerText = t('chk_title');
+           document.getElementById('lbl-qp-title').innerText = t('quick_pay_search');
            document.getElementById('btn-sub-chk').innerText = t('submit');
            document.getElementById('lbl-new-mem').innerText = t('new_mem');
            document.getElementById('lbl-rec-pay').innerText = t('rec_pay');
@@ -1134,6 +1161,7 @@ function renderDashboard(user: any) {
             document.getElementById('stat-today').innerText = this.data.stats.today;
             document.getElementById('stat-rev').innerText = cur + ' ' + this.data.stats.revenue;
             document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
+            document.getElementById('stat-total-due').innerText = cur + ' ' + this.data.stats.totalOutstanding;
           }
           this.renderMembersTable();
           
@@ -1579,6 +1607,25 @@ function renderDashboard(user: any) {
             }, 200);
         },
         
+        onQuickPayInput(e) {
+            const val = e.target.value;
+            if(this.searchTimeout) clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(async ()=>{
+               if(!val.trim()) { document.getElementById('qp-results').innerHTML=''; return; }
+               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
+               const data = await res.json();
+               document.getElementById('qp-results').innerHTML = data.results.map(m => {
+                 let dueStr = 'Active';
+                 if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
+                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
+                 // When clicking a result, close quick pay modal and open pay modal
+                 return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' + 
+                        '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + 
+                        '</div>';
+               }).join('');
+            }, 200);
+        },
+        
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async pay(e) { e.preventDefault(); await fetch('/api/payment', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
@@ -1610,6 +1657,7 @@ function renderDashboard(user: any) {
 
         modals: {
           checkin: { open:()=>{ document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus(); }, close:()=>document.getElementById('modal-checkin').style.display='none' },
+          quickPay: { open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; document.getElementById('qp-search').focus(); }, close:()=>document.getElementById('modal-quick-pay').style.display='none' },
           add: { open:()=>document.getElementById('modal-add').style.display='flex', close:()=>document.getElementById('modal-add').style.display='none' },
           pay: { 
              open:(id)=>{ 
