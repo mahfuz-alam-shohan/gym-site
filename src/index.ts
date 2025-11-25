@@ -114,6 +114,7 @@ function baseHead(title: string): string {
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
+    .bg-blue { background: #dbeafe; color: #1e40af; }
     
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
@@ -125,6 +126,10 @@ function baseHead(title: string): string {
     .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:hover { background: #ffffff; }
+
+    /* Settings Table */
+    .plan-row { display: grid; grid-template-columns: 1fr 100px 40px; gap: 10px; margin-bottom: 10px; }
+    .plan-row input { margin-bottom: 0; }
 
     .mobile-header { display: none; }
     @media (max-width: 768px) {
@@ -193,6 +198,11 @@ export default {
         await env.DB.prepare("DELETE FROM users").run(); 
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
+        
+        // Default plans on setup
+        const defaultPlans = JSON.stringify([{name:"Standard", price:500}, {name:"Premium", price:1000}]);
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
+
         return json({ success: true });
       }
 
@@ -270,9 +280,20 @@ export default {
 
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
-        const monthlyPrice = parseInt(config["monthly_price"] || "0", 10);
-        let membershipPlans;
-        try { membershipPlans = JSON.parse(config["membership_plans"] || '["Standard","Premium"]'); } catch { membershipPlans = ["Standard","Premium"]; }
+        
+        // Parse plans with backward compatibility
+        let membershipPlans = [];
+        try {
+          const raw = JSON.parse(config["membership_plans"] || '[]');
+          if(Array.isArray(raw)) {
+             // Convert old array of strings to objects if needed
+             if(raw.length > 0 && typeof raw[0] === 'string') {
+                membershipPlans = raw.map(p => ({name: p, price: 0}));
+             } else {
+                membershipPlans = raw;
+             }
+          }
+        } catch { membershipPlans = [{name:"Standard", price:0}]; }
 
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const membersProcessed: any[] = [];
@@ -299,7 +320,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, monthlyPrice }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans }
         });
       }
 
@@ -367,8 +388,8 @@ export default {
         const body = await req.json() as any;
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('monthly_price', ?)").bind(String(body.monthlyPrice)).run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(typeof body.membershipPlans === 'string' ? body.membershipPlans.split(',') : body.membershipPlans)).run();
+        // Save the array of {name, price} directly
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         return json({ success: true });
       }
 
@@ -495,6 +516,7 @@ function renderDashboard(user: any) {
         </div>
 
         <div style="padding: 24px;">
+          <!-- VIEW: HOME -->
           <div id="view-home" class="hidden">
             <div class="stats-grid">
               <div class="stat-card">
@@ -520,6 +542,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: MEMBERS -->
           <div id="view-members" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
@@ -535,6 +558,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: ATTENDANCE (TODAY) -->
           <div id="view-attendance" class="hidden">
             <div class="card">
               <h3>Today's Attendance</h3>
@@ -547,6 +571,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: HISTORY -->
           <div id="view-history" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
@@ -566,6 +591,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: PAYMENTS -->
           <div id="view-payments" class="hidden">
             <div class="card">
               <h3>Search & Collect</h3>
@@ -586,21 +612,23 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: SETTINGS -->
           <div id="view-settings" class="hidden">
             <div class="card">
               <h3>System Settings</h3>
               <form id="settings-form" onsubmit="app.saveSettings(event)">
-                <label>Monthly Membership Price (Currency Unit)</label>
-                <input name="monthlyPrice" type="number" required>
-
+                
                 <label>Attendance Threshold (Days/Month to count active)</label>
                 <input name="attendanceThreshold" type="number" min="1" max="31" required>
                 
                 <label>Inactive after X months of due</label>
                 <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
                 
-                <label>Membership plan names (comma-separated)</label>
-                <input name="membershipPlans" type="text" required>
+                <label style="margin-top:20px;">Membership Plans & Prices</label>
+                <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
+                   <div id="plans-container"></div>
+                   <button type="button" class="btn btn-outline" onclick="app.addPlanRow()">+ Add Plan</button>
+                </div>
                 
                 <div class="flex-between" style="margin-top:15px; gap:10px;">
                   <button type="submit" class="btn btn-primary">Save Settings</button>
@@ -610,6 +638,7 @@ function renderDashboard(user: any) {
             </div>
           </div>
 
+          <!-- VIEW: USER MANAGEMENT -->
           <div id="view-users" class="hidden">
             <div class="card">
                <div class="flex-between" style="margin-bottom:20px;">
@@ -627,6 +656,8 @@ function renderDashboard(user: any) {
         </div>
       </main>
     </div>
+
+    <!-- MODALS -->
 
     <div id="modal-checkin" class="modal-backdrop">
       <div class="modal-content">
@@ -663,8 +694,13 @@ function renderDashboard(user: any) {
         <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
-          <label>Amount</label><input name="amount" type="number" required>
-          <label>Extend Expiry (Months)</label><input name="months" type="number" value="1" required>
+          
+          <label>Extend Expiry (Months)</label>
+          <input name="months" id="pay-months" type="number" value="1" required min="1" onchange="app.calcPayAmount()">
+          
+          <label>Amount (Auto-calculated)</label>
+          <input name="amount" id="pay-amount" type="number" required>
+          
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary">Confirm</button>
@@ -737,7 +773,7 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null,
+        data: null, userList: [], searchTimeout: null, payingMemberId: null,
         
         async init() {
           const res = await fetch('/api/bootstrap');
@@ -763,6 +799,12 @@ function renderDashboard(user: any) {
           document.querySelector('.overlay').classList.remove('open');
         },
 
+        getPlanPrice(planName) {
+           const plans = this.data.settings.membershipPlans || [];
+           const found = plans.find(p => p.name === planName);
+           return found ? Number(found.price) : 0;
+        },
+
         getDueDetails(m) {
            if(!m.dueMonths || m.dueMonths <= 0) return '';
            const today = new Date();
@@ -775,8 +817,6 @@ function renderDashboard(user: any) {
         },
 
         render() {
-          const price = this.data.settings.monthlyPrice || 0;
-          
           if(document.getElementById('stat-active')) {
             document.getElementById('stat-active').innerText = this.data.stats.active;
             document.getElementById('stat-today').innerText = this.data.stats.today;
@@ -789,6 +829,7 @@ function renderDashboard(user: any) {
             if (m.status === 'due') statusBadge = '<span class="badge bg-amber">Due</span>';
             if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
             
+            const price = this.getPlanPrice(m.plan);
             const dueAmt = (m.dueMonths > 0) ? (m.dueMonths * price) : 0;
             const dueTxt = dueAmt > 0 ? (dueAmt + ' (' + m.dueMonths + ' Mo)') : '-';
 
@@ -813,6 +854,7 @@ function renderDashboard(user: any) {
           
           const duesMembers = (this.data.members || []).filter(m => m.dueMonths > 0).sort((a,b) => b.dueMonths - a.dueMonths);
           document.getElementById('tbl-dues').innerHTML = duesMembers.map(m => {
+             const price = this.getPlanPrice(m.plan);
              const amt = m.dueMonths * price;
              const monthsTxt = this.getDueDetails(m);
              return '<tr>' +
@@ -910,21 +952,71 @@ function renderDashboard(user: any) {
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
 
-        /* --- SETTINGS --- */
+        /* --- SETTINGS: PLANS & PRICES --- */
         applySettingsUI() {
           const s = this.data.settings;
           const form = document.getElementById('settings-form');
-          form.querySelector('input[name="monthlyPrice"]').value = s.monthlyPrice || 0;
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
-          form.querySelector('input[name="membershipPlans"]').value = (s.membershipPlans).join(', ');
-          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p=>'<option>'+p+'</option>').join('');
+          
+          // Render Plan List
+          const plansDiv = document.getElementById('plans-container');
+          plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
+            '<div class="plan-row" id="plan-' + i + '">' +
+               '<input type="text" placeholder="Plan Name" value="' + p.name + '" class="plan-name">' +
+               '<input type="number" placeholder="Price" value="' + p.price + '" class="plan-price">' +
+               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
+            '</div>'
+          ).join('');
+          
+          // Populate select in Add Modal
+          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+' ('+p.price+')</option>').join('');
         },
+
+        addPlanRow() {
+           const id = 'new-' + Date.now();
+           const html = '<div class="plan-row" id="' + id + '">' +
+               '<input type="text" placeholder="Plan Name" class="plan-name">' +
+               '<input type="number" placeholder="Price" value="0" class="plan-price">' +
+               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">X</button>' +
+            '</div>';
+           document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
+        },
+
         async saveSettings(e) {
            e.preventDefault();
+           
+           // Harvest Plans
+           const plans = [];
+           document.querySelectorAll('.plan-row').forEach(row => {
+              const name = row.querySelector('.plan-name').value.trim();
+              const price = row.querySelector('.plan-price').value.trim();
+              if(name) plans.push({ name, price: Number(price) });
+           });
+
+           const form = e.target;
            document.getElementById('settings-status').innerText = 'Saving...';
-           await fetch('/api/settings', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+           
+           await fetch('/api/settings', { 
+              method:'POST', 
+              body:JSON.stringify({
+                 attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
+                 inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
+                 membershipPlans: plans
+              }) 
+           });
            location.reload();
+        },
+        
+        /* --- PAY AUTO-FILL --- */
+        calcPayAmount() {
+           if(!this.payingMemberId) return;
+           const m = this.data.members.find(x => x.id === this.payingMemberId);
+           if(!m) return;
+           
+           const price = this.getPlanPrice(m.plan);
+           const months = Number(document.getElementById('pay-months').value) || 1;
+           document.getElementById('pay-amount').value = price * months;
         },
 
         /* --- ACTIONS --- */
@@ -978,7 +1070,21 @@ function renderDashboard(user: any) {
         modals: {
           checkin: { open:()=>{ document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus(); }, close:()=>document.getElementById('modal-checkin').style.display='none' },
           add: { open:()=>document.getElementById('modal-add').style.display='flex', close:()=>document.getElementById('modal-add').style.display='none' },
-          pay: { open:(id)=>{ const m = app.data.members.find(x=>x.id===id); document.getElementById('pay-id').value=id; document.getElementById('pay-name').innerText = m ? m.name : ''; document.getElementById('modal-pay').style.display='flex'; }, close:()=>document.getElementById('modal-pay').style.display='none' },
+          pay: { 
+             open:(id)=>{ 
+               app.payingMemberId = id;
+               const m = app.data.members.find(x=>x.id===id); 
+               document.getElementById('pay-id').value=id; 
+               document.getElementById('pay-name').innerText = m ? m.name : '';
+               document.getElementById('pay-months').value = 1;
+               app.calcPayAmount(); // Auto calc on open
+               document.getElementById('modal-pay').style.display='flex'; 
+             }, 
+             close:()=>{
+               app.payingMemberId = null;
+               document.getElementById('modal-pay').style.display='none' 
+             }
+          },
           user: { close:()=>document.getElementById('modal-user').style.display='none' }
         }
       };
