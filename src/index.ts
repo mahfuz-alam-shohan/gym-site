@@ -136,14 +136,15 @@ function baseHead(title: string): string {
     .plan-row input { margin-bottom: 0; }
 
     /* Calendar Styles */
-    .calendar-wrapper { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-    .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
-    .cal-header { text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 14px; }
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-    .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 4px; background: #f3f4f6; color: #9ca3af; }
-    .cal-cell.present { background: #22c55e; color: white; font-weight: bold; }
-    .cal-cell.absent { background: #ef4444; color: white; }
-    .cal-stats { margin-top: 8px; font-size: 11px; display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+    .calendar-wrapper { }
+    .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; }
+    .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .cal-header { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 6px; background: #f3f4f6; color: #9ca3af; font-weight: 500; }
+    .cal-cell.present { background: #22c55e; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3); }
+    .cal-cell.absent { background: #fecaca; color: #ef4444; opacity: 0.5; }
+    .cal-stats { margin-top: 15px; font-size: 13px; display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #f3f4f6; }
 
     .mobile-header { display: none; }
     @media (max-width: 768px) {
@@ -859,8 +860,26 @@ function renderDashboard(user: any) {
             <h3 id="mh-title" style="margin:0;">Attendance History</h3>
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
-        <div id="calendar-container" class="calendar-wrapper">
-           <!-- Calendars go here -->
+        
+        <!-- NEW: History Controls -->
+        <div class="hist-controls">
+           <div class="flex" style="align-items:center;">
+              <label style="margin:0; white-space:nowrap;">Year:</label>
+              <select id="hist-year" style="margin:0;" onchange="app.renderCalendar()"></select>
+           </div>
+           <div class="flex" style="align-items:center;">
+              <label style="margin:0; white-space:nowrap;">Month:</label>
+              <select id="hist-month" style="margin:0;" onchange="app.renderCalendar()">
+                 <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                 <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                 <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                 <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+              </select>
+           </div>
+        </div>
+
+        <div id="calendar-container" class="calendar-wrapper" style="display:block;">
+           <!-- Specific Calendar will go here -->
         </div>
       </div>
     </div>
@@ -882,8 +901,9 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null,
-        
+        data: null, userList: [], searchTimeout: null, payingMemberId: null, 
+        activeHistory: null, // Store for local filtering
+
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
@@ -1080,62 +1100,76 @@ function renderDashboard(user: any) {
            
            const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
            const data = await res.json();
-           const history = data.history || [];
-           const joined = new Date(data.joinedAt || new Date());
            
-           container.innerHTML = '';
+           // Store data for local filtering
+           this.activeHistory = {
+              history: data.history || [],
+              joinedAt: new Date(data.joinedAt || new Date())
+           };
            
-           // Generate months from joined_at until now
-           const now = new Date();
-           let current = new Date(joined.getFullYear(), joined.getMonth(), 1);
-           
-           // Loop through months
-           while (current <= now) {
-              const year = current.getFullYear();
-              const month = current.getMonth();
-              const monthName = current.toLocaleString('default', { month: 'long', year: 'numeric' });
-              
-              // Days in month
-              const daysInMonth = new Date(year, month + 1, 0).getDate();
-              
-              // Find attendance for this month
-              // Convert check_in_time to Days present
-              const presentDays = history.filter(h => {
-                 const d = new Date(h.check_in_time);
-                 return d.getFullYear() === year && d.getMonth() === month;
-              }).map(h => new Date(h.check_in_time).getDate());
-              
-              // Remove duplicates
-              const uniquePresent = [...new Set(presentDays)];
-              const count = uniquePresent.length;
-              const threshold = this.data.settings.attendanceThreshold || 3;
-              const isBillable = count >= threshold;
-              
-              // Build HTML for this month
-              let gridHtml = '';
-              for(let i=1; i<=daysInMonth; i++) {
-                 const isPresent = uniquePresent.includes(i);
-                 const cls = isPresent ? 'present' : 'absent';
-                 const mark = isPresent ? 'P' : i;
-                 gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
-              }
-              
-              const statusColor = isBillable ? 'green' : 'red';
-              const statusText = isBillable ? 'Active / Billable' : 'Skipped / Inactive';
-              
-              const monthHtml = '<div class="calendar-month">' +
-                 '<div class="cal-header">' + monthName + '</div>' +
-                 '<div class="cal-grid">' + gridHtml + '</div>' +
-                 '<div class="cal-stats">' +
-                    '<span>Days: <strong>' + count + '</strong></span>' +
-                    '<span style="color:' + statusColor + '">' + statusText + '</span>' +
-                 '</div>' +
-              '</div>';
-              
-              container.insertAdjacentHTML('afterbegin', monthHtml); // Newest first
-              
-              current.setMonth(current.getMonth() + 1);
+           // Populate Year Dropdown
+           const yearSelect = document.getElementById('hist-year');
+           yearSelect.innerHTML = '';
+           const startYear = this.activeHistory.joinedAt.getFullYear();
+           const endYear = new Date().getFullYear();
+           for(let y = endYear; y >= startYear; y--) {
+              const opt = document.createElement('option');
+              opt.value = y;
+              opt.innerText = y;
+              yearSelect.appendChild(opt);
            }
+           
+           // Set default to current month/year
+           const now = new Date();
+           yearSelect.value = now.getFullYear();
+           document.getElementById('hist-month').value = now.getMonth();
+           
+           this.renderCalendar(); // Initial Render
+        },
+
+        renderCalendar() {
+           if (!this.activeHistory) return;
+           
+           const year = parseInt(document.getElementById('hist-year').value);
+           const month = parseInt(document.getElementById('hist-month').value);
+           const container = document.getElementById('calendar-container');
+           
+           const monthName = new Date(year, month).toLocaleString('default', { month: 'long' });
+           const daysInMonth = new Date(year, month + 1, 0).getDate();
+           
+           // Filter history for specific month
+           const presentDays = this.activeHistory.history.filter(h => {
+              const d = new Date(h.check_in_time);
+              return d.getFullYear() === year && d.getMonth() === month;
+           }).map(h => new Date(h.check_in_time).getDate());
+           
+           const uniquePresent = [...new Set(presentDays)];
+           const count = uniquePresent.length;
+           const threshold = this.data.settings.attendanceThreshold || 3;
+           const isBillable = count >= threshold;
+           
+           // Generate Grid
+           let gridHtml = '';
+           for(let i=1; i<=daysInMonth; i++) {
+              const isPresent = uniquePresent.includes(i);
+              const cls = isPresent ? 'present' : 'absent';
+              const mark = isPresent ? 'P' : i;
+              gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
+           }
+           
+           const statusColor = isBillable ? 'green' : 'red';
+           const statusText = isBillable ? 'Active / Billable' : 'Skipped / Inactive';
+           
+           const html = '<div class="calendar-month">' +
+              '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
+              '<div class="cal-grid">' + gridHtml + '</div>' +
+              '<div class="cal-stats">' +
+                 '<span>Days Present: <strong>' + count + '</strong></span>' +
+                 '<span style="color:' + statusColor + '">' + statusText + '</span>' +
+              '</div>' +
+           '</div>';
+           
+           container.innerHTML = html;
         },
 
         renderHistoryTable(filterDate) {
