@@ -1249,10 +1249,10 @@ function renderDashboard(user: any) {
           if (!nav) return;
           nav.innerHTML = this.menuConfig
             .filter(item => this.allowedMenus.includes(item.id))
-            .map(
-              item =>
-                `<div class="nav-item" data-nav="${item.id}" onclick="app.nav('${item.id}')">${item.icon} ${item.label}</div>`
-            )
+            .map(item => {
+              return '<div class="nav-item" data-nav="' + item.id +
+                '" onclick="app.nav(\\'' + item.id + '\\')">' + item.icon + ' ' + item.label + '</div>';
+            })
             .join('');
         },
 
@@ -1272,18 +1272,18 @@ function renderDashboard(user: any) {
             let statusBadge = '<span class="badge bg-green">Active</span>';
             if (m.status === 'due') statusBadge = '<span class="badge bg-amber">Due</span>';
             if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-            return \`<tr>
-              <td>#\${m.id}</td>
-              <td><strong>\${m.name}</strong></td>
-              <td>\${m.phone}</td>
-              <td>\${m.plan}</td>
-              <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-              <td>\${statusBadge}</td>
-              <td>
-                <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button>
-                <button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(\${m.id})">Del</button>
-              </td>
-            </tr>\`;
+            return '<tr>' +
+              '<td>#' + m.id + '</td>' +
+              '<td><strong>' + m.name + '</strong></td>' +
+              '<td>' + m.phone + '</td>' +
+              '<td>' + m.plan + '</td>' +
+              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' +
+                '<button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(' + m.id + ')">$ Pay</button>' +
+                '<button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(' + m.id + ')">Del</button>' +
+              '</td>' +
+            '</tr>';
           }).join('');
 
           const today = this.data.attendanceToday || [];
@@ -1291,19 +1291,18 @@ function renderDashboard(user: any) {
 
           const todayRows = today.length ? today.map(a => {
             const t = new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            const due = a.dueMonths == null 
-              ? '-' 
+            const due = a.dueMonths == null
+              ? '-'
               : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
-            const statusBadge = a.status === 'success' 
-              ? '<span class="badge bg-green">OK</span>' 
+            const statusBadge = a.status === 'success'
+              ? '<span class="badge bg-green">OK</span>'
               : '<span class="badge bg-red">Expired</span>';
-            return \`
-              <tr>
-                <td>\${t}</td>
-                <td>\${a.name}</td>
-                <td>\${statusBadge}</td>
-                <td>\${due}</td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>' + t + '</td>' +
+              '<td>' + a.name + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + due + '</td>' +
+            '</tr>';
           }).join('') : '<tr><td colspan="4">No check-ins yet today.</td></tr>';
 
           document.getElementById('tbl-attendance-recent').innerHTML = todayRows;
@@ -1319,16 +1318,15 @@ function renderDashboard(user: any) {
             const dueText = m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due';
             let statusBadge = '<span class="badge bg-amber">Due</span>';
             if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-            return \`
-              <tr>
-                <td>#\${m.id}</td>
-                <td>\${m.name}</td>
-                <td>\${m.plan}</td>
-                <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-                <td>\${statusBadge}</td>
-                <td>\${dueText}</td>
-                <td><button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button></td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>#' + m.id + '</td>' +
+              '<td>' + m.name + '</td>' +
+              '<td>' + m.plan + '</td>' +
+              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + dueText + '</td>' +
+              '<td><button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(' + m.id + ')">$ Pay</button></td>' +
+            '</tr>';
           }).join('') : '<tr><td colspan="7">No dues currently.</td></tr>';
 
           this.renderCharts();
@@ -1357,14 +1355,13 @@ function renderDashboard(user: any) {
             const statusBadge = a.status === 'success' 
               ? '<span class="badge bg-green">OK</span>' 
               : '<span class="badge bg-red">Expired</span>';
-            return \`
-              <tr>
-                <td>\${dateStr}</td>
-                <td>\${timeStr}</td>
-                <td>\${a.name}</td>
-                <td>\${statusBadge}</td>
-                <td>\${due}</td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>' + dateStr + '</td>' +
+              '<td>' + timeStr + '</td>' +
+              '<td>' + a.name + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + due + '</td>' +
+            '</tr>';
           }).join('');
           tbody.innerHTML = rows;
         },
@@ -1469,10 +1466,10 @@ function renderDashboard(user: any) {
           const permContainer = document.getElementById('user-perms-new');
           if (permContainer) {
             permContainer.innerHTML = this.menuConfig.map(m => {
-              return `<label style="display:flex; align-items:center; gap:6px; font-size:13px;">
-                <input type="checkbox" name="perm-new" value="${m.id}" checked>
-                ${m.label}
-              </label>`;
+              return '<label style="display:flex; align-items:center; gap:6px; font-size:13px;">' +
+                '<input type="checkbox" name="perm-new" value="' + m.id + '" checked>' +
+                m.label +
+                '</label>';
             }).join('');
           }
 
@@ -1482,13 +1479,13 @@ function renderDashboard(user: any) {
           }
         },
 
-        collectPermissions(prefix) {
-          const boxes = Array.from(document.querySelectorAll(`input[name="${prefix}"]`));
-          const selected = boxes
-            .filter((b: any) => b && b.checked)
-            .map((b: any) => b.value);
-          return selected.length ? selected : this.menuConfig.map(m => m.id);
-        },
+          collectPermissions(prefix) {
+            const boxes = Array.from(document.querySelectorAll('input[name="' + prefix + '"]'));
+            const selected = boxes
+              .filter((b: any) => b && b.checked)
+              .map((b: any) => b.value);
+            return selected.length ? selected : this.menuConfig.map(m => m.id);
+          },
 
         renderTeam() {
           const tbody = document.getElementById('tbl-users');
@@ -1506,32 +1503,31 @@ function renderDashboard(user: any) {
           tbody.innerHTML = this.teamUsers.map(u => {
             const checks = this.menuConfig.map(m => {
               const checked = (u.permissions || []).includes(m.id) ? 'checked' : '';
-              return `<label style="display:inline-flex; align-items:center; gap:6px; margin-right:10px; font-size:12px;">
-                <input type="checkbox" name="perm-${u.id}" value="${m.id}" ${checked}>
-                ${m.label}
-              </label>`;
+              return '<label style="display:inline-flex; align-items:center; gap:6px; margin-right:10px; font-size:12px;">' +
+                '<input type="checkbox" name="perm-' + u.id + '" value="' + m.id + '" ' + checked + '>' +
+                m.label +
+              '</label>';
             }).join('');
 
-            return `
-              <tr>
-                <td>
-                  <input id="user-name-${u.id}" value="${u.name || ''}" style="margin-bottom:6px;" />
-                  <div style="color:var(--text-muted); font-size:12px;">${u.email}</div>
-                </td>
-                <td>
-                  <select id="role-${u.id}" style="min-width:120px;">
-                    <option value="staff" ${u.role === 'staff' ? 'selected' : ''}>Staff</option>
-                    <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-                  </select>
-                </td>
-                <td>
-                  <div style="display:flex; flex-wrap:wrap; gap:6px;">${checks}</div>
-                  <input id="pwd-${u.id}" type="password" placeholder="New password (optional)" style="margin-top:8px;">
-                </td>
-                <td>
-                  <button class="btn btn-primary" style="padding:8px 12px; font-size:12px;" onclick="app.updateUser(${u.id})">Save</button>
-                </td>
-              </tr>`;
+            return '<tr>' +
+                '<td>' +
+                  '<input id="user-name-' + u.id + '" value="' + (u.name || '') + '" style="margin-bottom:6px;" />' +
+                  '<div style="color:var(--text-muted); font-size:12px;">' + u.email + '</div>' +
+                '</td>' +
+                '<td>' +
+                  '<select id="role-' + u.id + '" style="min-width:120px;">' +
+                    '<option value="staff" ' + (u.role === 'staff' ? 'selected' : '') + '>Staff</option>' +
+                    '<option value="admin" ' + (u.role === 'admin' ? 'selected' : '') + '>Admin</option>' +
+                  '</select>' +
+                '</td>' +
+                '<td>' +
+                  '<div style="display:flex; flex-wrap:wrap; gap:6px;">' + checks + '</div>' +
+                  '<input id="pwd-' + u.id + '" type="password" placeholder="New password (optional)" style="margin-top:8px;">' +
+                '</td>' +
+                '<td>' +
+                  '<button class="btn btn-primary" style="padding:8px 12px; font-size:12px;" onclick="app.updateUser(' + u.id + ')">Save</button>' +
+                '</td>' +
+              '</tr>';
           }).join('');
         },
 
@@ -1573,10 +1569,10 @@ function renderDashboard(user: any) {
           const userStatus = document.getElementById('user-status');
           if (userStatus) { userStatus.style.color = 'var(--text-muted)'; userStatus.textContent = 'Updating...'; }
 
-          const permissions = this.collectPermissions(`perm-${id}`);
-          const roleEl = document.getElementById(`role-${id}`);
-          const pwdEl = document.getElementById(`pwd-${id}`);
-          const nameEl = document.getElementById(`user-name-${id}`);
+          const permissions = this.collectPermissions('perm-' + id);
+          const roleEl = document.getElementById('role-' + id);
+          const pwdEl = document.getElementById('pwd-' + id);
+          const nameEl = document.getElementById('user-name-' + id);
           const roleVal = roleEl && roleEl.value !== undefined ? roleEl.value : undefined;
           const pwdVal = pwdEl && pwdEl.value !== undefined ? pwdEl.value : undefined;
           const nameVal = nameEl && nameEl.value !== undefined ? nameEl.value : undefined;
@@ -1658,9 +1654,9 @@ function renderDashboard(user: any) {
 
           if (this.searchTimeout) clearTimeout(this.searchTimeout);
           this.searchTimeout = setTimeout(async () => {
-            const res = await fetch('/api/members/search', { 
-              method: 'POST', 
-              body: JSON.stringify({ query: term }) 
+            const res = await fetch('/api/members/search', {
+              method: 'POST',
+              body: JSON.stringify({ query: term })
             });
             if (!res.ok) return;
             const data = await res.json();
@@ -1671,14 +1667,13 @@ function renderDashboard(user: any) {
             }
             box.innerHTML = list.map(m => {
               const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
-              const due = m.dueMonths == null 
-                ? '-' 
+              const due = m.dueMonths == null
+                ? '-'
                 : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
-              return \`
-                <div class="checkin-item" onclick="app.selectCheckin(\${m.id})">
-                  <strong>#\${m.id} · \${m.name}</strong>
-                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due}</small>
-                </div>\`;
+              return '<div class="checkin-item" onclick="app.selectCheckin(' + m.id + ')">' +
+                '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+                '<small>Plan: ' + (m.plan || '-') + ' · Exp: ' + exp + ' · Due: ' + due + '</small>' +
+              '</div>';
             }).join('');
           }, 200);
         },
@@ -1710,14 +1705,13 @@ function renderDashboard(user: any) {
             }
             box.innerHTML = list.map(m => {
               const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
-              const due = m.dueMonths == null 
-                ? '-' 
+              const due = m.dueMonths == null
+                ? '-'
                 : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
-              return \`
-                <div class="checkin-item" onclick="app.modals.pay.open(\${m.id})">
-                  <strong>#\${m.id} · \${m.name}</strong>
-                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due} · Tap to collect payment</small>
-                </div>\`;
+              return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')">' +
+                '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+                '<small>Plan: ' + (m.plan || '-') + ' · Exp: ' + exp + ' · Due: ' + due + ' · Tap to collect payment</small>' +
+              '</div>';
             }).join('');
           }, 200);
         },
