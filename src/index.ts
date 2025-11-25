@@ -619,14 +619,22 @@ function renderDashboard(user: any) {
               <div id="pay-search-results" class="checkin-results"></div>
             </div>
             <div class="card">
-              <div class="flex-between" style="margin-bottom:10px;">
-                <h3 style="margin:0;">Members with Dues</h3>
-                <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">Print List (PDF)</button>
+              <div class="flex-between" style="margin-bottom:10px; flex-wrap:wrap; gap:10px;">
+                <h3 style="margin:0;">Payment Status</h3>
+                <div class="flex">
+                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
+                    <option value="all">All Members</option>
+                    <option value="due">Dues Only</option>
+                    <option value="running">Running</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">Print List (PDF)</button>
+                </div>
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due Months</th><th>Amount Due</th><th>Action</th></tr></thead>
-                  <tbody id="tbl-dues"></tbody>
+                  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
+                  <tbody id="tbl-payment-list"></tbody>
                 </table>
               </div>
             </div>
@@ -903,21 +911,62 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
-          
-          const duesMembers = (this.data.members || []).filter(m => m.dueMonths > 0).sort((a,b) => b.dueMonths - a.dueMonths);
-          document.getElementById('tbl-dues').innerHTML = duesMembers.map(m => {
-             const price = this.getPlanPrice(m.plan);
-             const amt = m.dueMonths * price;
-             const monthsTxt = this.getDueDetails(m);
-             return '<tr>' +
-               '<td>#' + m.id + '</td><td>' + m.name + '</td><td><span class="badge bg-' + (m.status==='inactive'?'red':'amber') + '">' + m.status + '</span></td>' +
-               '<td>' + m.dueMonths + ' <small style="color:#666">(' + monthsTxt + ')</small></td>' +
-               '<td style="font-weight:bold; color:#ef4444">' + amt + '</td>' +
-               '<td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td>' +
-             '</tr>';
-          }).join('') || '<tr><td colspan="6">No dues.</td></tr>';
+          this.renderPaymentsTable(); // Initial render for payments
           
           this.renderCharts();
+        },
+
+        renderPaymentsTable() {
+           const filter = document.getElementById('pay-filter').value;
+           let list = (this.data.members || []).slice(); // Copy array
+
+           // Filter logic
+           if (filter === 'due') {
+              list = list.filter(m => m.dueMonths && m.dueMonths > 0);
+           } else if (filter === 'running') {
+              list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
+           } else if (filter === 'advanced') {
+              list = list.filter(m => m.dueMonths && m.dueMonths < 0);
+           }
+
+           // Sort logic: Dues first (desc), then Running, then Advanced (desc abs)
+           list.sort((a, b) => {
+              const getWeight = (m) => {
+                 if (m.dueMonths > 0) return 3; // Top priority
+                 if (!m.dueMonths || m.dueMonths === 0) return 2; // Running
+                 return 1; // Advance
+              };
+              const wA = getWeight(a);
+              const wB = getWeight(b);
+              if (wA !== wB) return wB - wA; // Higher weight first
+
+              // If weights equal, sort by magnitude of months (Secondary)
+              return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
+           });
+
+           document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
+              const price = this.getPlanPrice(m.plan);
+              let statusHtml = '<span class="badge bg-green">Running</span>';
+              let infoTxt = '-';
+              let amtTxt = '0';
+
+              if (m.dueMonths > 0) {
+                 statusHtml = '<span class="badge bg-amber">Due</span>';
+                 if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
+                 infoTxt = m.dueMonths + ' Mo Due';
+                 amtTxt = '<span style="color:red; font-weight:bold">' + (m.dueMonths * price) + '</span>';
+              } else if (m.dueMonths < 0) {
+                 statusHtml = '<span class="badge bg-blue">Advanced</span>';
+                 infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
+                 amtTxt = '<span style="color:green">+' + Math.abs(m.dueMonths * price) + '</span>'; // Showing advanced value
+              }
+
+              return '<tr>' +
+                '<td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td>' +
+                '<td>' + infoTxt + '</td><td>' + amtTxt + '</td>' +
+                '<td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td>' +
+              '</tr>';
+           }).join('') || '<tr><td colspan="6">No members found for this filter.</td></tr>';
         },
 
         async showHistory(id, name) {
