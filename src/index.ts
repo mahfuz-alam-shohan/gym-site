@@ -135,6 +135,16 @@ function baseHead(title: string): string {
     .plan-row { display: grid; grid-template-columns: 1fr 100px 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
 
+    /* Calendar Styles */
+    .calendar-wrapper { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+    .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #fff; }
+    .cal-header { text-align: center; font-weight: bold; margin-bottom: 10px; font-size: 14px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 10px; border-radius: 4px; background: #f3f4f6; color: #9ca3af; }
+    .cal-cell.present { background: #22c55e; color: white; font-weight: bold; }
+    .cal-cell.absent { background: #ef4444; color: white; }
+    .cal-stats { margin-top: 8px; font-size: 11px; display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid #f3f4f6; }
+
     .mobile-header { display: none; }
     @media (max-width: 768px) {
       body { overflow: auto; }
@@ -240,6 +250,25 @@ export default {
 
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
+      // PRINTABLE DUE LIST (PDF TARGET)
+      if (url.pathname === "/dues/print") {
+        const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
+        const gymName = (gymRow && gymRow.value) || "Gym OS";
+        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id").all<any>();
+        const members = (membersRaw.results || []).map((m: any) => ({ ...m, dueMonths: calcDueMonths(m.expiry_date) })).filter((m:any) => m.dueMonths && m.dueMonths > 0);
+        
+        let rows = members.map((m:any) => `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${m.dueMonths} Month(s)</td></tr>`).join('');
+        if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
+
+        const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
+          <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${new Date().toLocaleDateString()}</p></div>
+          <button class="btn" onclick="window.print()" style="display:block;margin:0 auto 20px;padding:10px 20px;cursor:pointer;">Print PDF</button>
+          <table><thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table>
+          <script>window.onload=function(){window.print();}</script>
+        </body></html>`;
+        return new Response(html, { headers: {"Content-Type":"text/html"} });
+      }
+
       if (url.pathname === "/api/users/list") {
         if (user.role !== 'admin') return json({ error: 'Forbidden' }, 403);
         const users = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all();
@@ -307,7 +336,6 @@ export default {
           const dueMonths = calcDueMonths(m.expiry_date);
           let newStatus = m.status || "active";
           
-          // Update Status logic for Negative/Advance values
           if (dueMonths != null) {
              if (dueMonths >= inactiveAfterMonths) { 
                newStatus = "inactive"; 
@@ -342,8 +370,12 @@ export default {
 
       if (url.pathname === "/api/members/history" && req.method === "POST") {
         const { memberId } = await req.json() as any;
+        // Fetch ALL attendance for calendar generation
         const history = await env.DB.prepare("SELECT check_in_time, status FROM attendance WHERE member_id = ? ORDER BY check_in_time DESC").bind(memberId).all();
-        return json({ history: history.results || [] });
+        // Also need member joined_at
+        const member = await env.DB.prepare("SELECT joined_at FROM members WHERE id = ?").bind(memberId).first<any>();
+        
+        return json({ history: history.results || [], joinedAt: member?.joined_at });
       }
 
       if (url.pathname === "/api/members/search" && req.method === "POST") {
@@ -677,7 +709,7 @@ function renderDashboard(user: any) {
                       <input name="currency" type="text" placeholder="BDT">
                    </div>
                    <div class="w-full">
-                      <label>Attendance Threshold</label>
+                      <label>Attendance Threshold (Days to be Active)</label>
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
                    </div>
                 </div>
@@ -820,17 +852,15 @@ function renderDashboard(user: any) {
       </div>
     </div>
 
+    <!-- ATTENDANCE CALENDAR MODAL -->
     <div id="modal-member-history" class="modal-backdrop">
-      <div class="modal-content">
-        <div class="flex-between">
-            <h3 id="mh-title" style="margin:0;">Attendance Sheet</h3>
+      <div class="modal-content" style="max-width:800px;">
+        <div class="flex-between" style="margin-bottom:20px;">
+            <h3 id="mh-title" style="margin:0;">Attendance History</h3>
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
-        <div class="table-responsive" style="margin-top:15px; max-height:400px; overflow-y:auto;">
-           <table>
-             <thead><tr><th>Date</th><th>Time</th><th>Status</th></tr></thead>
-             <tbody id="tbl-mh"></tbody>
-           </table>
+        <div id="calendar-container" class="calendar-wrapper">
+           <!-- Calendars go here -->
         </div>
       </div>
     </div>
@@ -1041,22 +1071,71 @@ function renderDashboard(user: any) {
            }).join('') || '<tr><td colspan="6">No members found for this filter.</td></tr>';
         },
 
+        /* --- CALENDAR LOGIC --- */
         async showHistory(id, name) {
            document.getElementById('mh-title').innerText = name + " - Attendance";
-           document.getElementById('tbl-mh').innerHTML = '<tr><td colspan="3">Loading...</td></tr>';
+           const container = document.getElementById('calendar-container');
+           container.innerHTML = '<div style="grid-column:1/-1; text-align:center;">Loading...</div>';
            document.getElementById('modal-member-history').style.display = 'flex';
            
            const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
            const data = await res.json();
-           const rows = (data.history || []).map(h => {
-             const d = new Date(h.check_in_time);
-             return '<tr>' +
-               '<td>' + d.toLocaleDateString('en-US', {timeZone:'Asia/Dhaka', month:'short', day:'numeric', year:'numeric'}) + '</td>' +
-               '<td>' + d.toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka', hour:'2-digit', minute:'2-digit'}) + '</td>' +
-               '<td>' + (h.status==='success'?'✅':'❌') + '</td>' +
-             '</tr>';
-           }).join('') || '<tr><td colspan="3">No records found.</td></tr>';
-           document.getElementById('tbl-mh').innerHTML = rows;
+           const history = data.history || [];
+           const joined = new Date(data.joinedAt || new Date());
+           
+           container.innerHTML = '';
+           
+           // Generate months from joined_at until now
+           const now = new Date();
+           let current = new Date(joined.getFullYear(), joined.getMonth(), 1);
+           
+           // Loop through months
+           while (current <= now) {
+              const year = current.getFullYear();
+              const month = current.getMonth();
+              const monthName = current.toLocaleString('default', { month: 'long', year: 'numeric' });
+              
+              // Days in month
+              const daysInMonth = new Date(year, month + 1, 0).getDate();
+              
+              // Find attendance for this month
+              // Convert check_in_time to Days present
+              const presentDays = history.filter(h => {
+                 const d = new Date(h.check_in_time);
+                 return d.getFullYear() === year && d.getMonth() === month;
+              }).map(h => new Date(h.check_in_time).getDate());
+              
+              // Remove duplicates
+              const uniquePresent = [...new Set(presentDays)];
+              const count = uniquePresent.length;
+              const threshold = this.data.settings.attendanceThreshold || 3;
+              const isBillable = count >= threshold;
+              
+              // Build HTML for this month
+              let gridHtml = '';
+              for(let i=1; i<=daysInMonth; i++) {
+                 const isPresent = uniquePresent.includes(i);
+                 const cls = isPresent ? 'present' : 'absent';
+                 const mark = isPresent ? 'P' : i;
+                 gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
+              }
+              
+              const statusColor = isBillable ? 'green' : 'red';
+              const statusText = isBillable ? 'Active / Billable' : 'Skipped / Inactive';
+              
+              const monthHtml = '<div class="calendar-month">' +
+                 '<div class="cal-header">' + monthName + '</div>' +
+                 '<div class="cal-grid">' + gridHtml + '</div>' +
+                 '<div class="cal-stats">' +
+                    '<span>Days: <strong>' + count + '</strong></span>' +
+                    '<span style="color:' + statusColor + '">' + statusText + '</span>' +
+                 '</div>' +
+              '</div>';
+              
+              container.insertAdjacentHTML('afterbegin', monthHtml); // Newest first
+              
+              current.setMonth(current.getMonth() + 1);
+           }
         },
 
         renderHistoryTable(filterDate) {
