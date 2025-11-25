@@ -1760,11 +1760,18 @@ function renderDashboard(user: any) {
             e.preventDefault();
             
             const plans = [];
-            document.querySelectorAll('.plan-row').forEach(row => {
-               const name = row.querySelector('.plan-name').value.trim();
-               const price = row.querySelector('.plan-price').value.trim();
-               const admissionFee = row.querySelector('.plan-adm').value.trim();
-               if(name) plans.push({ name, price: Number(price), admissionFee: Number(admissionFee) });
+            // FIX: Only select rows inside the container to exclude the header row
+            document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row => {
+               const nameInput = row.querySelector('.plan-name');
+               const priceInput = row.querySelector('.plan-price');
+               const admInput = row.querySelector('.plan-adm');
+               
+               if (nameInput && priceInput) {
+                   const name = nameInput.value.trim();
+                   const price = priceInput.value.trim();
+                   const admissionFee = admInput ? admInput.value.trim() : 0;
+                   if(name) plans.push({ name, price: Number(price), admissionFee: Number(admissionFee) });
+               }
             });
 
             const form = e.target;
