@@ -41,6 +41,8 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   const now = new Date();
   
   // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
@@ -131,11 +133,6 @@ function baseHead(title: string): string {
 
     .plan-row { display: grid; grid-template-columns: 1fr 100px 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
-    
-    .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
-    .pg-btn { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 13px; }
-    .pg-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .pg-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     /* Calendar Styles */
     .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; }
@@ -166,10 +163,13 @@ function baseHead(title: string): string {
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
+
+      /* Mobile Optimization for Stats Tiles */
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
       .stat-card { padding: 12px; border-radius: 8px; }
       .stat-val { font-size: 18px; margin-top: 2px; }
       .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      
       .card { padding: 16px; border-radius: 8px; }
       h2, h3 { font-size: 18px; }
     }
@@ -370,12 +370,8 @@ export default {
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
 
-        // Get today's attendance
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
-        
-        // Initial Payment Log (Last 20)
-        const paymentsLog = await env.DB.prepare("SELECT p.id, p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id ORDER BY p.id DESC LIMIT 20").all<any>();
-
+        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
 
@@ -383,64 +379,10 @@ export default {
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
-          paymentsLog: paymentsLog.results || [],
+          attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
         });
-      }
-
-      // NEW: Paginated Attendance History
-      if (url.pathname === "/api/history/list" && req.method === "POST") {
-        const { page } = await req.json() as any;
-        const limit = 50;
-        const offset = (page - 1) * limit;
-        
-        const history = await env.DB.prepare(`
-           SELECT a.check_in_time, a.status, m.name, m.id as member_id 
-           FROM attendance a 
-           JOIN members m ON a.member_id = m.id 
-           ORDER BY a.check_in_time DESC 
-           LIMIT ? OFFSET ?
-        `).bind(limit, offset).all();
-        
-        const total = await env.DB.prepare("SELECT count(*) as c FROM attendance").first<any>();
-        
-        return json({ 
-           history: history.results || [], 
-           total: total.c, 
-           page, 
-           pages: Math.ceil(total.c / limit) 
-        });
-      }
-
-      // NEW: Filtered Payments Analysis
-      if (url.pathname === "/api/payments/list" && req.method === "POST") {
-         const { type, value } = await req.json() as any; 
-         // type: 'all' | 'month' | 'day'
-         // value: '2023-10' or '2023-10-25'
-         
-         let query = "SELECT p.id, p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id";
-         let params: any[] = [];
-         
-         if (type === 'month' && value) {
-            query += " WHERE strftime('%Y-%m', p.date) = ?";
-            params.push(value);
-         } else if (type === 'day' && value) {
-            query += " WHERE date(p.date) = ?";
-            params.push(value);
-         } else if (type === 'year' && value) {
-             query += " WHERE strftime('%Y', p.date) = ?";
-             params.push(value);
-         }
-         
-         query += " ORDER BY p.date DESC LIMIT 100";
-         
-         const res = await env.DB.prepare(query).bind(...params).all();
-         
-         // Calculate sums
-         const total = (res.results || []).reduce((sum:number, r:any) => sum + r.amount, 0);
-         
-         return json({ payments: res.results || [], total });
       }
 
       if (url.pathname === "/api/members/history" && req.method === "POST") {
@@ -702,7 +644,7 @@ function renderDashboard(user: any) {
               <h3 id="lbl-today-att">Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th id="th-time">Time</th><th>ID</th><th>Name</th><th>Due / Adv</th></tr></thead>
+                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -713,43 +655,46 @@ function renderDashboard(user: any) {
           <div id="view-history" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;" id="lbl-act-log">All Time Attendance</h3>
+                <h3 style="margin:0;" id="lbl-act-log">Activity Log (Last 50)</h3>
+                <div class="flex" style="gap:8px;">
+                  <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
+                  <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
+                  <button class="btn btn-outline" onclick="app.clearHistoryFilter()" id="btn-clear">Clear</button>
+                </div>
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>ID</th><th>Name</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
-              <!-- Pagination -->
-              <div class="pagination" id="history-pagination"></div>
             </div>
           </div>
 
           <!-- VIEW: PAYMENTS -->
           <div id="view-payments" class="hidden">
-            <!-- Payment Analysis Panel -->
-            <div class="card" style="background:#f0f9ff; border-color:#bae6fd;">
-               <h3 style="margin-top:0; color:#0369a1;">Collection Analysis</h3>
-               <div class="flex" style="margin-bottom:15px; flex-wrap:wrap;">
-                  <select id="pay-analysis-type" onchange="app.analyzePayments()">
-                     <option value="day">Daily</option>
-                     <option value="month">Monthly</option>
-                     <option value="year">Yearly</option>
-                  </select>
-                  <input type="date" id="pay-analysis-date" onchange="app.analyzePayments()">
-                  <span style="font-size:18px; font-weight:bold; color:#0369a1; margin-left:auto;" id="pay-analysis-total">--</span>
-               </div>
+            <div class="card">
+              <h3 id="lbl-search-col">Search & Collect</h3>
+              <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
+              <div id="pay-search-results" class="checkin-results"></div>
             </div>
-
             <div class="card">
               <div class="flex-between" style="margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;" id="lbl-pay-stat">Payment History</h3>
+                <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
+                <div class="flex">
+                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
+                    <option value="all">All Members</option>
+                    <option value="due">Dues Only</option>
+                    <option value="running">Running</option>
+                    <option value="advanced">Advanced</option>
+                  </select>
+                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print List (PDF)</button>
+                </div>
               </div>
-              <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
+              <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>ID</th><th>Name</th><th>Amount</th></tr></thead>
-                  <tbody id="tbl-payment-log"></tbody>
+                  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
+                  <tbody id="tbl-payment-list"></tbody>
                 </table>
               </div>
             </div>
@@ -954,8 +899,8 @@ function renderDashboard(user: any) {
           search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
           nm: "Name", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
           tod_att: "Today's Attendance", time: "Time", res: "Result",
-          act_log: "All Time Attendance", filter: "Filter", clear: "Clear",
-          search_col: "Search & Collect", pay_stat: "Payment History", print: "Print List (PDF)",
+          act_log: "Activity Log (Last 50)", filter: "Filter", clear: "Clear",
+          search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
           att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due",
           mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
@@ -971,8 +916,8 @@ function renderDashboard(user: any) {
           search_ph: "আইডি, নাম বা ফোন খুঁজুন...", add_mem: "+ সদস্য যোগ",
           nm: "নাম", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
           tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
-          act_log: "সকল উপস্থিতি", filter: "ফিল্টার", clear: "মুছুন",
-          search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট ইতিহাস", print: "প্রিন্ট (PDF)",
+          act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
+          search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
           sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
           att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়",
           mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
@@ -1005,17 +950,12 @@ function renderDashboard(user: any) {
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false,
-        historyPage: 1,
         
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
           this.render();
           this.applySettingsUI();
-          
-          // Set today as default for payment analysis
-          document.getElementById('pay-analysis-date').valueAsDate = new Date();
-          
           if(currentUser.role === 'admin') this.loadUsers();
           
           const last = sessionStorage.getItem('gym_view');
@@ -1044,8 +984,11 @@ function renderDashboard(user: any) {
           nav.innerHTML = html;
 
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          // Simple active check
+          // Simple active check based on text match logic won't work well with lang, so relies on index or re-render
+          // For simplicity, we just re-rendered nav, now add active class based on v
           const map = {home:0, members:1, attendance:2, history:3, payments:4, settings:5, users:6}; 
+          // This simplistic mapping assumes all perms. Better to just highlight by checking nav text or rebuilding nav every time.
+          // Re-rendering nav every time is safest for lang switch.
           
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
             const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
@@ -1054,12 +997,10 @@ function renderDashboard(user: any) {
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
           this.updateLabels();
-
-          if (v === 'history') this.loadHistoryPage(1);
-          if (v === 'payments') this.analyzePayments();
         },
 
         updateLabels() {
+           // Update all ID-based labels
            document.getElementById('page-title').innerText = t('dash');
            document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
            document.getElementById('lbl-active-mem').innerText = t('act_mem');
@@ -1081,9 +1022,12 @@ function renderDashboard(user: any) {
            document.getElementById('th-time').innerText = t('time');
            
            document.getElementById('lbl-act-log').innerText = t('act_log');
+           document.getElementById('btn-filter').innerText = t('filter');
+           document.getElementById('btn-clear').innerText = t('clear');
            
            document.getElementById('lbl-search-col').innerText = t('search_col');
            document.getElementById('lbl-pay-stat').innerText = t('pay_stat');
+           document.getElementById('btn-print').innerText = t('print');
            
            document.getElementById('lbl-sys-set').innerText = t('sys_set');
            document.getElementById('lbl-cur').innerText = t('cur');
@@ -1110,6 +1054,8 @@ function renderDashboard(user: any) {
            return found ? Number(found.price) : 0;
         },
 
+        getDueDetails(m) { return ''; }, // logic inline now
+
         render() {
           const cur = this.data.settings.currency || 'BDT';
           if(document.getElementById('stat-active')) {
@@ -1124,72 +1070,14 @@ function renderDashboard(user: any) {
              let dueStr = '-';
              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>#' + a.member_id + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
+             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
-          
-          // Render Payment Log from bootstrap
-          this.renderPaymentLog(this.data.paymentsLog);
 
+          this.renderHistoryTable(null);
+          this.renderPaymentsTable(); 
           this.renderCharts();
-          this.updateLabels(); 
-        },
-        
-        // --- PAGINATED HISTORY ---
-        async loadHistoryPage(p) {
-           this.historyPage = p;
-           const tbody = document.getElementById('tbl-attendance-history');
-           tbody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
-           
-           const res = await fetch('/api/history/list', { method:'POST', body:JSON.stringify({page:p}) });
-           const data = await res.json();
-           
-           tbody.innerHTML = data.history.map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>#' + a.member_id + '</td><td>' + a.name + '</td></tr>'
-           ).join('');
-           
-           this.renderPagination(data.page, data.pages);
-        },
-        
-        renderPagination(curr, total) {
-           const container = document.getElementById('history-pagination');
-           let html = '';
-           if (total > 1) {
-               if (curr > 1) html += '<button class="pg-btn" onclick="app.loadHistoryPage('+(curr-1)+')">Prev</button>';
-               for(let i=1; i<=total; i++) {
-                   if(i===1 || i===total || (i>=curr-1 && i<=curr+1)) {
-                      html += '<button class="pg-btn '+(i===curr?'active':'')+'" onclick="app.loadHistoryPage('+i+')">'+i+'</button>';
-                   } else if (i===curr-2 || i===curr+2) {
-                      html += '<span>...</span>';
-                   }
-               }
-               if (curr < total) html += '<button class="pg-btn" onclick="app.loadHistoryPage('+(curr+1)+')">Next</button>';
-           }
-           container.innerHTML = html;
-        },
-
-        // --- PAYMENT ANALYSIS ---
-        async analyzePayments() {
-           const type = document.getElementById('pay-analysis-type').value;
-           const dateVal = document.getElementById('pay-analysis-date').value;
-           
-           let val = dateVal; // for day
-           if (type === 'month') val = dateVal.substring(0, 7); // YYYY-MM
-           if (type === 'year') val = dateVal.substring(0, 4); // YYYY
-           
-           const res = await fetch('/api/payments/list', { method:'POST', body:JSON.stringify({type, value:val})});
-           const data = await res.json();
-           
-           const cur = this.data.settings.currency || 'BDT';
-           document.getElementById('pay-analysis-total').innerText = "Total: " + cur + " " + data.total;
-           this.renderPaymentLog(data.payments);
-        },
-        
-        renderPaymentLog(list) {
-           const cur = this.data.settings.currency || 'BDT';
-           document.getElementById('tbl-payment-log').innerHTML = list.map(p => 
-              '<tr><td>' + p.date.split('T')[0] + '</td><td>#' + p.member_id + '</td><td>' + p.name + '</td><td style="font-weight:bold">' + cur + ' ' + p.amount + '</td></tr>'
-           ).join('') || '<tr><td colspan="4">No records found.</td></tr>';
+          this.updateLabels(); // Ensure text updated
         },
 
         renderMembersTable() {
@@ -1242,6 +1130,45 @@ function renderDashboard(user: any) {
               '</td>' +
             '</tr>';
           }).join('') || '<tr><td colspan="7">No members found.</td></tr>';
+        },
+
+        renderPaymentsTable() {
+           const filter = document.getElementById('pay-filter').value;
+           const cur = this.data.settings.currency || 'BDT';
+           let list = (this.data.members || []).slice(); 
+           if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
+           else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
+           else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
+
+           list.sort((a, b) => {
+              const getWeight = (m) => {
+                 if (m.dueMonths > 0) return 3; 
+                 if (!m.dueMonths || m.dueMonths === 0) return 2; 
+                 return 1; 
+              };
+              const wA = getWeight(a);
+              const wB = getWeight(b);
+              if (wA !== wB) return wB - wA; 
+              return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
+           });
+
+           document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
+              const price = this.getPlanPrice(m.plan);
+              let statusHtml = '<span class="badge bg-green">Running</span>';
+              let infoTxt = '-';
+              let amtTxt = '0';
+              if (m.dueMonths > 0) {
+                 statusHtml = '<span class="badge bg-amber">Due</span>';
+                 if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
+                 infoTxt = m.dueMonths + ' Mo Due';
+                 amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + (m.dueMonths * price) + '</span>';
+              } else if (m.dueMonths < 0) {
+                 statusHtml = '<span class="badge bg-blue">Advanced</span>';
+                 infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
+                 amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
+              }
+              return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
+           }).join('') || '<tr><td colspan="6">No data.</td></tr>';
         },
 
         async showHistory(id, name) {
@@ -1332,6 +1259,13 @@ function renderDashboard(user: any) {
                  '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
               '</div>' +
            '</div>';
+        },
+
+        renderHistoryTable(filterDate) {
+          const list = filterDate ? (this.data.attendanceHistory || []).filter(a => a.check_in_time.startsWith(filterDate)) : (this.data.attendanceHistory || []);
+          document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
+            '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
+          ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
         /* --- USER MGMT --- */
@@ -1522,6 +1456,8 @@ function renderDashboard(user: any) {
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
         
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
+        applyHistoryFilter() { this.renderHistoryTable(document.getElementById('history-date').value); },
+        clearHistoryFilter() { document.getElementById('history-date').value=''; this.renderHistoryTable(null); },
         onPaymentSearchInput(e) {
            const val = e.target.value;
            setTimeout(async ()=>{
@@ -1567,3 +1503,6 @@ function renderDashboard(user: any) {
       };
       app.init();
     </script>
+  </body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html" } });
+}
