@@ -8,8 +8,6 @@ export interface Env {
    1. UTILITIES & SECURITY
    ======================================================================== */
 
-const MENU_KEYS = ["home", "members", "attendance", "history", "payments", "settings"];
-
 const corsHeaders = {
   "Content-Type": "application/json",
   "Access-Control-Allow-Origin": "*",
@@ -55,30 +53,6 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   if (now.getDate() > exp.getDate()) months += 1;
   if (months < 1) months = 1;
   return months;
-}
-
-function normalizeMenus(raw: any): string[] {
-  let arr: string[] = [];
-  if (Array.isArray(raw)) arr = raw.map(String);
-  else if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) arr = parsed.map(String);
-    } catch {
-      arr = raw.split(",").map((s) => s.trim());
-    }
-  }
-
-  const filtered = MENU_KEYS.filter((m) => arr.includes(m));
-  return filtered.length ? filtered : MENU_KEYS;
-}
-
-async function ensureUserMenus(env: Env, userId: number, menus?: string[]) {
-  const allowed = normalizeMenus(menus || MENU_KEYS);
-  await env.DB.prepare("INSERT OR REPLACE INTO user_permissions (user_id, menus) VALUES (?, ?)")
-    .bind(userId, JSON.stringify(allowed))
-    .run();
-  return allowed;
 }
 
 /* ========================================================================
@@ -184,10 +158,9 @@ async function initDB(env: Env) {
   const q = [
     `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
     `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT)`,
-    `CREATE TABLE IF NOT EXISTS user_permissions (user_id INTEGER PRIMARY KEY, menus TEXT)`,
     `CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY,
-      name TEXT,
+      id INTEGER PRIMARY KEY, 
+      name TEXT, 
       phone TEXT, 
       plan TEXT, 
       joined_at TEXT, 
@@ -235,17 +208,12 @@ export default {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
         
-      await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
-
-      const hash = await hashPassword(body.password);
-      await env.DB.prepare("DELETE FROM users").run();
-      const adminInsert = await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')")
-        .bind(email, hash, body.adminName).run();
-      if (adminInsert.success) {
-        await env.DB.prepare("INSERT OR REPLACE INTO user_permissions (user_id, menus) VALUES (?, ?)")
-          .bind(adminInsert.lastRowId, JSON.stringify(MENU_KEYS))
-          .run();
-      }
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
+        
+        const hash = await hashPassword(body.password);
+        await env.DB.prepare("DELETE FROM users").run(); 
+        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')")
+          .bind(email, hash, body.adminName).run();
           
         return json({ success: true });
       }
@@ -253,17 +221,11 @@ export default {
       if (url.pathname === "/api/login" && req.method === "POST") {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
-
+        
         const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<any>();
         if (!user || !(await verifyPassword(body.password, user.password_hash))) {
           return json({ error: "Invalid credentials" }, 401);
         }
-
-        const permRow = await env.DB.prepare("SELECT menus FROM user_permissions WHERE user_id = ?")
-          .bind(user.id)
-          .first<any>();
-        const allowedMenus = normalizeMenus(permRow?.menus || MENU_KEYS);
-        await ensureUserMenus(env, user.id, allowedMenus);
 
         const token = crypto.randomUUID();
         const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -582,24 +544,8 @@ export default {
           dueMonths: calcDueMonths(r.expiry_date as string | null)
         }));
         
-        let usersList: any[] = [];
-        if (user.role === 'admin') {
-          const resUsers = await env.DB.prepare(`
-            SELECT u.id, u.name, u.email, u.role, p.menus
-            FROM users u
-            LEFT JOIN user_permissions p ON p.user_id = u.id
-            ORDER BY u.id
-          `).all<any>();
-          usersList = (resUsers.results || []).map((u: any) => ({
-            ...u,
-            allowedMenus: normalizeMenus(u.menus || MENU_KEYS)
-          }));
-        }
-
         return json({
-          user: { ...user, allowedMenus: normalizeMenus((user as any).allowedMenus || (user as any).allowed_menus || MENU_KEYS) },
-          users: usersList,
-          menuOptions: MENU_KEYS,
+          user,
           members: membersProcessed,
           attendanceToday: attendanceTodayWithDue,
           attendanceHistory: attendanceHistoryWithDue,
@@ -697,35 +643,6 @@ export default {
         return json({ success: true });
       }
 
-      if (url.pathname === "/api/users/add" && req.method === "POST") {
-        if (user.role !== 'admin') return json({ error: "Forbidden" }, 403);
-        const body = await req.json() as any;
-        const email = (body.email || "").trim().toLowerCase();
-        const name = (body.name || "").trim();
-        const password = (body.password || "").trim();
-        if (!email || !name || !password) return json({ error: "Missing required fields" }, 400);
-
-        const hash = await hashPassword(password);
-        const menus = normalizeMenus(body.allowedMenus || MENU_KEYS);
-        const res = await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'staff')")
-          .bind(email, hash, name)
-          .run();
-
-        if (!res.success || !res.lastRowId) return json({ error: "Failed to create user" }, 400);
-        await ensureUserMenus(env, Number(res.lastRowId), menus);
-        return json({ success: true });
-      }
-
-      if (url.pathname === "/api/users/menus" && req.method === "POST") {
-        if (user.role !== 'admin') return json({ error: "Forbidden" }, 403);
-        const body = await req.json() as any;
-        const id = parseInt(body.userId);
-        if (!id) return json({ error: "User not found" }, 400);
-        const menus = normalizeMenus(body.allowedMenus || MENU_KEYS);
-        await ensureUserMenus(env, id, menus);
-        return json({ success: true, allowedMenus: menus });
-      }
-
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
@@ -737,23 +654,9 @@ async function getSession(req: Request, env: Env) {
   const cookie = req.headers.get("Cookie");
   const token = cookie?.match(/gym_auth=([^;]+)/)?.[1];
   if (!token) return null;
-  const row = await env.DB.prepare(`
-    SELECT u.*, p.menus as allowed_menus, s.expires_at
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    LEFT JOIN user_permissions p ON p.user_id = u.id
-    WHERE s.token = ?
-  `)
+  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?")
     .bind(token)
-    .first<any>();
-
-  if (!row) return null;
-  if (row.expires_at && new Date(row.expires_at) < new Date()) return null;
-
-  const allowedMenus = normalizeMenus(row.allowed_menus || MENU_KEYS);
-  if (!row.allowed_menus) await ensureUserMenus(env, row.id, allowedMenus);
-
-  return { ...row, allowedMenus };
+    .first();
 }
 
 /* ========================================================================
@@ -859,12 +762,12 @@ function renderDashboard(user: any) {
       <aside class="sidebar">
         <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.3</span></div>
         <div class="nav">
-          <div class="nav-item" data-menu="home" onclick="app.nav('home')">📊 Overview</div>
-          <div class="nav-item" data-menu="members" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item active" data-menu="attendance" onclick="app.nav('attendance')">⏰ Today</div>
-          <div class="nav-item" data-menu="history" onclick="app.nav('history')">📜 History</div>
-          <div class="nav-item" data-menu="payments" onclick="app.nav('payments')">💵 Payments</div>
-          <div class="nav-item" data-menu="settings" onclick="app.nav('settings')">⚙ Settings</div>
+          <div class="nav-item" onclick="app.nav('home')">📊 Overview</div>
+          <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
+          <div class="nav-item active" onclick="app.nav('attendance')">⏰ Today</div>
+          <div class="nav-item" onclick="app.nav('history')">📜 History</div>
+          <div class="nav-item" onclick="app.nav('payments')">💵 Payments</div>
+          <div class="nav-item" onclick="app.nav('settings')">⚙ Settings</div>
         </div>
         <div class="user-footer">
           <div style="font-weight:600;">${user.name}</div>
@@ -1046,48 +949,6 @@ function renderDashboard(user: any) {
                 </div>
               </form>
             </div>
-
-            <div id="user-admin-controls" class="card hidden">
-              <h3>User Access Control</h3>
-              <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">
-                Add teammates and choose which menus appear in their dashboard. You can adjust access anytime.
-              </p>
-              <form id="user-add-form" onsubmit="app.addUser(event)">
-                <div class="flex" style="gap:12px;">
-                  <div class="w-full">
-                    <label>Full Name</label>
-                    <input name="name" required placeholder="Staff name">
-                  </div>
-                  <div class="w-full">
-                    <label>Email</label>
-                    <input name="email" type="email" required placeholder="staff@gym.com">
-                  </div>
-                </div>
-                <label>Password</label>
-                <input name="password" type="password" required placeholder="Temporary password">
-
-                <label>Menus this user can see</label>
-                <div id="user-add-menus" class="flex" style="flex-wrap:wrap; gap:10px; margin-bottom:12px;"></div>
-
-                <div class="flex-between" style="margin-top:10px; gap:10px;">
-                  <button type="submit" class="btn btn-primary">Add User</button>
-                  <span id="user-add-status" style="font-size:12px; color:var(--text-muted);"></span>
-                </div>
-              </form>
-            </div>
-
-            <div id="user-table-card" class="card hidden">
-              <div class="flex-between" style="margin-bottom:12px;">
-                <h3 style="margin:0;">Existing Users</h3>
-                <span id="user-status" style="font-size:12px; color:var(--text-muted);"></span>
-              </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>User</th><th>Role</th><th>Allowed Menus</th><th>Actions</th></tr></thead>
-                  <tbody id="tbl-users"></tbody>
-                </table>
-              </div>
-            </div>
           </div>
 
         </div>
@@ -1162,57 +1023,33 @@ function renderDashboard(user: any) {
         searchTimeout: null,
         paymentSearchTimeout: null,
         charts: { dues: null, attendance: null },
-        menuOptions: [
-          { key: 'home', label: 'Overview' },
-          { key: 'members', label: 'Members' },
-          { key: 'attendance', label: 'Today' },
-          { key: 'history', label: 'History' },
-          { key: 'payments', label: 'Payments' },
-          { key: 'settings', label: 'Settings' },
-        ],
-        allowedMenus: [],
 
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
-          this.allowedMenus = (this.data.user?.allowedMenus) || this.menuOptions.map(m => m.key);
           this.render();
           this.applySettingsUI();
-          this.renderUserManagement();
-          this.renderNavAccess();
-          const firstAllowed = this.allowedMenus.includes('attendance')
-            ? 'attendance'
-            : (this.allowedMenus[0] || 'home');
-          this.nav(firstAllowed); // default view based on permissions
+          this.nav('attendance'); // default: today's attendance
         },
-
+        
         nav(v) {
-          if (this.allowedMenus && !this.allowedMenus.includes(v)) {
-            const fallback = this.allowedMenus.includes('attendance')
-              ? 'attendance'
-              : (this.allowedMenus[0] || 'home');
-            if (fallback && fallback !== v) this.nav(fallback);
-            return;
-          }
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
           const navs = document.querySelectorAll('.nav .nav-item');
           navs.forEach(el => {
-            const key = el.getAttribute('data-menu');
-            if (key === v) el.classList.add('active');
+            if (el.textContent.includes('Overview') && v === 'home') el.classList.add('active');
+            if (el.textContent.includes('Members') && v === 'members') el.classList.add('active');
+            if (el.textContent.includes('Today') && v === 'attendance') el.classList.add('active');
+            if (el.textContent.includes('History') && v === 'history') el.classList.add('active');
+            if (el.textContent.includes('Payments') && v === 'payments') el.classList.add('active');
+            if (el.textContent.includes('Settings') && v === 'settings') el.classList.add('active');
           });
-
+          
           ['home', 'members', 'attendance', 'history', 'payments', 'settings'].forEach(id => {
             const view = document.getElementById('view-'+id);
-            if (view) {
-              if (this.allowedMenus && !this.allowedMenus.includes(id)) {
-                view.classList.add('hidden');
-                return;
-              }
-              view.classList.add('hidden');
-            }
+            if (view) view.classList.add('hidden');
           });
           document.getElementById('view-'+v).classList.remove('hidden');
-          document.getElementById('page-title').textContent =
+          document.getElementById('page-title').textContent = 
             v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
           
           document.querySelector('.sidebar').classList.remove('open');
@@ -1220,7 +1057,6 @@ function renderDashboard(user: any) {
         },
 
         render() {
-          this.renderNavAccess();
           document.getElementById('stat-active').innerText = this.data.stats.active;
           document.getElementById('stat-today').innerText = this.data.stats.today;
           document.getElementById('stat-rev').innerText = this.data.stats.revenue || 0;
@@ -1412,15 +1248,6 @@ function renderDashboard(user: any) {
           }
         },
 
-        renderNavAccess() {
-          const allowed = this.allowedMenus || [];
-          document.querySelectorAll('.nav-item').forEach(el => {
-            const key = el.getAttribute('data-menu');
-            if (key && !allowed.includes(key)) el.classList.add('hidden');
-            else el.classList.remove('hidden');
-          });
-        },
-
         applySettingsUI() {
           const settings = this.data.settings || {};
           const form = document.getElementById('settings-form');
@@ -1437,107 +1264,6 @@ function renderDashboard(user: any) {
           if (select) {
             const plansArray = (settings.membershipPlans || ['Standard','Premium']);
             select.innerHTML = plansArray.map(p => '<option>' + p + '</option>').join('');
-          }
-          this.renderUserManagement();
-        },
-
-        renderMenuCheckboxes(containerId, selectedMenus = []) {
-          const box = document.getElementById(containerId);
-          if (!box) return;
-          const selected = selectedMenus.length ? selectedMenus : this.menuOptions.map(o => o.key);
-          box.innerHTML = this.menuOptions.map(opt => `
-            <label style="display:inline-flex; align-items:center; gap:6px; background:#f9fafb; border:1px solid var(--border); padding:6px 10px; border-radius:8px; font-size:12px;">
-              <input type="checkbox" value="${opt.key}" ${selected.includes(opt.key) ? 'checked' : ''}>
-              ${opt.label}
-            </label>
-          `).join('');
-        },
-
-        collectMenuSelection(selector, userId = null) {
-          let inputs: NodeListOf<HTMLInputElement>;
-          if (userId) {
-            inputs = document.querySelectorAll(`input[type="checkbox"][data-user="${userId}"]`);
-          } else {
-            const root = typeof selector === 'string' ? document.querySelector(selector) : selector;
-            inputs = root ? root.querySelectorAll('input[type="checkbox"]') as NodeListOf<HTMLInputElement> : document.querySelectorAll('input[type="checkbox"]');
-          }
-          const selected: string[] = [];
-          inputs.forEach((inp: any) => { if (inp.checked) selected.push(inp.value); });
-          return selected;
-        },
-
-        renderUserManagement() {
-          const isAdmin = (this.data?.user?.role || '').toLowerCase() === 'admin';
-          const adminCard = document.getElementById('user-admin-controls');
-          const tableCard = document.getElementById('user-table-card');
-          if (!adminCard || !tableCard) return;
-          if (!isAdmin) {
-            adminCard.classList.add('hidden');
-            tableCard.classList.add('hidden');
-            return;
-          }
-          adminCard.classList.remove('hidden');
-          tableCard.classList.remove('hidden');
-          this.renderMenuCheckboxes('user-add-menus');
-
-          const tbody = document.getElementById('tbl-users');
-          const users = this.data.users || [];
-          if (tbody) {
-            tbody.innerHTML = users.map(u => {
-              const checkboxes = this.menuOptions.map(opt => `
-                <label style="display:inline-flex; align-items:center; gap:6px; background:#f9fafb; border:1px solid var(--border); padding:6px 10px; border-radius:8px; font-size:12px; margin-bottom:6px;">
-                  <input type="checkbox" value="${opt.key}" data-user="${u.id}" ${u.allowedMenus.includes(opt.key) ? 'checked' : ''}>
-                  ${opt.label}
-                </label>
-              `).join('');
-              return `
-                <tr>
-                  <td><strong>${u.name}</strong><div style="color:var(--text-muted); font-size:12px;">${u.email}</div></td>
-                  <td>${(u.role || '').toUpperCase()}</td>
-                  <td><div class="flex" style="flex-wrap:wrap; gap:6px;">${checkboxes}</div></td>
-                  <td><button class="btn btn-primary" style="padding:6px 12px; font-size:12px;" onclick="app.saveUserMenus(${u.id})">Save</button></td>
-                </tr>
-              `;
-            }).join('');
-          }
-        },
-
-        async addUser(e) {
-          e.preventDefault();
-          const form = e.target;
-          const statusEl = document.getElementById('user-add-status');
-          if (statusEl) { statusEl.style.color = 'var(--text-muted)'; statusEl.textContent = 'Saving...'; }
-          let allowedMenus = this.collectMenuSelection('#user-add-menus');
-          if (!allowedMenus.length) allowedMenus = this.menuOptions.map((m) => m.key);
-          const payload = Object.fromEntries(new FormData(form));
-          payload.allowedMenus = allowedMenus;
-
-          const res = await fetch('/api/users/add', { method: 'POST', body: JSON.stringify(payload) });
-          const data = await res.json();
-          if (res.ok) {
-            if (statusEl) { statusEl.style.color = 'var(--success)'; statusEl.textContent = 'User created'; }
-            setTimeout(() => location.reload(), 600);
-          } else {
-            if (statusEl) { statusEl.style.color = 'var(--danger)'; statusEl.textContent = data.error || 'Failed to add user'; }
-          }
-        },
-
-        async saveUserMenus(userId) {
-          let allowedMenus = this.collectMenuSelection(null, userId);
-          if (!allowedMenus.length) allowedMenus = this.menuOptions.map((m) => m.key);
-          const status = document.getElementById('user-status');
-          if (status) { status.style.color = 'var(--text-muted)'; status.textContent = 'Saving access...'; }
-          const res = await fetch('/api/users/menus', {
-            method: 'POST',
-            body: JSON.stringify({ userId, allowedMenus })
-          });
-          const data = await res.json();
-          if (res.ok) {
-            if (status) { status.style.color = 'var(--success)'; status.textContent = 'Access updated'; }
-            const userEntry = this.data.users.find((u) => u.id === userId);
-            if (userEntry) userEntry.allowedMenus = data.allowedMenus;
-          } else {
-            if (status) { status.style.color = 'var(--danger)'; status.textContent = data.error || 'Update failed'; }
           }
         },
 
