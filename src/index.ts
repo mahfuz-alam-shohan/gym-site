@@ -39,7 +39,7 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   if (isNaN(exp.getTime())) return null;
 
   const now = new Date();
-  if (exp >= now) return 0; 
+  if (exp >= now) return 0;
 
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
@@ -114,7 +114,6 @@ function baseHead(title: string): string {
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
-    .bg-blue { background: #dbeafe; color: #1e40af; }
     
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
@@ -172,14 +171,12 @@ async function factoryReset(env: Env) {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-
     if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
     try {
       await initDB(env);
 
       /* --- PUBLIC ROUTES --- */
-
       if (url.pathname === "/") {
         const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'gym_name'").first<any>();
         const user = await getSession(req, env);
@@ -191,34 +188,23 @@ export default {
       if (url.pathname === "/api/setup" && req.method === "POST") {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
-        
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
-        
         const hash = await hashPassword(body.password);
         await env.DB.prepare("DELETE FROM users").run(); 
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
-        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)")
-          .bind(email, hash, body.adminName, allPerms).run();
-          
+        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
         return json({ success: true });
       }
 
       if (url.pathname === "/api/login" && req.method === "POST") {
         const body = await req.json() as any;
         const email = (body.email || "").trim().toLowerCase();
-        
         const user = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(email).first<any>();
-        if (!user || !(await verifyPassword(body.password, user.password_hash))) {
-          return json({ error: "Invalid credentials" }, 401);
-        }
-
+        if (!user || !(await verifyPassword(body.password, user.password_hash))) return json({ error: "Invalid credentials" }, 401);
         const token = crypto.randomUUID();
         const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         await env.DB.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)").bind(token, user.id, expires).run();
-
-        return new Response(JSON.stringify({ success: true }), {
-          headers: { ...corsHeaders, "Set-Cookie": `gym_auth=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800` }
-        });
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Set-Cookie": `gym_auth=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800` } });
       }
 
       if (url.pathname === "/api/nuke") {
@@ -231,7 +217,6 @@ export default {
       }
 
       /* --- PROTECTED ROUTES --- */
-
       const user = await getSession(req, env);
       if (!user) {
         if (url.pathname.startsWith('/api')) return json({ error: "Unauthorized" }, 401);
@@ -240,7 +225,6 @@ export default {
 
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // --- USER MGMT ---
       if (url.pathname === "/api/users/list") {
         if (user.role !== 'admin') return json({ error: 'Forbidden' }, 403);
         const users = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all();
@@ -279,7 +263,6 @@ export default {
         return json({ success: true });
       }
 
-      // --- MEMBERS & DATA ---
       if (url.pathname === "/api/bootstrap") {
         const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
         const config: Record<string, string> = {};
@@ -301,7 +284,6 @@ export default {
           if (dueMonths != null && dueMonths >= inactiveAfterMonths) { newStatus = "inactive"; inactiveMembersCount++; }
           else if (dueMonths != null && dueMonths > 0) { newStatus = "due"; dueMembersCount++; }
           else { newStatus = "active"; activeCount++; }
-          
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
@@ -323,12 +305,7 @@ export default {
 
       if (url.pathname === "/api/members/history" && req.method === "POST") {
         const { memberId } = await req.json() as any;
-        const history = await env.DB.prepare(`
-          SELECT check_in_time, status 
-          FROM attendance 
-          WHERE member_id = ? 
-          ORDER BY check_in_time DESC
-        `).bind(memberId).all();
+        const history = await env.DB.prepare("SELECT check_in_time, status FROM attendance WHERE member_id = ? ORDER BY check_in_time DESC").bind(memberId).all();
         return json({ history: history.results || [] });
       }
 
@@ -358,10 +335,8 @@ export default {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
-
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = date('now') LIMIT 1").bind(memberId).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
-        
         const isExpired = new Date(member.expiry_date) < new Date();
         const status = isExpired ? 'expired' : 'success';
         await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, new Date().toISOString(), status).run();
@@ -817,20 +792,20 @@ function renderDashboard(user: any) {
             const dueAmt = (m.dueMonths > 0) ? (m.dueMonths * price) : 0;
             const dueTxt = dueAmt > 0 ? (dueAmt + ' (' + m.dueMonths + ' Mo)') : '-';
 
-            return \`<tr>
-              <td>#\${m.id}</td><td><strong>\${m.name}</strong></td><td>\${m.phone}</td><td>\${m.plan}</td>
-              <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-              <td>\${statusBadge}<div style="font-size:11px;color:red">\${dueTxt}</div></td>
-              <td>
-                <button class="btn btn-outline" onclick="app.showHistory(\${m.id}, '\${m.name}')">History</button>
-                <button class="btn btn-outline" onclick="app.modals.pay.open(\${m.id})">Pay</button>
-                <button class="btn btn-danger" onclick="app.del(\${m.id})">Del</button>
-              </td>
-            </tr>\`;
+            return '<tr>' +
+              '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td><td>' + m.phone + '</td><td>' + m.plan + '</td>' +
+              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+              '<td>' + statusBadge + '<div style="font-size:11px;color:red">' + dueTxt + '</div></td>' +
+              '<td>' +
+                '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">History</button> ' +
+                '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
+                '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
+              '</td>' +
+            '</tr>';
           }).join('');
 
           const todayRows = (this.data.attendanceToday || []).map(a => 
-             \`<tr><td>\${formatTime(a.check_in_time).split(', ')[1]}</td><td>\${a.name}</td><td>\${a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>'}</td><td>\${a.dueMonths>0?a.dueMonths+' Mo Due':'-'}</td></tr>\`
+             '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + (a.dueMonths>0?a.dueMonths+' Mo Due':'-') + '</td></tr>'
           ).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
@@ -840,12 +815,12 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-dues').innerHTML = duesMembers.map(m => {
              const amt = m.dueMonths * price;
              const monthsTxt = this.getDueDetails(m);
-             return \`<tr>
-               <td>#\${m.id}</td><td>\${m.name}</td><td><span class="badge bg-\${m.status==='inactive'?'red':'amber'}">\${m.status}</span></td>
-               <td>\${m.dueMonths} <small style="color:#666">(\${monthsTxt})</small></td>
-               <td style="font-weight:bold; color:#ef4444">\${amt}</td>
-               <td><button class="btn btn-primary" onclick="app.modals.pay.open(\${m.id})">Pay</button></td>
-             </tr>\`;
+             return '<tr>' +
+               '<td>#' + m.id + '</td><td>' + m.name + '</td><td><span class="badge bg-' + (m.status==='inactive'?'red':'amber') + '">' + m.status + '</span></td>' +
+               '<td>' + m.dueMonths + ' <small style="color:#666">(' + monthsTxt + ')</small></td>' +
+               '<td style="font-weight:bold; color:#ef4444">' + amt + '</td>' +
+               '<td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td>' +
+             '</tr>';
           }).join('') || '<tr><td colspan="6">No dues.</td></tr>';
           
           this.renderCharts();
@@ -860,11 +835,11 @@ function renderDashboard(user: any) {
            const data = await res.json();
            const rows = (data.history || []).map(h => {
              const d = new Date(h.check_in_time);
-             return \`<tr>
-               <td>\${d.toLocaleDateString('en-US', {timeZone:'Asia/Dhaka', month:'short', day:'numeric', year:'numeric'})}</td>
-               <td>\${d.toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka', hour:'2-digit', minute:'2-digit'})}</td>
-               <td>\${h.status==='success'?'✅':'❌'}</td>
-             </tr>\`;
+             return '<tr>' +
+               '<td>' + d.toLocaleDateString('en-US', {timeZone:'Asia/Dhaka', month:'short', day:'numeric', year:'numeric'}) + '</td>' +
+               '<td>' + d.toLocaleTimeString('en-US', {timeZone:'Asia/Dhaka', hour:'2-digit', minute:'2-digit'}) + '</td>' +
+               '<td>' + (h.status==='success'?'✅':'❌') + '</td>' +
+             '</tr>';
            }).join('') || '<tr><td colspan="3">No records found.</td></tr>';
            document.getElementById('tbl-mh').innerHTML = rows;
         },
@@ -872,7 +847,7 @@ function renderDashboard(user: any) {
         renderHistoryTable(filterDate) {
           const list = filterDate ? (this.data.attendanceHistory || []).filter(a => a.check_in_time.startsWith(filterDate)) : (this.data.attendanceHistory || []);
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-            \`<tr><td>\${formatTime(a.check_in_time).split(', ')[0]}</td><td>\${formatTime(a.check_in_time).split(', ')[1]}</td><td>\${a.name}</td><td>\${a.status==='success'?'OK':'Expired'}</td></tr>\`
+            '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'OK':'Expired') + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
@@ -914,7 +889,11 @@ function renderDashboard(user: any) {
            if(res.ok) {
              const data = await res.json();
              this.userList = data.users;
-             document.getElementById('tbl-users').innerHTML = this.userList.map(u => \`<tr><td>#\${u.id}</td><td>\${u.name}</td><td>\${u.email}</td><td>\${u.role}</td><td style="font-size:11px; white-space:normal; max-width:150px;">\${u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))}</td><td><button class="btn btn-outline" onclick="app.editUser(\${u.id})">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(\${u.id})">Del</button></td></tr>\`).join('');
+             document.getElementById('tbl-users').innerHTML = this.userList.map(u => 
+               '<tr><td>#' + u.id + '</td><td>' + u.name + '</td><td>' + u.email + '</td><td>' + u.role + '</td>' +
+               '<td style="font-size:11px; white-space:normal; max-width:150px;">' + (u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))) + '</td>' +
+               '<td><button class="btn btn-outline" onclick="app.editUser(' + u.id + ')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(' + u.id + ')">Del</button></td></tr>'
+             ).join('');
            }
         },
         
@@ -965,7 +944,9 @@ function renderDashboard(user: any) {
               if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
               const data = await res.json();
-              document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=>`<div class="checkin-item" onclick="document.getElementById('checkin-id').value=${m.id}; document.getElementById('checkin-suggestions').innerHTML=''; app.checkIn()"><strong>${m.name}</strong></div>`).join('');
+              document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=>
+                '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()"><strong>' + m.name + '</strong></div>'
+              ).join('');
            }, 200);
         },
         
@@ -981,7 +962,9 @@ function renderDashboard(user: any) {
               if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
               const data = await res.json();
-              document.getElementById('pay-search-results').innerHTML = data.results.map(m=>`<div class="checkin-item" onclick="app.modals.pay.open(${m.id})"><strong>${m.name}</strong> - ${m.dueMonths} Mo Due</div>`).join('');
+              document.getElementById('pay-search-results').innerHTML = data.results.map(m=>
+                '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>' + m.name + '</strong> - ' + m.dueMonths + ' Mo Due</div>'
+              ).join('');
            }, 200);
         },
         
