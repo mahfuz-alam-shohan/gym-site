@@ -245,6 +245,9 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind("en").run();
+        // Default fees
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind("0").run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind("0").run();
 
         return json({ success: true });
       }
@@ -341,6 +344,8 @@ export default {
 
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
+        const admissionFee = parseInt(config["admission_fee"] || "0", 10);
+        const renewalFee = parseInt(config["renewal_fee"] || "0", 10);
         const currency = config["currency"] || "BDT";
         const lang = config["lang"] || "en";
         
@@ -400,7 +405,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, admissionFee, renewalFee }
         });
       }
 
@@ -413,7 +418,8 @@ export default {
 
       if (url.pathname === "/api/payments/history" && req.method === "POST") {
         const body = await req.json() as any;
-        let query = "SELECT p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id WHERE 1=1";
+        // Changed JOIN to LEFT JOIN to include deleted members (where name might be null)
+        let query = "SELECT p.amount, p.date, m.name, p.member_id FROM payments p LEFT JOIN members m ON p.member_id = m.id WHERE 1=1";
         const params: any[] = [];
         
         if (body.memberId) {
@@ -447,7 +453,7 @@ export default {
         const isNumeric = /^\d+$/.test(qRaw);
         
         // Optimized query to check attendance status for today
-        const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = date('now')) as today_visits FROM members";
+        const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, status, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = date('now')) as today_visits FROM members";
         
         if (isNumeric) {
            if (qRaw.length < 6) {
@@ -477,7 +483,16 @@ export default {
         
         expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
         
-        await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
+        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
+        
+        // Handle Admission Fee Payment
+        if (body.admissionFeePaid && result.meta.last_row_id) {
+            const fee = parseInt(body.admissionFee || "0");
+            if (fee > 0) {
+                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, fee, new Date().toISOString()).run();
+            }
+        }
+
         return json({ success: true });
       }
 
@@ -485,12 +500,56 @@ export default {
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
+        
+        // Strict Inactive Block
+        if (member.status === 'inactive') return json({ error: "Membership Inactive. Please Renew.", code: "INACTIVE" }, 400);
+
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = date('now') LIMIT 1").bind(memberId).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
         const isExpired = new Date(member.expiry_date) < new Date();
         const status = isExpired ? 'expired' : 'success';
         await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, new Date().toISOString(), status).run();
         return json({ success: true, status, name: member.name, isExpired });
+      }
+
+      // RE-ADMISSION / RENEWAL ENDPOINT
+      if (url.pathname === "/api/members/renew" && req.method === "POST") {
+        const { memberId, renewalFee, amount } = await req.json() as any;
+        const rFee = Number(renewalFee);
+        const planAmt = Number(amount);
+
+        // 1. Record Renewal Fee
+        if (rFee > 0) {
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, new Date().toISOString()).run();
+        }
+
+        // 2. Record Plan Payment
+        if (planAmt > 0) {
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, planAmt, new Date().toISOString()).run();
+        }
+
+        // 3. Reset Member Status & Expiry
+        const member = await env.DB.prepare("SELECT plan FROM members WHERE id = ?").bind(memberId).first<any>();
+        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
+        const plans = JSON.parse(config.value || '[]');
+        const plan = plans.find((p: any) => p.name === member.plan);
+        const price = plan ? Number(plan.price) : 0;
+
+        let newExpiry = new Date(); // Start from NOW (Reset)
+        let balance = 0;
+
+        if (price > 0) {
+            let months = Math.floor(planAmt / price);
+            balance = planAmt % price; // Store remainder
+            // Add months to TODAY
+            newExpiry.setMonth(newExpiry.getMonth() + months);
+        } else {
+            // Fallback if price is 0
+            newExpiry.setMonth(newExpiry.getMonth() + 1);
+        }
+
+        await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, status = 'active' WHERE id = ?").bind(newExpiry.toISOString(), balance, memberId).run();
+        return json({ success: true });
       }
 
       if (url.pathname === "/api/payment" && req.method === "POST") {
@@ -525,8 +584,9 @@ export default {
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
+        // NOT deleting payments to preserve revenue history
+        // await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); 
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
-        await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run();
         return json({ success: true });
       }
 
@@ -538,6 +598,8 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind(String(body.admissionFee)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
         return json({ success: true });
       }
 
@@ -818,6 +880,17 @@ function renderDashboard(user: any) {
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
                    </div>
                 </div>
+
+                <div class="flex">
+                   <div class="w-full">
+                      <label id="lbl-adm-fee">Admission Fee</label>
+                      <input name="admissionFee" type="number" min="0" required>
+                   </div>
+                   <div class="w-full">
+                      <label id="lbl-ren-fee">Renewal Fee</label>
+                      <input name="renewalFee" type="number" min="0" required>
+                   </div>
+                </div>
                 
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
@@ -886,7 +959,20 @@ function renderDashboard(user: any) {
           </div>
           
           <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
-             <label style="margin-bottom:8px; font-weight:bold;">Payment & Dues</label>
+             <label style="margin-bottom:8px; font-weight:bold;">Fees & Dues</label>
+             
+             <div class="flex" style="margin-bottom:10px;">
+                <div class="w-full">
+                   <label>Admission Fee</label>
+                   <input name="admissionFee" id="new-adm-fee" type="number" min="0">
+                </div>
+                <div style="padding-top:22px;">
+                   <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                      <input type="checkbox" name="admissionFeePaid" value="yes" style="width:auto; margin:0;"> Paid Now?
+                   </label>
+                </div>
+             </div>
+
              <div class="flex">
                 <div class="w-full">
                    <label>Legacy Dues (Months)</label>
@@ -911,17 +997,28 @@ function renderDashboard(user: any) {
       <div class="modal-content">
         <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
         <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
+        <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
+        
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
-          <label>Amount Paid</label>
+          
+          <!-- Renewal Section -->
+          <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
+             <label>Renewal Fee</label>
+             <input name="renewalFee" id="pay-ren-fee" type="number">
+             <label>New Membership Payment</label>
+          </div>
+          
+          <div id="pay-standard-label"><label>Amount Paid</label></div>
           <input name="amount" id="pay-amount" type="number" required>
+          
           <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
              Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
              Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
           </div>
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Confirm</button>
+            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
           </div>
         </form>
       </div>
@@ -1024,7 +1121,7 @@ function renderDashboard(user: any) {
           act_log: "Activity Log (Last 50)", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
-          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due",
+          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
           mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
           user_acc: "User Access", add_user: "+ Add User",
           chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
@@ -1042,7 +1139,7 @@ function renderDashboard(user: any) {
           act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
           search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
           sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
-          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়",
+          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়", adm_fee: "ভর্তি ফি", ren_fee: "রিনিউয়াল ফি",
           mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
           user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
           chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
@@ -1078,7 +1175,7 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null,
+        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
         
         async init() {
           const res = await fetch('/api/bootstrap');
@@ -1166,6 +1263,8 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-lang').innerText = t('lang');
            document.getElementById('lbl-att-th').innerText = t('att_th');
            document.getElementById('lbl-inact-th').innerText = t('inact_th');
+           document.getElementById('lbl-adm-fee').innerText = t('adm_fee');
+           document.getElementById('lbl-ren-fee').innerText = t('ren_fee');
            document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
            document.getElementById('btn-add-plan').innerText = t('add_plan');
            document.getElementById('btn-save-set').innerText = t('save_set');
@@ -1365,7 +1464,7 @@ function renderDashboard(user: any) {
            tbody.innerHTML = list.map(p => 
                '<tr>' +
                   '<td>' + formatTime(p.date) + '</td>' +
-                  '<td>' + p.name + ' (#' + p.member_id + ')</td>' +
+                  '<td>' + (p.name ? (p.name + ' (#' + p.member_id + ')') : '<span style="color:gray; font-style:italic;">Unknown/Deleted (#' + p.member_id + ')</span>') + '</td>' +
                   '<td style="font-weight:bold; color:#10b981;">' + cur + ' ' + p.amount + '</td>' +
                '</tr>'
            ).join('');
@@ -1535,6 +1634,8 @@ function renderDashboard(user: any) {
           form.querySelector('select[name="lang"]').value = s.lang || 'en';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
+          form.querySelector('input[name="admissionFee"]').value = s.admissionFee;
+          form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
           
           // Render Plan List
           const plansDiv = document.getElementById('plans-container');
@@ -1579,14 +1680,21 @@ function renderDashboard(user: any) {
                   lang: form.querySelector('select[name="lang"]').value,
                   attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                   inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
+                  admissionFee: form.querySelector('input[name="admissionFee"]').value,
+                  renewalFee: form.querySelector('input[name="renewalFee"]').value,
                   membershipPlans: plans
                }) 
             });
             location.reload();
         },
         
-        /* --- PAY AUTO-FILL --- */
-        // No longer needed but good to keep reference if we revert. Updated modal logic handles it.
+        /* --- PAYMENTS & RENEWAL --- */
+        async pay(e) { 
+            e.preventDefault(); 
+            const endpoint = app.isRenewalMode ? '/api/members/renew' : '/api/payment';
+            await fetch(endpoint, { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); 
+            location.reload(); 
+        },
 
         /* --- ACTIONS --- */
         async checkIn() {
@@ -1626,7 +1734,9 @@ function renderDashboard(user: any) {
                const data = await res.json();
                document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
                  let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
-                 if (m.dueMonths > 0) {
+                 if (m.status === 'inactive') {
+                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';
+                 } else if (m.dueMonths > 0) {
                      statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
                  } else if (m.dueMonths < 0) {
                      statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
@@ -1654,9 +1764,9 @@ function renderDashboard(user: any) {
                const data = await res.json();
                document.getElementById('qp-results').innerHTML = data.results.map(m => {
                  let dueStr = 'Active';
-                 if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
+                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
+                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
                  else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 // When clicking a result, close quick pay modal and open pay modal
                  return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' + 
                         '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + 
                         '</div>';
@@ -1665,7 +1775,6 @@ function renderDashboard(user: any) {
         },
         
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
-        async pay(e) { e.preventDefault(); await fetch('/api/payment', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
         
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
@@ -1679,7 +1788,8 @@ function renderDashboard(user: any) {
                const data = await res.json();
                document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
                  let dueStr = 'Active';
-                 if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
+                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
+                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
                  else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
                  return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
                }).join('');
@@ -1696,15 +1806,41 @@ function renderDashboard(user: any) {
         modals: {
           checkin: { open:()=>{ document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus(); }, close:()=>document.getElementById('modal-checkin').style.display='none' },
           quickPay: { open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; document.getElementById('qp-search').focus(); }, close:()=>document.getElementById('modal-quick-pay').style.display='none' },
-          add: { open:()=>document.getElementById('modal-add').style.display='flex', close:()=>document.getElementById('modal-add').style.display='none' },
+          add: { 
+             open:()=>{
+                // Set default admission fee
+                document.getElementById('new-adm-fee').value = app.data.settings.admissionFee || 0;
+                document.getElementById('modal-add').style.display='flex';
+             }, 
+             close:()=>document.getElementById('modal-add').style.display='none' 
+          },
           pay: { 
              open:(id)=>{ 
                app.payingMemberId = id;
                const m = app.data.members.find(x=>x.id===id); 
                const price = app.getPlanPrice(m.plan);
+               
                document.getElementById('pay-id').value=id; 
                document.getElementById('pay-name').innerText = m ? m.name : '';
                document.getElementById('pay-amount').value = '';
+               
+               // Reset UI State
+               document.getElementById('pay-status-warning').style.display = 'none';
+               document.getElementById('pay-renewal-section').style.display = 'none';
+               document.getElementById('pay-standard-label').style.display = 'block';
+               document.getElementById('pay-submit-btn').innerText = 'Confirm';
+               document.getElementById('pay-amount').required = true;
+               app.isRenewalMode = false;
+
+               // Inactive Logic
+               if (m.status === 'inactive') {
+                   app.isRenewalMode = true;
+                   document.getElementById('pay-status-warning').style.display = 'block';
+                   document.getElementById('pay-renewal-section').style.display = 'block';
+                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
+                   document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
+                   document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
+               }
                
                document.getElementById('pay-plan-price').innerText = price;
                document.getElementById('pay-wallet-bal').innerText = m.balance || 0;
