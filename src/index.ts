@@ -33,21 +33,18 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return hashed === hash;
 }
 
-// Calculate how many months have passed since expiry
 function calcDueMonths(expiry: string | null | undefined): number | null {
   if (!expiry) return null;
   const exp = new Date(expiry);
   if (isNaN(exp.getTime())) return null;
 
   const now = new Date();
-  if (exp >= now) return 0; // Not expired yet
+  if (exp >= now) return 0; 
 
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
-  // If we are past the day of month (e.g. Expired on 5th, today is 10th), add partial month logic if strict,
-  // but usually for gyms, if you enter the new month, you owe for it.
   if (now.getDate() > exp.getDate()) months += 1;
   
   if (months < 1) months = 1;
@@ -903,7 +900,7 @@ function renderDashboard(user: any) {
            const perms = JSON.parse(u.permissions || '[]');
            document.querySelectorAll('input[name="permissions"]').forEach(cb => cb.checked = perms.includes(cb.value));
            this.togglePerms(u.role);
-           document.getElementById('modal-user').style.display='flex'; // Open modal AFTER filling data
+           document.getElementById('modal-user').style.display='flex'; 
         },
 
         togglePerms(role) {
@@ -942,7 +939,7 @@ function renderDashboard(user: any) {
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
           form.querySelector('input[name="membershipPlans"]').value = (s.membershipPlans).join(', ');
-          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p=>`<option>${p}</option>`).join('');
+          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p=>'<option>'+p+'</option>').join('');
         },
         async saveSettings(e) {
            e.preventDefault();
