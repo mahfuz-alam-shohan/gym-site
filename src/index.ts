@@ -41,11 +41,14 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   const now = new Date();
   
   // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
   // Adjust for day of month
+  // If today is 20th and expiry was 15th, we have entered the next month cycle
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
@@ -92,7 +95,6 @@ function baseHead(title: string): string {
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
-    .help-text { font-size: 11px; color: var(--text-muted); margin-top: -8px; margin-bottom: 10px; display: block; }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
@@ -395,17 +397,8 @@ export default {
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
         
-        // Safely parse user permissions
-        let safePerms = [];
-        try {
-            safePerms = user.permissions ? JSON.parse(user.permissions) : [];
-        } catch (e) {
-            console.error("Error parsing perms", e);
-            safePerms = []; // Fallback
-        }
-
         return json({
-          user: { ...user, permissions: safePerms },
+          user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
@@ -802,11 +795,11 @@ function renderDashboard(user: any) {
                 <div class="flex">
                   <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
                   <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
-                      <option value="all">All Status</option>
-                      <option value="active">Active</option>
-                      <option value="due">Due</option>
-                      <option value="advanced">Advanced</option>
-                      <option value="inactive">Inactive</option>
+                     <option value="all">All Status</option>
+                     <option value="active">Active</option>
+                     <option value="due">Due</option>
+                     <option value="advanced">Advanced</option>
+                     <option value="inactive">Inactive</option>
                   </select>
                 </div>
                 <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
@@ -913,30 +906,25 @@ function renderDashboard(user: any) {
                    </div>
                 </div>
                 
-                <h4 style="margin: 15px 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom: 5px;">Rules & Fees</h4>
-
                 <div class="flex">
                    <div class="w-full">
                       <label id="lbl-att-th">Attendance Threshold (Days)</label>
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
-                      <span class="help-text">Min. days present to count month as "Active" in history.</span>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-inact-th">Inactive Limit (Months)</label>
+                      <label id="lbl-inact-th">Inactive after X months due</label>
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
-                      <span class="help-text">Mark member "Inactive" after this many months of dues.</span>
                    </div>
                 </div>
 
                 <div class="flex">
                    <div class="w-full">
-                      <label id="lbl-adm-fee">Default Admission Fee</label>
+                      <label id="lbl-adm-fee">Admission Fee</label>
                       <input name="admissionFee" type="number" min="0" required>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-ren-fee">Default Renewal Fee (Global)</label>
+                      <label id="lbl-ren-fee">Renewal Fee (Global)</label>
                       <input name="renewalFee" type="number" min="0" required>
-                      <span class="help-text">Auto-filled when re-admitting an inactive member.</span>
                    </div>
                 </div>
                 
@@ -953,14 +941,6 @@ function renderDashboard(user: any) {
                   <button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button>
                   <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
                 </div>
-
-                <!-- DANGER ZONE -->
-                <div style="margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-                    <h4 style="color: var(--danger); margin-top:0;">Danger Zone</h4>
-                    <p class="help-text">These actions are irreversible. Please be careful.</p>
-                    <button type="button" class="btn btn-danger" onclick="app.nuke()">Factory Reset System (Delete All Data)</button>
-                </div>
-
               </form>
             </div>
           </div>
@@ -1079,7 +1059,7 @@ function renderDashboard(user: any) {
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
         <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;"></p>
+        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
         <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
         
         <form onsubmit="app.pay(event)">
@@ -1087,21 +1067,18 @@ function renderDashboard(user: any) {
           
           <!-- Renewal Section -->
           <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
-             <label style="color:var(--danger)">Renewal Fee (Fixed)</label>
-             <input name="renewalFee" id="pay-ren-fee" type="number" placeholder="Default from settings">
-             <span class="help-text">Auto-filled from settings. Can be overridden.</span>
+             <label>Renewal Fee</label>
+             <input name="renewalFee" id="pay-ren-fee" type="number">
+             <label>New Membership Payment</label>
           </div>
           
-          <div class="w-full">
-              <label id="lbl-pay-amount">Amount Paid</label>
-              <input name="amount" id="pay-amount" type="number" required>
-          </div>
+          <div id="pay-standard-label"><label>Amount Paid</label></div>
+          <input name="amount" id="pay-amount" type="number" required>
           
-          <div style="font-size:12px; color:var(--text-muted); margin-top:5px; background: #f9fafb; padding: 10px; border-radius: 6px;">
-             <div>Plan Cost: <span id="pay-plan-price" style="font-weight:bold; color:var(--text-main)">-</span></div>
-             <div>Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold; color:var(--text-main)">0</span></div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
+             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
           </div>
-
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
@@ -1196,12 +1173,6 @@ function renderDashboard(user: any) {
     </div>
 
     <script>
-      // GLOBAL ERROR HANDLER - Catches any script crash
-      window.onerror = function(msg, url, lineNo, columnNo, error) {
-        alert('System Error: ' + msg + '\\nLine: ' + lineNo);
-        return false;
-      };
-
       const translations = {
         en: {
           dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
@@ -1213,7 +1184,7 @@ function renderDashboard(user: any) {
           act_log: "Activity Log", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
-          att_th: "Attendance Threshold (Days)", inact_th: "Inactive Limit (Months)", adm_fee: "Default Admission Fee", ren_fee: "Default Renewal Fee (Global)",
+          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
           mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
           user_acc: "User Access", add_user: "+ Add User",
           chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
@@ -1242,7 +1213,7 @@ function renderDashboard(user: any) {
       };
 
       function t(key) {
-         const lang = (app.data && app.data.settings && app.data.settings.lang) || 'en';
+         const lang = app.data?.settings?.lang || 'en';
          return translations[lang][key] || key;
       }
 
@@ -1270,21 +1241,15 @@ function renderDashboard(user: any) {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
         
         async init() {
-          try {
-            const res = await fetch('/api/bootstrap');
-            if(!res.ok) throw new Error("API Error: " + res.status);
-            this.data = await res.json();
-            this.render();
-            this.applySettingsUI();
-            if(currentUser.role === 'admin') this.loadUsers();
-            
-            const last = sessionStorage.getItem('gym_view');
-            if (last && this.can(last)) this.nav(last);
-            else this.nav(this.can('attendance') ? 'attendance' : 'home');
-          } catch(e) {
-            alert("Startup Failed: " + e.message);
-            console.error(e);
-          }
+          const res = await fetch('/api/bootstrap');
+          this.data = await res.json();
+          this.render();
+          this.applySettingsUI();
+          if(currentUser.role === 'admin') this.loadUsers();
+          
+          const last = sessionStorage.getItem('gym_view');
+          if (last && this.can(last)) this.nav(last);
+          else this.nav(this.can('attendance') ? 'attendance' : 'home');
         },
         
         can(perm) { return currentUser.role === 'admin' || currentUser.permissions.includes(perm); },
@@ -1294,7 +1259,7 @@ function renderDashboard(user: any) {
           if (v !== 'users' && !this.can(v)) return alert('Access Denied');
           sessionStorage.setItem('gym_view', v);
           
-          const lang = (this.data && this.data.settings && this.data.settings.lang) || 'en';
+          const lang = this.data?.settings?.lang || 'en';
           const nav = document.getElementById('nav-container');
           let html = '';
           if(this.can('home')) html += '<div class="nav-item" onclick="app.nav(\\'home\\')">'+t('over')+'</div>';
@@ -1316,15 +1281,13 @@ function renderDashboard(user: any) {
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
             const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
           });
-          const target = document.getElementById('view-'+v);
-          if(target) target.classList.remove('hidden');
+          document.getElementById('view-'+v).classList.remove('hidden');
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
           this.updateLabels();
         },
 
         updateLabels() {
-           if(!this.data || !this.data.settings) return;
            // Update all ID-based labels
            document.getElementById('page-title').innerText = t('dash');
            document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
@@ -1381,19 +1344,18 @@ function renderDashboard(user: any) {
         },
 
         getPlanPrice(planName) {
-            const plans = (this.data && this.data.settings && this.data.settings.membershipPlans) || [];
+            const plans = this.data.settings.membershipPlans || [];
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.price) : 0;
         },
         
         getPlanAdmFee(planName) {
-            const plans = (this.data && this.data.settings && this.data.settings.membershipPlans) || [];
+            const plans = this.data.settings.membershipPlans || [];
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.admissionFee || 0) : 0;
         },
 
         render() {
-          if(!this.data || !this.data.settings) return;
           const cur = this.data.settings.currency || 'BDT';
           if(document.getElementById('stat-active')) {
             document.getElementById('stat-active').innerText = this.data.stats.active;
@@ -1481,7 +1443,7 @@ function renderDashboard(user: any) {
 
         renderPaymentsTable() {
             const filter = document.getElementById('pay-filter').value;
-            const cur = (this.data && this.data.settings && this.data.settings.currency) || 'BDT';
+            const cur = this.data.settings.currency || 'BDT';
             let list = (this.data.members || []).slice(); 
             if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
             else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
@@ -1608,7 +1570,7 @@ function renderDashboard(user: any) {
             const year = parseInt(document.getElementById('hist-year').value);
             const monthVal = parseInt(document.getElementById('hist-month').value);
             const container = document.getElementById('calendar-container');
-            const threshold = (this.data && this.data.settings && this.data.settings.attendanceThreshold) || 3;
+            const threshold = this.data.settings.attendanceThreshold || 3;
 
             // Yearly Summary View
             if (monthVal === -1) {
@@ -1617,8 +1579,8 @@ function renderDashboard(user: any) {
                
                for(let m=0; m<12; m++) {
                   const presentDays = this.activeHistory.history.filter(h => {
-                      const d = new Date(h.check_in_time);
-                      return d.getFullYear() === year && d.getMonth() === m;
+                     const d = new Date(h.check_in_time);
+                     return d.getFullYear() === year && d.getMonth() === m;
                   }).map(h => new Date(h.check_in_time).getDate());
                   
                   const unique = new Set(presentDays).size;
@@ -1627,9 +1589,9 @@ function renderDashboard(user: any) {
                   const badgeTxt = isP ? 'P' : 'A';
                   
                   gridHtml += '<div class="year-month-card">' +
-                      '<div class="ym-name">' + monthNames[m] + '</div>' +
-                      '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
-                      '<div class="ym-count">' + unique + ' Days</div>' +
+                     '<div class="ym-name">' + monthNames[m] + '</div>' +
+                     '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
+                     '<div class="ym-count">' + unique + ' Days</div>' +
                   '</div>';
                }
                gridHtml += '</div>';
@@ -1687,7 +1649,7 @@ function renderDashboard(user: any) {
         
         renderHistoryTable(filterDate, dataList = null) {
           // If specific list provided (from API), use it. Otherwise fallback to local cache (bootstrap)
-          let list = dataList || (this.data && this.data.attendanceHistory) || [];
+          let list = dataList || this.data.attendanceHistory || [];
           
           // If we are filtering locally on bootstrap data (old way, keep for safety)
           if(filterDate && !dataList) {
@@ -1757,22 +1719,9 @@ function renderDashboard(user: any) {
             else { alert((await res.json()).error); }
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
-        
-        // Danger Zone: Nuke DB
-        async nuke() {
-             if(confirm("⚠ WARNING: This will delete ALL members, payments, and settings. This cannot be undone.\n\nType 'RESET' to confirm.")) {
-                 // Simple confirm for now to avoid prompt() if not needed, but prompt is safer.
-                 // Let's stick to standard confirm sequence for safety.
-                 if(confirm("Are you absolutely sure?")) {
-                     await fetch('/api/nuke');
-                     location.reload();
-                 }
-             }
-        },
 
         /* --- SETTINGS --- */
         applySettingsUI() {
-          if(!this.data || !this.data.settings) return;
           const s = this.data.settings;
           const form = document.getElementById('settings-form');
           form.querySelector('input[name="currency"]').value = s.currency || 'BDT';
@@ -1998,7 +1947,7 @@ function renderDashboard(user: any) {
         
         renderCharts() {
             if(typeof Chart === 'undefined') return;
-            const members = (this.data && this.data.members) || [];
+            const members = this.data.members || [];
             const ctx1 = document.getElementById('chart-dues');
             if(ctx1) new Chart(ctx1.getContext('2d'), { type: 'bar', data: { labels: ['No Due', '1 Mo', '2+ Mo', 'Inactive'], datasets: [{ data: [ members.filter(m=>!m.dueMonths||m.dueMonths<=0).length, members.filter(m=>m.dueMonths===1).length, members.filter(m=>m.dueMonths>=2 && m.status!=='inactive').length, members.filter(m=>m.status==='inactive').length ], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'] }] }, options: {plugins:{legend:{display:false}}} });
         },
@@ -2032,9 +1981,9 @@ function renderDashboard(user: any) {
                // Reset UI State
                document.getElementById('pay-status-warning').style.display = 'none';
                document.getElementById('pay-renewal-section').style.display = 'none';
+               document.getElementById('pay-standard-label').style.display = 'block';
                document.getElementById('pay-submit-btn').innerText = 'Confirm';
                document.getElementById('pay-amount').required = true;
-               document.getElementById('lbl-pay-amount').innerText = "Amount Paid";
                app.isRenewalMode = false;
 
                // Inactive Logic
@@ -2042,12 +1991,8 @@ function renderDashboard(user: any) {
                    app.isRenewalMode = true;
                    document.getElementById('pay-status-warning').style.display = 'block';
                    document.getElementById('pay-renewal-section').style.display = 'block';
-                   
-                   // Auto-fill renewal fee from settings
-                   const renFee = (app.data && app.data.settings && app.data.settings.renewalFee) || 0;
-                   document.getElementById('pay-ren-fee').value = renFee;
-                   
-                   document.getElementById('lbl-pay-amount').innerText = "Plan Amount (Monthly Cost)";
+                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
+                   document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
                    document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
                }
                
