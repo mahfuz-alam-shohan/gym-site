@@ -39,15 +39,19 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   if (isNaN(exp.getTime())) return null;
 
   const now = new Date();
-  if (exp >= now) return 0;
-
+  
+  // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
-  if (now.getDate() > exp.getDate()) months += 1;
+  // Adjust for day of month
+  if (now.getDate() > exp.getDate()) {
+     months += 1;
+  }
   
-  if (months < 1) months = 1;
   return months;
 }
 
@@ -300,9 +304,21 @@ export default {
         for (const m of membersRaw.results || []) {
           const dueMonths = calcDueMonths(m.expiry_date);
           let newStatus = m.status || "active";
-          if (dueMonths != null && dueMonths >= inactiveAfterMonths) { newStatus = "inactive"; inactiveMembersCount++; }
-          else if (dueMonths != null && dueMonths > 0) { newStatus = "due"; dueMembersCount++; }
-          else { newStatus = "active"; activeCount++; }
+          
+          // Update Status logic for Negative/Advance values
+          if (dueMonths != null) {
+             if (dueMonths >= inactiveAfterMonths) { 
+               newStatus = "inactive"; 
+               inactiveMembersCount++; 
+             } else if (dueMonths > 0) { 
+               newStatus = "due"; 
+               dueMembersCount++; 
+             } else { 
+               newStatus = "active"; 
+               activeCount++; 
+             }
+          }
+          
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
@@ -346,15 +362,10 @@ export default {
         const body = await req.json() as any;
         const expiry = new Date();
         
-        // Handle Legacy Dues
-        // If user has old dues (e.g., 3 months), subtract that from NOW.
-        // Then add the payment they are making right now (e.g., 1 month).
-        // Result: Expiry is 2 months ago (still has dues, but recorded correctly).
         if (body.legacyDues && parseInt(body.legacyDues) > 0) {
            expiry.setMonth(expiry.getMonth() - parseInt(body.legacyDues));
         }
         
-        // Add the initial payment duration
         expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
         
         await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
@@ -379,11 +390,6 @@ export default {
         
         const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
         let newDate = new Date(member.expiry_date);
-        
-        // CONTINUOUS TIMELINE LOGIC:
-        // We DO NOT reset newDate = new Date() if expired.
-        // We just add the paid months to the existing expiry date.
-        // This correctly handles clearing old dues month-by-month.
         newDate.setMonth(newDate.getMonth() + parseInt(months));
         
         await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?").bind(newDate.toISOString(), memberId).run();
@@ -403,7 +409,6 @@ export default {
         const body = await req.json() as any;
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
-        // Save the array of {name, price} directly
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         return json({ success: true });
       }
@@ -566,7 +571,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Expiry</th><th>Due</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Expiry</th><th>Due / Adv</th><th>Actions</th></tr></thead>
                   <tbody id="tbl-members"></tbody>
                 </table>
               </div>
@@ -579,7 +584,7 @@ function renderDashboard(user: any) {
               <h3>Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Result</th><th>Due</th></tr></thead>
+                  <thead><tr><th>Time</th><th>Name</th><th>Result</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -859,17 +864,27 @@ function renderDashboard(user: any) {
 
           document.getElementById('tbl-members').innerHTML = (this.data.members || []).map(m => {
             let statusBadge = '<span class="badge bg-green">Active</span>';
-            if (m.status === 'due') statusBadge = '<span class="badge bg-amber">Due</span>';
-            if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
+            let dueTxt = '-';
+            let dueColor = 'gray';
             
-            const price = this.getPlanPrice(m.plan);
-            const dueAmt = (m.dueMonths > 0) ? (m.dueMonths * price) : 0;
-            const dueTxt = dueAmt > 0 ? (dueAmt + ' (' + m.dueMonths + ' Mo)') : '-';
+            if (m.dueMonths > 0) {
+                const price = this.getPlanPrice(m.plan);
+                const dueAmt = m.dueMonths * price;
+                dueTxt = dueAmt + ' (' + m.dueMonths + ' Mo Due)';
+                dueColor = 'red';
+                statusBadge = '<span class="badge bg-amber">Due</span>';
+                if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
+            } else if (m.dueMonths < 0) {
+                const advMonths = Math.abs(m.dueMonths);
+                dueTxt = '+' + advMonths + ' Mo Adv';
+                dueColor = 'green';
+                statusBadge = '<span class="badge bg-blue">Advance</span>';
+            }
 
             return '<tr>' +
               '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td><td>' + m.phone + '</td><td>' + m.plan + '</td>' +
               '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
-              '<td>' + statusBadge + '<div style="font-size:11px;color:red">' + dueTxt + '</div></td>' +
+              '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
               '<td>' +
                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">History</button> ' +
                 '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
@@ -878,9 +893,13 @@ function renderDashboard(user: any) {
             '</tr>';
           }).join('');
 
-          const todayRows = (this.data.attendanceToday || []).map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + (a.dueMonths>0?a.dueMonths+' Mo Due':'-') + '</td></tr>'
-          ).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
+          const todayRows = (this.data.attendanceToday || []).map(a => {
+             let dueStr = '-';
+             if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
+             else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
+             
+             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + dueStr + '</td></tr>';
+          }).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
@@ -1092,9 +1111,12 @@ function renderDashboard(user: any) {
               if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
               const data = await res.json();
-              document.getElementById('pay-search-results').innerHTML = data.results.map(m=>
-                '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>' + m.name + '</strong> - ' + m.dueMonths + ' Mo Due</div>'
-              ).join('');
+              document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
+                let dueStr = 'Active';
+                if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
+                else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
+                return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>' + m.name + '</strong> - ' + dueStr + '</div>';
+              }).join('');
            }, 200);
         },
         
