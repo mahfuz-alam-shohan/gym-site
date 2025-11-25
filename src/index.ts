@@ -1142,9 +1142,18 @@ function renderDashboard(user: any) {
               if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
               const data = await res.json();
-              document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=>
-                '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()"><strong>' + m.name + '</strong></div>'
-              ).join('');
+              document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
+                let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
+                if (m.dueMonths > 0) {
+                    statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
+                } else if (m.dueMonths < 0) {
+                    statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
+                }
+                
+                return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
+                       '<strong>' + m.name + '</strong> ' + statusStr + 
+                       '</div>';
+              }).join('');
            }, 200);
         },
         
