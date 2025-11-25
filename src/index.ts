@@ -15,6 +15,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+const ALL_MENUS = [
+  "home",
+  "members",
+  "attendance",
+  "history",
+  "payments",
+  "settings",
+];
+
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: corsHeaders });
 }
@@ -31,6 +40,40 @@ async function hashPassword(password: string): Promise<string> {
 async function verifyPassword(password: string, hash: string): Promise<boolean> {
   const hashed = await hashPassword(password);
   return hashed === hash;
+}
+
+function normalizeMenus(raw: any): string[] {
+  const ensureValid = (arr: any[]) =>
+    arr
+      .map((x) => String(x).trim())
+      .filter((x) => ALL_MENUS.includes(x));
+
+  if (!raw) return [...ALL_MENUS];
+  if (Array.isArray(raw)) {
+    const arr = ensureValid(raw);
+    return arr.length ? arr : [...ALL_MENUS];
+  }
+
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const arr = ensureValid(parsed);
+        return arr.length ? arr : [...ALL_MENUS];
+      }
+    } catch {}
+
+    const arr = ensureValid(raw.split(","));
+    return arr.length ? arr : [...ALL_MENUS];
+  }
+
+  return [...ALL_MENUS];
+}
+
+function hasPermission(user: any, menu: string | string[]): boolean {
+  const menus = Array.isArray(menu) ? menu : [menu];
+  const allowed = normalizeMenus(user?.permissions);
+  return menus.some((m) => allowed.includes(m));
 }
 
 /** Calculate how many months are due based on expiry date vs now.
@@ -157,12 +200,12 @@ function baseHead(title: string): string {
 async function initDB(env: Env) {
   const q = [
     `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
-    `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT)`,
+    `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT, permissions TEXT)`,
     `CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY, 
-      name TEXT, 
-      phone TEXT, 
-      plan TEXT, 
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      phone TEXT,
+      plan TEXT,
       joined_at TEXT, 
       expiry_date TEXT, 
       status TEXT DEFAULT 'active'
@@ -172,6 +215,10 @@ async function initDB(env: Env) {
     `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, expires_at TEXT)`
   ];
   for (const sql of q) await env.DB.prepare(sql).run();
+
+  try {
+    await env.DB.prepare("ALTER TABLE users ADD COLUMN permissions TEXT").run();
+  } catch {}
 }
 
 async function factoryReset(env: Env) {
@@ -211,9 +258,9 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
         
         const hash = await hashPassword(body.password);
-        await env.DB.prepare("DELETE FROM users").run(); 
-        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, 'admin')")
-          .bind(email, hash, body.adminName).run();
+        await env.DB.prepare("DELETE FROM users").run();
+        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)")
+          .bind(email, hash, body.adminName, JSON.stringify(ALL_MENUS)).run();
           
         return json({ success: true });
       }
@@ -428,6 +475,7 @@ export default {
 
       // member live search
       if (url.pathname === "/api/members/search" && req.method === "POST") {
+        if (!hasPermission(user, ["attendance", "members"])) return json({ error: "Forbidden" }, 403);
         const body = await req.json() as any;
         const qRaw = (body.query || "").toString().trim();
         if (!qRaw) return json({ results: [] });
@@ -462,6 +510,7 @@ export default {
 
       // bootstrap data
       if (url.pathname === "/api/bootstrap") {
+        const allowedMenus = normalizeMenus(user.permissions);
         const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
         const config: Record<string, string> = {};
         for (const row of configRows.results || []) {
@@ -544,8 +593,8 @@ export default {
           dueMonths: calcDueMonths(r.expiry_date as string | null)
         }));
         
-        return json({
-          user,
+        const payload: any = {
+          user: { ...user, permissions: allowedMenus },
           members: membersProcessed,
           attendanceToday: attendanceTodayWithDue,
           attendanceHistory: attendanceHistoryWithDue,
@@ -557,15 +606,27 @@ export default {
             inactiveMembers: inactiveMembersCount,
             totalDueMonths
           },
+          allowedMenus,
           settings: {
             attendanceThreshold,
             inactiveAfterMonths,
             membershipPlans
           }
-        });
+        };
+
+        if (user.role === "admin") {
+          const team = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all<any>();
+          payload.teamUsers = (team.results || []).map((u: any) => ({
+            ...u,
+            permissions: normalizeMenus(u.permissions)
+          }));
+        }
+
+        return json(payload);
       }
 
       if (url.pathname === "/api/members/add" && req.method === "POST") {
+        if (!hasPermission(user, "members")) return json({ error: "Forbidden" }, 403);
         const body = await req.json() as any;
         const expiry = new Date();
         expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
@@ -576,6 +637,7 @@ export default {
       }
 
       if (url.pathname === "/api/checkin" && req.method === "POST") {
+        if (!hasPermission(user, "attendance")) return json({ error: "Forbidden" }, 403);
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
@@ -599,6 +661,7 @@ export default {
       }
 
       if (url.pathname === "/api/payment" && req.method === "POST") {
+        if (!hasPermission(user, "payments")) return json({ error: "Forbidden" }, 403);
         const { memberId, amount, months } = await req.json() as any;
         
         await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)")
@@ -615,6 +678,7 @@ export default {
       }
 
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
+        if (!hasPermission(user, "members")) return json({ error: "Forbidden" }, 403);
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
@@ -623,6 +687,7 @@ export default {
       }
 
       if (url.pathname === "/api/settings" && req.method === "POST") {
+        if (!hasPermission(user, "settings")) return json({ error: "Forbidden" }, 403);
         const body = await req.json() as any;
         const attendanceThreshold = parseInt(body.attendanceThreshold) || 3;
         const inactiveAfterMonths = parseInt(body.inactiveAfterMonths) || 3;
@@ -639,6 +704,63 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(inactiveAfterMonths)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(membershipPlans)).run();
+
+        return json({ success: true });
+      }
+
+      if (url.pathname === "/api/users" && req.method === "GET") {
+        if (user.role !== "admin") return json({ error: "Forbidden" }, 403);
+        const team = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all<any>();
+        return json({
+          users: (team.results || []).map((u: any) => ({
+            ...u,
+            permissions: normalizeMenus(u.permissions)
+          }))
+        });
+      }
+
+      if (url.pathname === "/api/users" && req.method === "POST") {
+        if (user.role !== "admin") return json({ error: "Forbidden" }, 403);
+        const body = await req.json() as any;
+        const email = (body.email || "").trim().toLowerCase();
+        const name = (body.name || "").trim();
+        const role = body.role === "admin" ? "admin" : "staff";
+        const password = body.password || "";
+        const permissions = normalizeMenus(body.permissions);
+
+        if (!email || !password || !name) return json({ error: "Missing fields" }, 400);
+
+        const exists = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first<any>();
+        if (exists) return json({ error: "Email already in use" }, 400);
+
+        const hash = await hashPassword(password);
+        await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, ?, ?)")
+          .bind(email, hash, name, role, JSON.stringify(permissions))
+          .run();
+
+        return json({ success: true });
+      }
+
+      if (url.pathname === "/api/users/update" && req.method === "POST") {
+        if (user.role !== "admin") return json({ error: "Forbidden" }, 403);
+        const body = await req.json() as any;
+        const id = parseInt(body.id);
+        if (!id) return json({ error: "Invalid user" }, 400);
+
+        const permissions = normalizeMenus(body.permissions);
+        const role = body.role === "admin" ? "admin" : "staff";
+        const name = (body.name || "").trim();
+
+        await env.DB.prepare("UPDATE users SET permissions = ?, role = ?, name = COALESCE(?, name) WHERE id = ?")
+          .bind(JSON.stringify(permissions), role, name || null, id)
+          .run();
+
+        if (body.password) {
+          const hash = await hashPassword(body.password);
+          await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(hash, id)
+            .run();
+        }
 
         return json({ success: true });
       }
@@ -761,14 +883,7 @@ function renderDashboard(user: any) {
 
       <aside class="sidebar">
         <div class="logo">💪 Gym OS <span style="font-size:10px; font-weight:normal; opacity:0.7; margin-left:5px;">v2.3</span></div>
-        <div class="nav">
-          <div class="nav-item" onclick="app.nav('home')">📊 Overview</div>
-          <div class="nav-item" onclick="app.nav('members')">👥 Members</div>
-          <div class="nav-item active" onclick="app.nav('attendance')">⏰ Today</div>
-          <div class="nav-item" onclick="app.nav('history')">📜 History</div>
-          <div class="nav-item" onclick="app.nav('payments')">💵 Payments</div>
-          <div class="nav-item" onclick="app.nav('settings')">⚙ Settings</div>
-        </div>
+        <div class="nav" id="nav-list"></div>
         <div class="user-footer">
           <div style="font-weight:600;">${user.name}</div>
           <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${user.role.toUpperCase()}</div>
@@ -779,7 +894,7 @@ function renderDashboard(user: any) {
       <main class="main-content">
         <div class="flex-between" style="padding: 24px 24px 0 24px;">
            <h2 id="page-title" style="margin:0;">Today</h2>
-           <button class="btn btn-primary" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
+           <button class="btn btn-primary" id="quick-checkin" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
         </div>
 
         <div style="padding: 24px;">
@@ -949,6 +1064,65 @@ function renderDashboard(user: any) {
                 </div>
               </form>
             </div>
+
+            <div class="card" id="team-card" style="display:none;">
+              <div class="flex-between" style="align-items:flex-start;">
+                <div>
+                  <h3 style="margin:0;">Team Access</h3>
+                  <p style="color:var(--text-muted); font-size:13px; margin-top:6px;">
+                    Add new staff accounts and control which menus are visible to them.
+                  </p>
+                </div>
+                <span id="user-status" style="font-size:12px; color:var(--text-muted);"></span>
+              </div>
+
+              <form id="user-form" onsubmit="app.createUser(event)" style="margin-bottom:18px;">
+                <div class="flex" style="gap:12px;">
+                  <div class="w-full">
+                    <label>Name</label><input name="name" required placeholder="Staff name">
+                  </div>
+                  <div class="w-full">
+                    <label>Email</label><input name="email" type="email" required placeholder="staff@gym.com">
+                  </div>
+                </div>
+                <div class="flex" style="gap:12px;">
+                  <div class="w-full">
+                    <label>Password</label><input name="password" type="password" required placeholder="Set password">
+                  </div>
+                  <div class="w-full">
+                    <label>Role</label>
+                    <select name="role">
+                      <option value="staff">Staff</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                  <label>Allowed Menus</label>
+                  <div id="user-perms-new" style="display:flex; flex-wrap:wrap; gap:10px; margin-top:4px;"></div>
+                </div>
+                <div class="flex" style="justify-content:flex-end; gap:10px;">
+                  <button type="reset" class="btn btn-outline">Clear</button>
+                  <button type="submit" class="btn btn-primary">Add User</button>
+                </div>
+              </form>
+
+              <div class="table-responsive">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Role</th>
+                      <th>Menus</th>
+                      <th style="width:140px;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbl-users">
+                    <tr><td colspan="4" style="text-align:center; padding:14px; color:var(--text-muted);">Loading team...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -1020,40 +1194,66 @@ function renderDashboard(user: any) {
 
       const app = {
         data: null,
+        allowedMenus: [],
+        teamUsers: [],
         searchTimeout: null,
         paymentSearchTimeout: null,
         charts: { dues: null, attendance: null },
+        menuConfig: [
+          { id: 'home', label: 'Overview', icon: '📊' },
+          { id: 'members', label: 'Members', icon: '👥' },
+          { id: 'attendance', label: 'Today', icon: '⏰' },
+          { id: 'history', label: 'History', icon: '📜' },
+          { id: 'payments', label: 'Payments', icon: '💵' },
+          { id: 'settings', label: 'Settings', icon: '⚙' }
+        ],
 
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
+          this.allowedMenus = (this.data.allowedMenus && this.data.allowedMenus.length)
+            ? this.data.allowedMenus
+            : this.menuConfig.map(m => m.id);
+          this.teamUsers = this.data.teamUsers || [];
+          this.renderNav();
           this.render();
           this.applySettingsUI();
-          this.nav('attendance'); // default: today's attendance
+          this.renderTeam();
+          this.toggleQuickCheckin();
+          const defaultNav = this.allowedMenus.includes('attendance') ? 'attendance' : (this.allowedMenus[0] || 'home');
+          this.nav(defaultNav); // default: today's attendance or first allowed
         },
-        
+
         nav(v) {
-          document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          const navs = document.querySelectorAll('.nav .nav-item');
+          if (!this.allowedMenus.includes(v)) return;
+          document.querySelectorAll('#nav-list .nav-item').forEach(e => e.classList.remove('active'));
+          const navs = document.querySelectorAll('#nav-list .nav-item');
           navs.forEach(el => {
-            if (el.textContent.includes('Overview') && v === 'home') el.classList.add('active');
-            if (el.textContent.includes('Members') && v === 'members') el.classList.add('active');
-            if (el.textContent.includes('Today') && v === 'attendance') el.classList.add('active');
-            if (el.textContent.includes('History') && v === 'history') el.classList.add('active');
-            if (el.textContent.includes('Payments') && v === 'payments') el.classList.add('active');
-            if (el.textContent.includes('Settings') && v === 'settings') el.classList.add('active');
+            if (el.dataset.nav === v) el.classList.add('active');
           });
-          
-          ['home', 'members', 'attendance', 'history', 'payments', 'settings'].forEach(id => {
+
+          this.menuConfig.map(m => m.id).forEach(id => {
             const view = document.getElementById('view-'+id);
             if (view) view.classList.add('hidden');
           });
           document.getElementById('view-'+v).classList.remove('hidden');
-          document.getElementById('page-title').textContent = 
+          document.getElementById('page-title').textContent =
             v === 'home' ? 'Dashboard' : v.charAt(0).toUpperCase() + v.slice(1);
           
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
+        },
+
+        renderNav() {
+          const nav = document.getElementById('nav-list');
+          if (!nav) return;
+          nav.innerHTML = this.menuConfig
+            .filter(item => this.allowedMenus.includes(item.id))
+            .map(item => {
+              return '<div class="nav-item" data-nav="' + item.id +
+                '" onclick="app.nav(\\'' + item.id + '\\')">' + item.icon + ' ' + item.label + '</div>';
+            })
+            .join('');
         },
 
         render() {
@@ -1072,18 +1272,18 @@ function renderDashboard(user: any) {
             let statusBadge = '<span class="badge bg-green">Active</span>';
             if (m.status === 'due') statusBadge = '<span class="badge bg-amber">Due</span>';
             if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-            return \`<tr>
-              <td>#\${m.id}</td>
-              <td><strong>\${m.name}</strong></td>
-              <td>\${m.phone}</td>
-              <td>\${m.plan}</td>
-              <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-              <td>\${statusBadge}</td>
-              <td>
-                <button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button>
-                <button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(\${m.id})">Del</button>
-              </td>
-            </tr>\`;
+            return '<tr>' +
+              '<td>#' + m.id + '</td>' +
+              '<td><strong>' + m.name + '</strong></td>' +
+              '<td>' + m.phone + '</td>' +
+              '<td>' + m.plan + '</td>' +
+              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' +
+                '<button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(' + m.id + ')">$ Pay</button>' +
+                '<button class="btn btn-danger" style="padding:4px 10px; font-size:12px;" onclick="app.del(' + m.id + ')">Del</button>' +
+              '</td>' +
+            '</tr>';
           }).join('');
 
           const today = this.data.attendanceToday || [];
@@ -1091,19 +1291,18 @@ function renderDashboard(user: any) {
 
           const todayRows = today.length ? today.map(a => {
             const t = new Date(a.check_in_time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-            const due = a.dueMonths == null 
-              ? '-' 
+            const due = a.dueMonths == null
+              ? '-'
               : (a.dueMonths <= 0 ? 'No due' : a.dueMonths + ' month' + (a.dueMonths > 1 ? 's' : '') + ' due');
-            const statusBadge = a.status === 'success' 
-              ? '<span class="badge bg-green">OK</span>' 
+            const statusBadge = a.status === 'success'
+              ? '<span class="badge bg-green">OK</span>'
               : '<span class="badge bg-red">Expired</span>';
-            return \`
-              <tr>
-                <td>\${t}</td>
-                <td>\${a.name}</td>
-                <td>\${statusBadge}</td>
-                <td>\${due}</td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>' + t + '</td>' +
+              '<td>' + a.name + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + due + '</td>' +
+            '</tr>';
           }).join('') : '<tr><td colspan="4">No check-ins yet today.</td></tr>';
 
           document.getElementById('tbl-attendance-recent').innerHTML = todayRows;
@@ -1119,16 +1318,15 @@ function renderDashboard(user: any) {
             const dueText = m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due';
             let statusBadge = '<span class="badge bg-amber">Due</span>';
             if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-            return \`
-              <tr>
-                <td>#\${m.id}</td>
-                <td>\${m.name}</td>
-                <td>\${m.plan}</td>
-                <td>\${m.expiry_date ? m.expiry_date.split('T')[0] : '-'}</td>
-                <td>\${statusBadge}</td>
-                <td>\${dueText}</td>
-                <td><button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(\${m.id})">$ Pay</button></td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>#' + m.id + '</td>' +
+              '<td>' + m.name + '</td>' +
+              '<td>' + m.plan + '</td>' +
+              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + dueText + '</td>' +
+              '<td><button class="btn btn-outline" style="padding:4px 10px; font-size:12px;" onclick="app.modals.pay.open(' + m.id + ')">$ Pay</button></td>' +
+            '</tr>';
           }).join('') : '<tr><td colspan="7">No dues currently.</td></tr>';
 
           this.renderCharts();
@@ -1157,14 +1355,13 @@ function renderDashboard(user: any) {
             const statusBadge = a.status === 'success' 
               ? '<span class="badge bg-green">OK</span>' 
               : '<span class="badge bg-red">Expired</span>';
-            return \`
-              <tr>
-                <td>\${dateStr}</td>
-                <td>\${timeStr}</td>
-                <td>\${a.name}</td>
-                <td>\${statusBadge}</td>
-                <td>\${due}</td>
-              </tr>\`;
+            return '<tr>' +
+              '<td>' + dateStr + '</td>' +
+              '<td>' + timeStr + '</td>' +
+              '<td>' + a.name + '</td>' +
+              '<td>' + statusBadge + '</td>' +
+              '<td>' + due + '</td>' +
+            '</tr>';
           }).join('');
           tbody.innerHTML = rows;
         },
@@ -1265,6 +1462,146 @@ function renderDashboard(user: any) {
             const plansArray = (settings.membershipPlans || ['Standard','Premium']);
             select.innerHTML = plansArray.map(p => '<option>' + p + '</option>').join('');
           }
+
+          const permContainer = document.getElementById('user-perms-new');
+          if (permContainer) {
+            permContainer.innerHTML = this.menuConfig.map(m => {
+              return '<label style="display:flex; align-items:center; gap:6px; font-size:13px;">' +
+                '<input type="checkbox" name="perm-new" value="' + m.id + '" checked>' +
+                m.label +
+                '</label>';
+            }).join('');
+          }
+
+          const teamCard = document.getElementById('team-card');
+          if (teamCard) {
+            teamCard.style.display = this.data.user?.role === 'admin' ? 'block' : 'none';
+          }
+        },
+
+          collectPermissions(prefix) {
+            const boxes = Array.from(document.querySelectorAll('input[name="' + prefix + '"]'));
+            const selected = boxes
+              .filter((b: any) => b && b.checked)
+              .map((b: any) => b.value);
+            return selected.length ? selected : this.menuConfig.map(m => m.id);
+          },
+
+        renderTeam() {
+          const tbody = document.getElementById('tbl-users');
+          if (!tbody) return;
+          if (this.data.user?.role !== 'admin') {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:14px; color:var(--text-muted);">You do not have permission to manage users.</td></tr>';
+            return;
+          }
+
+          if (!this.teamUsers.length) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:14px; color:var(--text-muted);">No team members yet.</td></tr>';
+            return;
+          }
+
+          tbody.innerHTML = this.teamUsers.map(u => {
+            const checks = this.menuConfig.map(m => {
+              const checked = (u.permissions || []).includes(m.id) ? 'checked' : '';
+              return '<label style="display:inline-flex; align-items:center; gap:6px; margin-right:10px; font-size:12px;">' +
+                '<input type="checkbox" name="perm-' + u.id + '" value="' + m.id + '" ' + checked + '>' +
+                m.label +
+              '</label>';
+            }).join('');
+
+            return '<tr>' +
+                '<td>' +
+                  '<input id="user-name-' + u.id + '" value="' + (u.name || '') + '" style="margin-bottom:6px;" />' +
+                  '<div style="color:var(--text-muted); font-size:12px;">' + u.email + '</div>' +
+                '</td>' +
+                '<td>' +
+                  '<select id="role-' + u.id + '" style="min-width:120px;">' +
+                    '<option value="staff" ' + (u.role === 'staff' ? 'selected' : '') + '>Staff</option>' +
+                    '<option value="admin" ' + (u.role === 'admin' ? 'selected' : '') + '>Admin</option>' +
+                  '</select>' +
+                '</td>' +
+                '<td>' +
+                  '<div style="display:flex; flex-wrap:wrap; gap:6px;">' + checks + '</div>' +
+                  '<input id="pwd-' + u.id + '" type="password" placeholder="New password (optional)" style="margin-top:8px;">' +
+                '</td>' +
+                '<td>' +
+                  '<button class="btn btn-primary" style="padding:8px 12px; font-size:12px;" onclick="app.updateUser(' + u.id + ')">Save</button>' +
+                '</td>' +
+              '</tr>';
+          }).join('');
+        },
+
+        async createUser(e) {
+          e.preventDefault();
+          const form = e.target;
+          const userStatus = document.getElementById('user-status');
+          if (userStatus) { userStatus.style.color = 'var(--text-muted)'; userStatus.textContent = 'Saving...'; }
+
+          const formData = new FormData(form);
+          const permissions = this.collectPermissions('perm-new');
+          const body: any = Object.fromEntries(formData.entries());
+          body.permissions = permissions;
+
+          const res = await fetch('/api/users', {
+            method: 'POST',
+            body: JSON.stringify(body)
+          });
+
+          if (res.ok) {
+            form.reset();
+            if (userStatus) { userStatus.style.color = 'var(--success)'; userStatus.textContent = 'User created'; }
+            await this.refreshUsers();
+          } else {
+            const data = await res.json();
+            if (userStatus) { userStatus.style.color = 'var(--danger)'; userStatus.textContent = data.error || 'Failed'; }
+          }
+        },
+
+        async refreshUsers() {
+          const res = await fetch('/api/users');
+          if (!res.ok) return;
+          const data = await res.json();
+          this.teamUsers = data.users || [];
+          this.renderTeam();
+        },
+
+        async updateUser(id) {
+          const userStatus = document.getElementById('user-status');
+          if (userStatus) { userStatus.style.color = 'var(--text-muted)'; userStatus.textContent = 'Updating...'; }
+
+          const permissions = this.collectPermissions('perm-' + id);
+          const roleEl = document.getElementById('role-' + id);
+          const pwdEl = document.getElementById('pwd-' + id);
+          const nameEl = document.getElementById('user-name-' + id);
+          const roleVal = roleEl && roleEl.value !== undefined ? roleEl.value : undefined;
+          const pwdVal = pwdEl && pwdEl.value !== undefined ? pwdEl.value : undefined;
+          const nameVal = nameEl && nameEl.value !== undefined ? nameEl.value : undefined;
+
+          const res = await fetch('/api/users/update', {
+            method: 'POST',
+            body: JSON.stringify({
+              id,
+              permissions,
+              role: roleVal,
+              password: pwdVal,
+              name: nameVal
+            })
+          });
+
+          if (res.ok) {
+            if (pwdEl) pwdEl.value = '';
+            if (userStatus) { userStatus.style.color = 'var(--success)'; userStatus.textContent = 'Updated'; }
+            await this.refreshUsers();
+          } else {
+            const data = await res.json();
+            if (userStatus) { userStatus.style.color = 'var(--danger)'; userStatus.textContent = data.error || 'Failed'; }
+          }
+        },
+
+        toggleQuickCheckin() {
+          const btn = document.getElementById('quick-checkin');
+          if (!btn) return;
+          btn.style.display = this.allowedMenus.includes('attendance') ? 'inline-flex' : 'none';
         },
 
         async saveSettings(e) {
@@ -1317,9 +1654,9 @@ function renderDashboard(user: any) {
 
           if (this.searchTimeout) clearTimeout(this.searchTimeout);
           this.searchTimeout = setTimeout(async () => {
-            const res = await fetch('/api/members/search', { 
-              method: 'POST', 
-              body: JSON.stringify({ query: term }) 
+            const res = await fetch('/api/members/search', {
+              method: 'POST',
+              body: JSON.stringify({ query: term })
             });
             if (!res.ok) return;
             const data = await res.json();
@@ -1330,14 +1667,13 @@ function renderDashboard(user: any) {
             }
             box.innerHTML = list.map(m => {
               const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
-              const due = m.dueMonths == null 
-                ? '-' 
+              const due = m.dueMonths == null
+                ? '-'
                 : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
-              return \`
-                <div class="checkin-item" onclick="app.selectCheckin(\${m.id})">
-                  <strong>#\${m.id} · \${m.name}</strong>
-                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due}</small>
-                </div>\`;
+              return '<div class="checkin-item" onclick="app.selectCheckin(' + m.id + ')">' +
+                '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+                '<small>Plan: ' + (m.plan || '-') + ' · Exp: ' + exp + ' · Due: ' + due + '</small>' +
+              '</div>';
             }).join('');
           }, 200);
         },
@@ -1369,14 +1705,13 @@ function renderDashboard(user: any) {
             }
             box.innerHTML = list.map(m => {
               const exp = m.expiry_date ? m.expiry_date.split('T')[0] : '-';
-              const due = m.dueMonths == null 
-                ? '-' 
+              const due = m.dueMonths == null
+                ? '-'
                 : (m.dueMonths <= 0 ? 'No due' : m.dueMonths + ' month' + (m.dueMonths > 1 ? 's' : '') + ' due');
-              return \`
-                <div class="checkin-item" onclick="app.modals.pay.open(\${m.id})">
-                  <strong>#\${m.id} · \${m.name}</strong>
-                  <small>Plan: \${m.plan || '-'} · Exp: \${exp} · Due: \${due} · Tap to collect payment</small>
-                </div>\`;
+              return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')">' +
+                '<strong>#' + m.id + ' · ' + m.name + '</strong>' +
+                '<small>Plan: ' + (m.plan || '-') + ' · Exp: ' + exp + ' · Due: ' + due + ' · Tap to collect payment</small>' +
+              '</div>';
             }).join('');
           }, 200);
         },
