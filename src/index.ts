@@ -583,7 +583,16 @@ function renderDashboard(user: any) {
           <div id="view-members" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-                <input id="search" placeholder="Search members..." style="width:300px; margin:0;" onkeyup="app.filter()">
+                <div class="flex">
+                  <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
+                  <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
+                     <option value="all">All Status</option>
+                     <option value="active">Active</option>
+                     <option value="due">Due</option>
+                     <option value="advanced">Advanced</option>
+                     <option value="inactive">Inactive</option>
+                  </select>
+                </div>
                 <button class="btn btn-primary" onclick="app.modals.add.open()">+ Add Member</button>
               </div>
               <div class="table-responsive">
@@ -902,7 +911,54 @@ function renderDashboard(user: any) {
             document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
           }
 
-          document.getElementById('tbl-members').innerHTML = (this.data.members || []).map(m => {
+          this.renderMembersTable(); // New client-side filter render
+
+          const todayRows = (this.data.attendanceToday || []).map(a => {
+             let dueStr = '-';
+             if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
+             else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
+             
+             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + dueStr + '</td></tr>';
+          }).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
+          document.getElementById('tbl-attendance-today').innerHTML = todayRows;
+
+          this.renderHistoryTable(null);
+          this.renderPaymentsTable(); 
+          
+          this.renderCharts();
+        },
+
+        renderMembersTable() {
+           const q = document.getElementById('search').value.trim().toLowerCase();
+           const filter = document.getElementById('member-filter').value;
+           const isNumeric = /^\d+$/.test(q);
+           
+           // Intelligent Search Logic
+           const isIdSearch = isNumeric && q.length > 0 && q.length < 6;
+           const isPhoneSearch = isNumeric && q.length >= 6;
+
+           let list = (this.data.members || []).filter(m => {
+              // 1. Search Filter
+              let matchSearch = true;
+              if (q) {
+                  if (isIdSearch) matchSearch = m.id.toString().startsWith(q);
+                  else if (isPhoneSearch) matchSearch = m.phone.includes(q);
+                  else matchSearch = m.name.toLowerCase().includes(q);
+              }
+              
+              // 2. Status Filter
+              let matchStatus = true;
+              if (filter !== 'all') {
+                  if (filter === 'active') matchStatus = (!m.dueMonths || m.dueMonths === 0) && m.status !== 'inactive';
+                  else if (filter === 'due') matchStatus = m.dueMonths > 0;
+                  else if (filter === 'advanced') matchStatus = m.dueMonths < 0;
+                  else if (filter === 'inactive') matchStatus = m.status === 'inactive';
+              }
+              
+              return matchSearch && matchStatus;
+           });
+
+           document.getElementById('tbl-members').innerHTML = list.map(m => {
             let statusBadge = '<span class="badge bg-green">Active</span>';
             let dueTxt = '-';
             let dueColor = 'gray';
@@ -931,21 +987,7 @@ function renderDashboard(user: any) {
                 '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
               '</td>' +
             '</tr>';
-          }).join('');
-
-          const todayRows = (this.data.attendanceToday || []).map(a => {
-             let dueStr = '-';
-             if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
-             else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-             
-             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
-          document.getElementById('tbl-attendance-today').innerHTML = todayRows;
-
-          this.renderHistoryTable(null);
-          this.renderPaymentsTable(); 
-          
-          this.renderCharts();
+          }).join('') || '<tr><td colspan="7">No members found.</td></tr>';
         },
 
         renderPaymentsTable() {
@@ -1191,7 +1233,10 @@ function renderDashboard(user: any) {
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async pay(e) { e.preventDefault(); await fetch('/api/payment', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
+        
+        // Client side filter
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
+        
         applyHistoryFilter() { this.renderHistoryTable(document.getElementById('history-date').value); },
         clearHistoryFilter() { document.getElementById('history-date').value=''; this.renderHistoryTable(null); },
         onPaymentSearchInput(e) {
