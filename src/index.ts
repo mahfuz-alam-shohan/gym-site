@@ -196,6 +196,13 @@ async function initDB(env: Env) {
     `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, expires_at TEXT)`
   ];
   for (const sql of q) await env.DB.prepare(sql).run();
+  
+  // Migration: Add balance column if not exists
+  try {
+    await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run();
+  } catch (e) {
+    // ignore if exists
+  }
 }
 
 async function factoryReset(env: Env) {
@@ -370,10 +377,11 @@ export default {
                activeCount++; 
              }
              
-             // Calc Outstanding
+             // Calc Outstanding (considering balance)
              if (dueMonths > 0) {
                  const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
-                 totalOutstanding += (dueMonths * planPrice);
+                 const owed = (dueMonths * planPrice) - (m.balance || 0);
+                 totalOutstanding += Math.max(0, owed);
              }
           }
           
@@ -421,7 +429,6 @@ export default {
         query += " ORDER BY p.date DESC LIMIT 50";
         const res = await env.DB.prepare(query).bind(...params).all<any>();
         
-        // If searching for a specific member, we might want their name for the modal title even if they have no payments
         let memberName = null;
         if(body.memberId) {
            const m = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(body.memberId).first<any>();
@@ -439,17 +446,24 @@ export default {
         let res;
         const isNumeric = /^\d+$/.test(qRaw);
         
+        // Optimized query to check attendance status for today
+        const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = date('now')) as today_visits FROM members";
+        
         if (isNumeric) {
            if (qRaw.length < 6) {
-              res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(`${qRaw}%`).all();
+              res = await env.DB.prepare(baseQuery + " WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(`${qRaw}%`).all();
            } else {
-              res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE phone LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
+              res = await env.DB.prepare(baseQuery + " WHERE phone LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
            }
         } else {
-           res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE name LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
+           res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
         }
         
-        const results = (res.results || []).map((m: any) => ({ ...m, dueMonths: calcDueMonths(m.expiry_date) }));
+        const results = (res.results || []).map((m: any) => ({ 
+            ...m, 
+            dueMonths: calcDueMonths(m.expiry_date),
+            checkedIn: m.today_visits > 0
+        }));
         return json({ results });
       }
 
@@ -480,14 +494,31 @@ export default {
       }
 
       if (url.pathname === "/api/payment" && req.method === "POST") {
-        const { memberId, amount, months } = await req.json() as any;
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amount, new Date().toISOString()).run();
+        const { memberId, amount } = await req.json() as any;
+        const amt = Number(amount);
         
-        const member = await env.DB.prepare("SELECT expiry_date FROM members WHERE id = ?").bind(memberId).first<any>();
-        let newDate = new Date(member.expiry_date);
-        newDate.setMonth(newDate.getMonth() + parseInt(months));
+        // Record the transaction
+        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, new Date().toISOString()).run();
         
-        await env.DB.prepare("UPDATE members SET expiry_date = ?, status = 'active' WHERE id = ?").bind(newDate.toISOString(), memberId).run();
+        // Update member balance and expiry logic
+        const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
+        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
+        const plans = JSON.parse(config.value || '[]');
+        const plan = plans.find((p: any) => p.name === member.plan);
+        const price = plan ? Number(plan.price) : 0;
+
+        let currentBalance = (member.balance || 0) + amt;
+        let expiry = new Date(member.expiry_date);
+        
+        // While balance allows, extend month
+        if (price > 0) {
+            while (currentBalance >= price) {
+                currentBalance -= price;
+                expiry.setMonth(expiry.getMonth() + 1);
+            }
+        }
+        
+        await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, status = 'active' WHERE id = ?").bind(expiry.toISOString(), currentBalance, memberId).run();
         return json({ success: true });
       }
 
@@ -883,9 +914,11 @@ function renderDashboard(user: any) {
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
           <label>Amount Paid</label>
-          <input name="amount" id="pay-amount" type="number" required onkeyup="app.calcMonthsFromAmount()" onchange="app.calcMonthsFromAmount()">
-          <label>Extends Expiry By (Auto-calculated)</label>
-          <input name="months" id="pay-months" type="number" readonly style="background:#f3f4f6; cursor:not-allowed;">
+          <input name="amount" id="pay-amount" type="number" required>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
+             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
+          </div>
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary">Confirm</button>
@@ -1209,7 +1242,13 @@ function renderDashboard(user: any) {
              let dueColor = 'gray';
              if (m.dueMonths > 0) {
                  const price = this.getPlanPrice(m.plan);
-                 dueTxt = (m.dueMonths * price) + ' (' + m.dueMonths + ' Mo Due)';
+                 const paid = m.balance || 0;
+                 const owed = (m.dueMonths * price);
+                 const remaining = Math.max(0, owed - paid);
+                 
+                 dueTxt = (remaining) + ' (' + m.dueMonths + ' Mo Due)';
+                 if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
+                 
                  dueColor = 'red';
                  statusBadge = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
@@ -1266,9 +1305,14 @@ function renderDashboard(user: any) {
                   statusHtml = '<span class="badge bg-amber">Due</span>';
                   if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
                   infoTxt = m.dueMonths + ' Mo Due';
+                  
                   const dueAmt = m.dueMonths * price;
-                  totalOutstanding += dueAmt;
-                  amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + dueAmt + '</span>';
+                  const paid = m.balance || 0;
+                  const remaining = Math.max(0, dueAmt - paid);
+                  totalOutstanding += remaining;
+                  
+                  amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + remaining + '</span>';
+                  if (paid > 0) amtTxt += '<br><span style="font-size:10px; color:gray;">(Paid: ' + paid + ')</span>';
                } else if (m.dueMonths < 0) {
                   statusHtml = '<span class="badge bg-blue">Advanced</span>';
                   infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
@@ -1542,19 +1586,7 @@ function renderDashboard(user: any) {
         },
         
         /* --- PAY AUTO-FILL --- */
-        calcMonthsFromAmount() {
-            if(!this.payingMemberId) return;
-            const m = this.data.members.find(x => x.id === this.payingMemberId);
-            if(!m) return;
-            
-            const amount = Number(document.getElementById('pay-amount').value) || 0;
-            const price = this.getPlanPrice(m.plan);
-            
-            if (price > 0) {
-               const months = Math.floor(amount / price); 
-               document.getElementById('pay-months').value = months;
-            }
-        },
+        // No longer needed but good to keep reference if we revert. Updated modal logic handles it.
 
         /* --- ACTIONS --- */
         async checkIn() {
@@ -1600,8 +1632,14 @@ function renderDashboard(user: any) {
                      statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
                  }
                  
+                 // Already checked in badge
+                 let checkedInBadge = '';
+                 if (m.checkedIn) {
+                    checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
+                 }
+                 
                  return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
-                        '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + 
+                        '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + checkedInBadge +
                         '</div>';
                }).join('');
             }, 200);
@@ -1663,10 +1701,14 @@ function renderDashboard(user: any) {
              open:(id)=>{ 
                app.payingMemberId = id;
                const m = app.data.members.find(x=>x.id===id); 
+               const price = app.getPlanPrice(m.plan);
                document.getElementById('pay-id').value=id; 
                document.getElementById('pay-name').innerText = m ? m.name : '';
                document.getElementById('pay-amount').value = '';
-               document.getElementById('pay-months').value = 0;
+               
+               document.getElementById('pay-plan-price').innerText = price;
+               document.getElementById('pay-wallet-bal').innerText = m.balance || 0;
+               
                document.getElementById('modal-pay').style.display='flex'; 
              }, 
              close:()=>{
