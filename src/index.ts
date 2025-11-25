@@ -1249,7 +1249,10 @@ function renderDashboard(user: any) {
           if (!nav) return;
           nav.innerHTML = this.menuConfig
             .filter(item => this.allowedMenus.includes(item.id))
-            .map(item => `<div class="nav-item" data-nav="${item.id}" onclick="app.nav('${item.id}')">${item.icon} ${item.label}</div>`)
+            .map(
+              item =>
+                `<div class="nav-item" data-nav="${item.id}" onclick="app.nav('${item.id}')">${item.icon} ${item.label}</div>`
+            )
             .join('');
         },
 
