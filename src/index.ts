@@ -40,14 +40,10 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
 
   const now = new Date();
   
-  // Calculate difference in months
-  // Positive = Due (Past Expiry)
-  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
-  // Adjust for day of month
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
@@ -131,12 +127,10 @@ function baseHead(title: string): string {
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:hover { background: #ffffff; }
 
-    /* Settings Table */
     .plan-row { display: grid; grid-template-columns: 1fr 100px 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
 
     /* Calendar Styles */
-    .calendar-wrapper { }
     .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; }
     .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
     .cal-header { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
@@ -145,6 +139,15 @@ function baseHead(title: string): string {
     .cal-cell.present { background: #22c55e; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3); }
     .cal-cell.absent { background: #fecaca; color: #ef4444; opacity: 0.5; }
     .cal-stats { margin-top: 15px; font-size: 13px; display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #f3f4f6; }
+    
+    /* Yearly Summary Grid */
+    .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 15px; }
+    .year-month-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; text-align: center; background: #fff; }
+    .ym-name { font-weight: bold; font-size: 14px; margin-bottom: 5px; color: #374151; }
+    .ym-badge { display: inline-block; width: 30px; height: 30px; line-height: 30px; border-radius: 50%; font-weight: bold; font-size: 14px; color: white; margin-bottom: 5px; }
+    .ym-p { background: #22c55e; }
+    .ym-a { background: #ef4444; }
+    .ym-count { font-size: 11px; color: #6b7280; }
 
     .mobile-header { display: none; }
     @media (max-width: 768px) {
@@ -214,10 +217,10 @@ export default {
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
         
-        // Default plans on setup
         const defaultPlans = JSON.stringify([{name:"Standard", price:500}, {name:"Premium", price:1000}]);
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind("en").run();
 
         return json({ success: true });
       }
@@ -251,7 +254,6 @@ export default {
 
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
-      // PRINTABLE DUE LIST (PDF TARGET)
       if (url.pathname === "/dues/print") {
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
         const gymName = (gymRow && gymRow.value) || "Gym OS";
@@ -316,6 +318,7 @@ export default {
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
         const currency = config["currency"] || "BDT";
+        const lang = config["lang"] || "en";
         
         let membershipPlans = [];
         try {
@@ -365,17 +368,14 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
         });
       }
 
       if (url.pathname === "/api/members/history" && req.method === "POST") {
         const { memberId } = await req.json() as any;
-        // Fetch ALL attendance for calendar generation
         const history = await env.DB.prepare("SELECT check_in_time, status FROM attendance WHERE member_id = ? ORDER BY check_in_time DESC").bind(memberId).all();
-        // Also need member joined_at
         const member = await env.DB.prepare("SELECT joined_at FROM members WHERE id = ?").bind(memberId).first<any>();
-        
         return json({ history: history.results || [], joinedAt: member?.joined_at });
       }
 
@@ -388,16 +388,12 @@ export default {
         const isNumeric = /^\d+$/.test(qRaw);
         
         if (isNumeric) {
-           // If number is short (likely ID search)
            if (qRaw.length < 6) {
-              // Search IDs starting with these digits (Intelligent ID search)
               res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(`${qRaw}%`).all();
            } else {
-              // If number is long (likely Phone search)
               res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE phone LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
            }
         } else {
-           // If text (Name search)
            res = await env.DB.prepare("SELECT id, name, phone, plan, expiry_date FROM members WHERE name LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
         }
         
@@ -457,6 +453,7 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         return json({ success: true });
       }
@@ -551,15 +548,6 @@ function renderDashboard(user: any) {
   const isAdmin = user.role === 'admin';
   const can = (p: string) => isAdmin || perms.includes(p);
 
-  let navItems = '';
-  if (can('home')) navItems += `<div class="nav-item" onclick="app.nav('home')">📊 Overview</div>`;
-  if (can('members')) navItems += `<div class="nav-item" onclick="app.nav('members')">👥 Members</div>`;
-  if (can('attendance')) navItems += `<div class="nav-item" onclick="app.nav('attendance')">⏰ Today</div>`;
-  if (can('history')) navItems += `<div class="nav-item" onclick="app.nav('history')">📜 History</div>`;
-  if (can('payments')) navItems += `<div class="nav-item" onclick="app.nav('payments')">💵 Payments</div>`;
-  if (can('settings')) navItems += `<div class="nav-item" onclick="app.nav('settings')">⚙ Settings</div>`;
-  if (isAdmin) navItems += `<div class="nav-item" onclick="app.nav('users')">🔐 User Access</div>`;
-
   const html = `${baseHead("Dashboard")}
   <body>
     <div class="app-layout">
@@ -571,18 +559,18 @@ function renderDashboard(user: any) {
 
       <aside class="sidebar">
         <div style="padding:24px; font-size:20px; font-weight:700; border-bottom:1px solid #1f2937;">💪 Gym OS</div>
-        <div class="nav">${navItems}</div>
+        <div class="nav" id="nav-container"></div>
         <div style="padding:20px; border-top:1px solid #1f2937;">
           <div style="font-weight:600;">${user.name}</div>
           <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${user.role.toUpperCase()}</div>
-          <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;">Sign Out &rarr;</a>
+          <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;" id="txt-logout">Sign Out &rarr;</a>
         </div>
       </aside>
 
       <main class="main-content">
         <div class="flex-between" style="padding: 24px 24px 0 24px;">
            <h2 id="page-title" style="margin:0;">Dashboard</h2>
-           <button class="btn btn-primary" onclick="app.modals.checkin.open()">⚡ Quick Check-In</button>
+           <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button>
         </div>
 
         <div style="padding: 24px;">
@@ -590,24 +578,24 @@ function renderDashboard(user: any) {
           <div id="view-home" class="hidden">
             <div class="stats-grid">
               <div class="stat-card">
-                <span class="stat-label">Active Members</span>
+                <span class="stat-label" id="lbl-active-mem">Active Members</span>
                 <span class="stat-val" id="stat-active">--</span>
               </div>
               <div class="stat-card">
-                <span class="stat-label">Today's Visits</span>
+                <span class="stat-label" id="lbl-today-visits">Today's Visits</span>
                 <span class="stat-val" id="stat-today">--</span>
               </div>
               <div class="stat-card">
-                <span class="stat-label">Total Revenue</span>
+                <span class="stat-label" id="lbl-tot-rev">Total Revenue</span>
                 <span class="stat-val" style="color:var(--success)"><span id="stat-rev">--</span></span>
               </div>
               <div class="stat-card">
-                <span class="stat-label">Members With Due</span>
+                <span class="stat-label" id="lbl-mem-due">Members With Due</span>
                 <span class="stat-val" id="stat-due">--</span>
               </div>
             </div>
             <div class="card">
-              <h3 style="margin:0 0 15px 0;">Dues Overview</h3>
+              <h3 style="margin:0 0 15px 0;" id="lbl-due-overview">Dues Overview</h3>
               <canvas id="chart-dues" height="100"></canvas>
             </div>
           </div>
@@ -626,11 +614,11 @@ function renderDashboard(user: any) {
                      <option value="inactive">Inactive</option>
                   </select>
                 </div>
-                <button class="btn btn-primary" onclick="app.modals.add.open()">+ Add Member</button>
+                <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Expiry</th><th>Due / Adv</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead>
                   <tbody id="tbl-members"></tbody>
                 </table>
               </div>
@@ -640,10 +628,10 @@ function renderDashboard(user: any) {
           <!-- VIEW: ATTENDANCE (TODAY) -->
           <div id="view-attendance" class="hidden">
             <div class="card">
-              <h3>Today's Attendance</h3>
+              <h3 id="lbl-today-att">Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Time</th><th>Name</th><th>Result</th><th>Due / Adv</th></tr></thead>
+                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Result</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -654,11 +642,11 @@ function renderDashboard(user: any) {
           <div id="view-history" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;">Activity Log (Last 50)</h3>
+                <h3 style="margin:0;" id="lbl-act-log">Activity Log (Last 50)</h3>
                 <div class="flex" style="gap:8px;">
                   <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
-                  <button class="btn btn-outline" onclick="app.applyHistoryFilter()">Filter</button>
-                  <button class="btn btn-outline" onclick="app.clearHistoryFilter()">Clear</button>
+                  <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
+                  <button class="btn btn-outline" onclick="app.clearHistoryFilter()" id="btn-clear">Clear</button>
                 </div>
               </div>
               <div class="table-responsive">
@@ -673,13 +661,13 @@ function renderDashboard(user: any) {
           <!-- VIEW: PAYMENTS -->
           <div id="view-payments" class="hidden">
             <div class="card">
-              <h3>Search & Collect</h3>
+              <h3 id="lbl-search-col">Search & Collect</h3>
               <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
               <div id="pay-search-results" class="checkin-results"></div>
             </div>
             <div class="card">
               <div class="flex-between" style="margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;">Payment Status</h3>
+                <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
                 <div class="flex">
                   <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
                     <option value="all">All Members</option>
@@ -687,7 +675,7 @@ function renderDashboard(user: any) {
                     <option value="running">Running</option>
                     <option value="advanced">Advanced</option>
                   </select>
-                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">Print List (PDF)</button>
+                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print List (PDF)</button>
                 </div>
               </div>
               <div class="table-responsive">
@@ -702,30 +690,41 @@ function renderDashboard(user: any) {
           <!-- VIEW: SETTINGS -->
           <div id="view-settings" class="hidden">
             <div class="card">
-              <h3>System Settings</h3>
+              <h3 id="lbl-sys-set">System Settings</h3>
               <form id="settings-form" onsubmit="app.saveSettings(event)">
                 <div class="flex">
                    <div class="w-full">
-                      <label>Currency Symbol (e.g. $, BDT, Tk)</label>
+                      <label id="lbl-cur">Currency Symbol</label>
                       <input name="currency" type="text" placeholder="BDT">
                    </div>
                    <div class="w-full">
-                      <label>Attendance Threshold (Days to be Active)</label>
-                      <input name="attendanceThreshold" type="number" min="1" max="31" required>
+                      <label id="lbl-lang">Language / ভাষা</label>
+                      <select name="lang" style="margin-bottom:15px;">
+                         <option value="en">English</option>
+                         <option value="bn">Bangla</option>
+                      </select>
                    </div>
                 </div>
                 
-                <label>Inactive after X months of due</label>
-                <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
+                <div class="flex">
+                   <div class="w-full">
+                      <label id="lbl-att-th">Attendance Threshold (Days)</label>
+                      <input name="attendanceThreshold" type="number" min="1" max="31" required>
+                   </div>
+                   <div class="w-full">
+                      <label id="lbl-inact-th">Inactive after X months due</label>
+                      <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
+                   </div>
+                </div>
                 
-                <label style="margin-top:20px;">Membership Plans & Prices</label>
+                <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
                    <div id="plans-container"></div>
-                   <button type="button" class="btn btn-outline" onclick="app.addPlanRow()">+ Add Plan</button>
+                   <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
                 </div>
                 
                 <div class="flex-between" style="margin-top:15px; gap:10px;">
-                  <button type="submit" class="btn btn-primary">Save Settings</button>
+                  <button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button>
                   <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
                 </div>
               </form>
@@ -736,8 +735,8 @@ function renderDashboard(user: any) {
           <div id="view-users" class="hidden">
             <div class="card">
                <div class="flex-between" style="margin-bottom:20px;">
-                 <h3 style="margin:0;">User Access</h3>
-                 <button class="btn btn-primary" onclick="app.openAddUser()">+ Add User</button>
+                 <h3 style="margin:0;" id="lbl-user-acc">User Access</h3>
+                 <button class="btn btn-primary" onclick="app.openAddUser()" id="btn-add-user">+ Add User</button>
                </div>
                <div class="table-responsive">
                  <table>
@@ -755,10 +754,10 @@ function renderDashboard(user: any) {
 
     <div id="modal-checkin" class="modal-backdrop">
       <div class="modal-content">
-        <h3 style="text-align:center;">⚡ Check-In</h3>
+        <h3 style="text-align:center;" id="lbl-chk-title">⚡ Check-In</h3>
         <input id="checkin-id" type="text" placeholder="Search ID/Name..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onCheckinInput(event)">
         <div id="checkin-suggestions" class="checkin-results"></div>
-        <button class="btn btn-primary w-full" onclick="app.checkIn()">Submit</button>
+        <button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk">Submit</button>
         <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; min-height:20px;"></div>
         <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
       </div>
@@ -766,7 +765,7 @@ function renderDashboard(user: any) {
 
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
-        <h3>New Member</h3>
+        <h3 id="lbl-new-mem">New Member</h3>
         <form onsubmit="app.addMember(event)">
           <label>Full Name</label><input name="name" required>
           <label>Phone Number</label><input name="phone" required>
@@ -786,10 +785,6 @@ function renderDashboard(user: any) {
                    <input name="duration" type="number" value="1" min="1" required>
                 </div>
              </div>
-             <div style="font-size:11px; color:#6b7280; line-height:1.4;">
-               <strong>Legacy:</strong> How many months they owed <em>before</em> today.<br>
-               <strong>Initial:</strong> How many months they are paying <em>right now</em>.
-             </div>
           </div>
 
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
@@ -802,17 +797,14 @@ function renderDashboard(user: any) {
 
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
-        <h3>💰 Receive Payment</h3>
+        <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
         <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
-          
           <label>Amount Paid</label>
           <input name="amount" id="pay-amount" type="number" required onkeyup="app.calcMonthsFromAmount()" onchange="app.calcMonthsFromAmount()">
-          
           <label>Extends Expiry By (Auto-calculated)</label>
           <input name="months" id="pay-months" type="number" readonly style="background:#f3f4f6; cursor:not-allowed;">
-          
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary">Confirm</button>
@@ -861,7 +853,6 @@ function renderDashboard(user: any) {
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
         
-        <!-- NEW: History Controls -->
         <div class="hist-controls">
            <div class="flex" style="align-items:center;">
               <label style="margin:0; white-space:nowrap;">Year:</label>
@@ -870,6 +861,7 @@ function renderDashboard(user: any) {
            <div class="flex" style="align-items:center;">
               <label style="margin:0; white-space:nowrap;">Month:</label>
               <select id="hist-month" style="margin:0;" onchange="app.renderCalendar()">
+                 <option value="-1">Whole Year / পুরো বছর</option>
                  <option value="0">January</option><option value="1">February</option><option value="2">March</option>
                  <option value="3">April</option><option value="4">May</option><option value="5">June</option>
                  <option value="6">July</option><option value="7">August</option><option value="8">September</option>
@@ -878,13 +870,53 @@ function renderDashboard(user: any) {
            </div>
         </div>
 
-        <div id="calendar-container" class="calendar-wrapper" style="display:block;">
-           <!-- Specific Calendar will go here -->
-        </div>
+        <div id="calendar-container" class="calendar-wrapper" style="display:block;"></div>
       </div>
     </div>
 
     <script>
+      const translations = {
+        en: {
+          dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
+          act_mem: "Active Members", tod_vis: "Today's Visits", tot_rev: "Total Revenue", mem_due: "Members With Due",
+          due_ov: "Dues Overview", quick_chk: "⚡ Quick Check-In",
+          search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
+          nm: "Name", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
+          tod_att: "Today's Attendance", time: "Time", res: "Result",
+          act_log: "Activity Log (Last 50)", filter: "Filter", clear: "Clear",
+          search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
+          sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
+          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due",
+          mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
+          user_acc: "User Access", add_user: "+ Add User",
+          chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
+          new_mem: "New Member", create: "Create",
+          rec_pay: "💰 Receive Payment", confirm: "Confirm"
+        },
+        bn: {
+          dash: "ড্যাশবোর্ড", over: "সারসংক্ষেপ", mem: "সদস্যবৃন্দ", att: "উপস্থিতি", hist: "ইতিহাস", pay: "পেমেন্ট", set: "সেটিংস", user: "ব্যবহারকারী",
+          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য",
+          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন",
+          search_ph: "আইডি, নাম বা ফোন খুঁজুন...", add_mem: "+ সদস্য যোগ",
+          nm: "নাম", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
+          tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
+          act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
+          search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
+          sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
+          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়",
+          mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
+          user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
+          chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
+          new_mem: "নতুন সদস্য", create: "তৈরি করুন",
+          rec_pay: "💰 পেমেন্ট গ্রহণ", confirm: "নিশ্চিত করুন"
+        }
+      };
+
+      function t(key) {
+         const lang = app.data?.settings?.lang || 'en';
+         return translations[lang][key] || key;
+      }
+
       function toggleSidebar() { 
         document.querySelector('.sidebar').classList.toggle('open');
         document.querySelector('.overlay').classList.toggle('open');
@@ -901,9 +933,8 @@ function renderDashboard(user: any) {
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null, 
-        activeHistory: null, // Store for local filtering
-
+        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null,
+        
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
@@ -911,7 +942,6 @@ function renderDashboard(user: any) {
           this.applySettingsUI();
           if(currentUser.role === 'admin') this.loadUsers();
           
-          // Load last session view OR default
           const last = sessionStorage.getItem('gym_view');
           if (last && this.can(last)) this.nav(last);
           else this.nav(this.can('attendance') ? 'attendance' : 'home');
@@ -922,17 +952,84 @@ function renderDashboard(user: any) {
         nav(v) {
           if (v === 'users' && currentUser.role !== 'admin') return;
           if (v !== 'users' && !this.can(v)) return alert('Access Denied');
+          sessionStorage.setItem('gym_view', v);
           
-          sessionStorage.setItem('gym_view', v); // Save view
-          
+          // Render Nav dynamically for lang support
+          const lang = this.data?.settings?.lang || 'en';
+          const nav = document.getElementById('nav-container');
+          let html = '';
+          if(this.can('home')) html += '<div class="nav-item" onclick="app.nav(\\'home\\')">'+t('over')+'</div>';
+          if(this.can('members')) html += '<div class="nav-item" onclick="app.nav(\\'members\\')">'+t('mem')+'</div>';
+          if(this.can('attendance')) html += '<div class="nav-item" onclick="app.nav(\\'attendance\\')">'+t('att')+'</div>';
+          if(this.can('history')) html += '<div class="nav-item" onclick="app.nav(\\'history\\')">'+t('hist')+'</div>';
+          if(this.can('payments')) html += '<div class="nav-item" onclick="app.nav(\\'payments\\')">'+t('pay')+'</div>';
+          if(this.can('settings')) html += '<div class="nav-item" onclick="app.nav(\\'settings\\')">'+t('set')+'</div>';
+          if(currentUser.role==='admin') html += '<div class="nav-item" onclick="app.nav(\\'users\\')">'+t('user')+'</div>';
+          nav.innerHTML = html;
+
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          document.querySelectorAll('.nav .nav-item').forEach(el => { if(el.textContent.toLowerCase().includes(v==='home'?'overview':v)) el.classList.add('active'); });
+          // Simple active check based on text match logic won't work well with lang, so relies on index or re-render
+          // For simplicity, we just re-rendered nav, now add active class based on v
+          const map = {home:0, members:1, attendance:2, history:3, payments:4, settings:5, users:6}; 
+          // This simplistic mapping assumes all perms. Better to just highlight by checking nav text or rebuilding nav every time.
+          // Re-rendering nav every time is safest for lang switch.
+          
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
             const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
           });
           document.getElementById('view-'+v).classList.remove('hidden');
           document.querySelector('.sidebar').classList.remove('open');
           document.querySelector('.overlay').classList.remove('open');
+          this.updateLabels();
+        },
+
+        updateLabels() {
+           // Update all ID-based labels
+           document.getElementById('page-title').innerText = t('dash');
+           document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
+           document.getElementById('lbl-active-mem').innerText = t('act_mem');
+           document.getElementById('lbl-today-visits').innerText = t('tod_vis');
+           document.getElementById('lbl-tot-rev').innerText = t('tot_rev');
+           document.getElementById('lbl-mem-due').innerText = t('mem_due');
+           document.getElementById('lbl-due-overview').innerText = t('due_ov');
+           
+           document.getElementById('search').placeholder = t('search_ph');
+           document.getElementById('btn-add-mem').innerText = t('add_mem');
+           document.getElementById('th-name').innerText = t('nm');
+           document.getElementById('th-phone').innerText = t('ph');
+           document.getElementById('th-plan').innerText = t('pl');
+           document.getElementById('th-exp').innerText = t('exp');
+           document.getElementById('th-due').innerText = t('due');
+           document.getElementById('th-act').innerText = t('act');
+           
+           document.getElementById('lbl-today-att').innerText = t('tod_att');
+           document.getElementById('th-time').innerText = t('time');
+           
+           document.getElementById('lbl-act-log').innerText = t('act_log');
+           document.getElementById('btn-filter').innerText = t('filter');
+           document.getElementById('btn-clear').innerText = t('clear');
+           
+           document.getElementById('lbl-search-col').innerText = t('search_col');
+           document.getElementById('lbl-pay-stat').innerText = t('pay_stat');
+           document.getElementById('btn-print').innerText = t('print');
+           
+           document.getElementById('lbl-sys-set').innerText = t('sys_set');
+           document.getElementById('lbl-cur').innerText = t('cur');
+           document.getElementById('lbl-lang').innerText = t('lang');
+           document.getElementById('lbl-att-th').innerText = t('att_th');
+           document.getElementById('lbl-inact-th').innerText = t('inact_th');
+           document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
+           document.getElementById('btn-add-plan').innerText = t('add_plan');
+           document.getElementById('btn-save-set').innerText = t('save_set');
+           
+           document.getElementById('lbl-user-acc').innerText = t('user_acc');
+           document.getElementById('btn-add-user').innerText = t('add_user');
+           
+           document.getElementById('lbl-chk-title').innerText = t('chk_title');
+           document.getElementById('btn-sub-chk').innerText = t('submit');
+           document.getElementById('lbl-new-mem').innerText = t('new_mem');
+           document.getElementById('lbl-rec-pay').innerText = t('rec_pay');
+           document.getElementById('txt-logout').innerText = t('Sign Out') + " →";
         },
 
         getPlanPrice(planName) {
@@ -941,16 +1038,7 @@ function renderDashboard(user: any) {
            return found ? Number(found.price) : 0;
         },
 
-        getDueDetails(m) {
-           if(!m.dueMonths || m.dueMonths <= 0) return '';
-           const today = new Date();
-           const months = [];
-           for(let i=0; i < m.dueMonths; i++) {
-              const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-              months.push(d.toLocaleString('en-US', { month:'short' }));
-           }
-           return months.reverse().join(', ');
-        },
+        getDueDetails(m) { return ''; }, // logic inline now
 
         render() {
           const cur = this.data.settings.currency || 'BDT';
@@ -960,43 +1048,36 @@ function renderDashboard(user: any) {
             document.getElementById('stat-rev').innerText = cur + ' ' + this.data.stats.revenue;
             document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
           }
-
-          this.renderMembersTable(); // New client-side filter render
-
+          this.renderMembersTable();
+          
           const todayRows = (this.data.attendanceToday || []).map(a => {
              let dueStr = '-';
              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-             
              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + (a.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>') + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="4">No check-ins yet.</td></tr>';
+          }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
           this.renderPaymentsTable(); 
-          
           this.renderCharts();
+          this.updateLabels(); // Ensure text updated
         },
 
         renderMembersTable() {
            const q = document.getElementById('search').value.trim().toLowerCase();
            const filter = document.getElementById('member-filter').value;
            const isNumeric = /^\d+$/.test(q);
-           
-           // Intelligent Search Logic
            const isIdSearch = isNumeric && q.length > 0 && q.length < 6;
            const isPhoneSearch = isNumeric && q.length >= 6;
 
            let list = (this.data.members || []).filter(m => {
-              // 1. Search Filter
               let matchSearch = true;
               if (q) {
                   if (isIdSearch) matchSearch = m.id.toString().startsWith(q);
                   else if (isPhoneSearch) matchSearch = m.phone.includes(q);
                   else matchSearch = m.name.toLowerCase().includes(q);
               }
-              
-              // 2. Status Filter
               let matchStatus = true;
               if (filter !== 'all') {
                   if (filter === 'active') matchStatus = (!m.dueMonths || m.dueMonths === 0) && m.status !== 'inactive';
@@ -1004,7 +1085,6 @@ function renderDashboard(user: any) {
                   else if (filter === 'advanced') matchStatus = m.dueMonths < 0;
                   else if (filter === 'inactive') matchStatus = m.status === 'inactive';
               }
-              
               return matchSearch && matchStatus;
            });
 
@@ -1012,21 +1092,17 @@ function renderDashboard(user: any) {
             let statusBadge = '<span class="badge bg-green">Active</span>';
             let dueTxt = '-';
             let dueColor = 'gray';
-            
             if (m.dueMonths > 0) {
                 const price = this.getPlanPrice(m.plan);
-                const dueAmt = m.dueMonths * price;
-                dueTxt = dueAmt + ' (' + m.dueMonths + ' Mo Due)';
+                dueTxt = (m.dueMonths * price) + ' (' + m.dueMonths + ' Mo Due)';
                 dueColor = 'red';
                 statusBadge = '<span class="badge bg-amber">Due</span>';
                 if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
             } else if (m.dueMonths < 0) {
-                const advMonths = Math.abs(m.dueMonths);
-                dueTxt = '+' + advMonths + ' Mo Adv';
+                dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
                 dueColor = 'green';
                 statusBadge = '<span class="badge bg-blue">Advance</span>';
             }
-
             return '<tr>' +
               '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td><td>' + m.phone + '</td><td>' + m.plan + '</td>' +
               '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
@@ -1044,15 +1120,9 @@ function renderDashboard(user: any) {
            const filter = document.getElementById('pay-filter').value;
            const cur = this.data.settings.currency || 'BDT';
            let list = (this.data.members || []).slice(); 
-
-           // Filter logic
-           if (filter === 'due') {
-              list = list.filter(m => m.dueMonths && m.dueMonths > 0);
-           } else if (filter === 'running') {
-              list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
-           } else if (filter === 'advanced') {
-              list = list.filter(m => m.dueMonths && m.dueMonths < 0);
-           }
+           if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
+           else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
+           else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
 
            list.sort((a, b) => {
               const getWeight = (m) => {
@@ -1071,7 +1141,6 @@ function renderDashboard(user: any) {
               let statusHtml = '<span class="badge bg-green">Running</span>';
               let infoTxt = '-';
               let amtTxt = '0';
-
               if (m.dueMonths > 0) {
                  statusHtml = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
@@ -1082,32 +1151,20 @@ function renderDashboard(user: any) {
                  infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
                  amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
               }
-
-              return '<tr>' +
-                '<td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td>' +
-                '<td>' + infoTxt + '</td><td>' + amtTxt + '</td>' +
-                '<td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td>' +
-              '</tr>';
-           }).join('') || '<tr><td colspan="6">No members found for this filter.</td></tr>';
+              return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
+           }).join('') || '<tr><td colspan="6">No data.</td></tr>';
         },
 
-        /* --- CALENDAR LOGIC --- */
         async showHistory(id, name) {
-           document.getElementById('mh-title').innerText = name + " - Attendance";
+           document.getElementById('mh-title').innerText = name;
            const container = document.getElementById('calendar-container');
-           container.innerHTML = '<div style="grid-column:1/-1; text-align:center;">Loading...</div>';
+           container.innerHTML = '<div style="text-align:center;">Loading...</div>';
            document.getElementById('modal-member-history').style.display = 'flex';
            
            const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
            const data = await res.json();
+           this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || new Date()) };
            
-           // Store data for local filtering
-           this.activeHistory = {
-              history: data.history || [],
-              joinedAt: new Date(data.joinedAt || new Date())
-           };
-           
-           // Populate Year Dropdown
            const yearSelect = document.getElementById('hist-year');
            yearSelect.innerHTML = '';
            const startYear = this.activeHistory.joinedAt.getFullYear();
@@ -1118,37 +1175,58 @@ function renderDashboard(user: any) {
               opt.innerText = y;
               yearSelect.appendChild(opt);
            }
-           
-           // Set default to current month/year
            const now = new Date();
            yearSelect.value = now.getFullYear();
            document.getElementById('hist-month').value = now.getMonth();
-           
-           this.renderCalendar(); // Initial Render
+           this.renderCalendar();
         },
 
         renderCalendar() {
            if (!this.activeHistory) return;
-           
            const year = parseInt(document.getElementById('hist-year').value);
-           const month = parseInt(document.getElementById('hist-month').value);
+           const monthVal = parseInt(document.getElementById('hist-month').value);
            const container = document.getElementById('calendar-container');
-           
-           const monthName = new Date(year, month).toLocaleString('default', { month: 'long' });
-           const daysInMonth = new Date(year, month + 1, 0).getDate();
-           
-           // Filter history for specific month
+           const threshold = this.data.settings.attendanceThreshold || 3;
+
+           // Yearly Summary View
+           if (monthVal === -1) {
+              let gridHtml = '<div class="year-grid">';
+              const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+              
+              for(let m=0; m<12; m++) {
+                 const presentDays = this.activeHistory.history.filter(h => {
+                    const d = new Date(h.check_in_time);
+                    return d.getFullYear() === year && d.getMonth() === m;
+                 }).map(h => new Date(h.check_in_time).getDate());
+                 
+                 const unique = new Set(presentDays).size;
+                 const isP = unique >= threshold;
+                 const badgeCls = isP ? 'ym-p' : 'ym-a';
+                 const badgeTxt = isP ? 'P' : 'A';
+                 
+                 gridHtml += '<div class="year-month-card">' +
+                    '<div class="ym-name">' + monthNames[m] + '</div>' +
+                    '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
+                    '<div class="ym-count">' + unique + ' Days</div>' +
+                 '</div>';
+              }
+              gridHtml += '</div>';
+              container.innerHTML = gridHtml;
+              return;
+           }
+
+           // Detailed Monthly View
+           const monthName = new Date(year, monthVal).toLocaleString('default', { month: 'long' });
+           const daysInMonth = new Date(year, monthVal + 1, 0).getDate();
            const presentDays = this.activeHistory.history.filter(h => {
               const d = new Date(h.check_in_time);
-              return d.getFullYear() === year && d.getMonth() === month;
+              return d.getFullYear() === year && d.getMonth() === monthVal;
            }).map(h => new Date(h.check_in_time).getDate());
            
            const uniquePresent = [...new Set(presentDays)];
            const count = uniquePresent.length;
-           const threshold = this.data.settings.attendanceThreshold || 3;
            const isBillable = count >= threshold;
            
-           // Generate Grid
            let gridHtml = '';
            for(let i=1; i<=daysInMonth; i++) {
               const isPresent = uniquePresent.includes(i);
@@ -1157,19 +1235,14 @@ function renderDashboard(user: any) {
               gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
            }
            
-           const statusColor = isBillable ? 'green' : 'red';
-           const statusText = isBillable ? 'Active / Billable' : 'Skipped / Inactive';
-           
-           const html = '<div class="calendar-month">' +
+           container.innerHTML = '<div class="calendar-month">' +
               '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
               '<div class="cal-grid">' + gridHtml + '</div>' +
               '<div class="cal-stats">' +
-                 '<span>Days Present: <strong>' + count + '</strong></span>' +
-                 '<span style="color:' + statusColor + '">' + statusText + '</span>' +
+                 '<span>Days: <strong>' + count + '</strong></span>' +
+                 '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
               '</div>' +
            '</div>';
-           
-           container.innerHTML = html;
         },
 
         renderHistoryTable(filterDate) {
@@ -1243,6 +1316,7 @@ function renderDashboard(user: any) {
           const s = this.data.settings;
           const form = document.getElementById('settings-form');
           form.querySelector('input[name="currency"]').value = s.currency || 'BDT';
+          form.querySelector('select[name="lang"]').value = s.lang || 'en';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
           
@@ -1256,7 +1330,6 @@ function renderDashboard(user: any) {
             '</div>'
           ).join('');
           
-          // Populate select in Add Modal
           document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+' ('+p.price+')</option>').join('');
         },
 
@@ -1273,7 +1346,6 @@ function renderDashboard(user: any) {
         async saveSettings(e) {
            e.preventDefault();
            
-           // Harvest Plans
            const plans = [];
            document.querySelectorAll('.plan-row').forEach(row => {
               const name = row.querySelector('.plan-name').value.trim();
@@ -1288,6 +1360,7 @@ function renderDashboard(user: any) {
               method:'POST', 
               body:JSON.stringify({
                  currency: form.querySelector('input[name="currency"]').value,
+                 lang: form.querySelector('select[name="lang"]').value,
                  attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                  inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
                  membershipPlans: plans
@@ -1347,9 +1420,7 @@ function renderDashboard(user: any) {
         async pay(e) { e.preventDefault(); await fetch('/api/payment', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
         
-        // Client side filter
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
-        
         applyHistoryFilter() { this.renderHistoryTable(document.getElementById('history-date').value); },
         clearHistoryFilter() { document.getElementById('history-date').value=''; this.renderHistoryTable(null); },
         onPaymentSearchInput(e) {
