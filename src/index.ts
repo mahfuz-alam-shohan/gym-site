@@ -41,8 +41,6 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   const now = new Date();
   
   // Calculate difference in months
-  // Positive = Due (Past Expiry)
-  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
@@ -94,6 +92,7 @@ function baseHead(title: string): string {
     
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
+    input[readonly] { background-color: #f3f4f6; color: #6b7280; cursor: not-allowed; }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -265,6 +264,8 @@ export default {
       }
 
       if (url.pathname === "/api/nuke") {
+        const user = await getSession(req, env);
+        if(!user && !url.searchParams.get('force')) return json({error: "Auth required for nuke"}, 401);
         await factoryReset(env);
         return new Response("Reset Complete", { status: 200 });
       }
@@ -670,16 +671,9 @@ function renderSetup() {
           <button type="submit" class="btn btn-primary w-full" style="padding:12px">Install System</button>
         </form>
         <div id="error" style="color:var(--danger); margin-top:10px; font-size:13px; text-align:center;"></div>
-        <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
-           <button onclick="nukeDB()" class="btn btn-danger" style="font-size:11px;">⚠ Factory Reset Database</button>
-        </div>
       </div>
     </div>
     <script>
-      async function nukeDB() {
-        if(!confirm("Delete ALL data?")) return;
-        await fetch('/api/nuke'); location.reload();
-      }
       document.getElementById('form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -795,11 +789,11 @@ function renderDashboard(user: any) {
                 <div class="flex">
                   <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
                   <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
-                     <option value="all">All Status</option>
-                     <option value="active">Active</option>
-                     <option value="due">Due</option>
-                     <option value="advanced">Advanced</option>
-                     <option value="inactive">Inactive</option>
+                      <option value="all">All Status</option>
+                      <option value="active">Active</option>
+                      <option value="due">Due</option>
+                      <option value="advanced">Advanced</option>
+                      <option value="inactive">Inactive</option>
                   </select>
                 </div>
                 <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
@@ -919,11 +913,11 @@ function renderDashboard(user: any) {
 
                 <div class="flex">
                    <div class="w-full">
-                      <label id="lbl-adm-fee">Admission Fee</label>
+                      <label id="lbl-adm-fee">Admission Fee (Global Default)</label>
                       <input name="admissionFee" type="number" min="0" required>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-ren-fee">Renewal Fee (Global)</label>
+                      <label id="lbl-ren-fee">Renewal Fee (Re-admission)</label>
                       <input name="renewalFee" type="number" min="0" required>
                    </div>
                 </div>
@@ -935,6 +929,7 @@ function renderDashboard(user: any) {
                    </div>
                    <div id="plans-container"></div>
                    <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
+                   <div style="font-size:11px; color:var(--text-muted); margin-top:8px;">* Plan Admission Fee overrides global fee if set > 0</div>
                 </div>
                 
                 <div class="flex-between" style="margin-top:15px; gap:10px;">
@@ -942,6 +937,13 @@ function renderDashboard(user: any) {
                   <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
                 </div>
               </form>
+
+              <!-- DANGER ZONE -->
+              <div style="margin-top: 40px; border-top: 1px solid #fee2e2; padding-top: 20px;">
+                <h4 style="color: #991b1b; margin-top: 0; margin-bottom: 10px;">⚠ Danger Zone</h4>
+                <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;">This will permanently delete all members, payments, and history. Use with caution.</p>
+                <button type="button" class="btn btn-danger" onclick="app.nukeDatabase()">Factory Reset Database</button>
+              </div>
             </div>
           </div>
 
@@ -1000,8 +1002,8 @@ function renderDashboard(user: any) {
         <form onsubmit="app.addMember(event)">
           <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
           
-          <label>Full Name</label><input name="name" required>
-          <label>Phone Number</label><input name="phone" required>
+          <label>Full Name</label><input name="name" required placeholder="Member Name">
+          <label>Phone Number</label><input name="phone" required placeholder="017...">
           
           <div class="flex">
             <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
@@ -1014,7 +1016,7 @@ function renderDashboard(user: any) {
                  <label style="margin-bottom:8px; font-weight:bold;">Fees (New)</label>
                  <div class="flex" style="margin-bottom:10px;">
                     <div class="w-full">
-                       <label>Admission Fee</label>
+                       <label>Admission Fee (Auto)</label>
                        <input name="admissionFee" id="new-adm-fee" type="number" min="0">
                     </div>
                     <div style="padding-top:22px;">
@@ -1025,7 +1027,7 @@ function renderDashboard(user: any) {
                  </div>
                  <div class="w-full">
                     <label>Initial Payment (Required)</label>
-                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required>
+                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required placeholder="Amount paid today">
                  </div>
              </div>
 
@@ -1059,7 +1061,7 @@ function renderDashboard(user: any) {
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
         <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
+        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px; font-weight:bold;"></p>
         <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
         
         <form onsubmit="app.pay(event)">
@@ -1067,18 +1069,27 @@ function renderDashboard(user: any) {
           
           <!-- Renewal Section -->
           <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
-             <label>Renewal Fee</label>
-             <input name="renewalFee" id="pay-ren-fee" type="number">
-             <label>New Membership Payment</label>
+             <div class="flex-between" style="margin-bottom:10px;">
+                <label style="margin:0;">Renewal Fee (Settings):</label>
+                <!-- Readonly so user sees it but cannot change manually (set in settings) -->
+                <input name="renewalFee" id="pay-ren-fee" type="number" readonly style="width:100px; margin:0; text-align:right;">
+             </div>
+             <hr style="border:0; border-top:1px dashed #ccc; margin:10px 0;">
           </div>
           
-          <div id="pay-standard-label"><label>Amount Paid</label></div>
-          <input name="amount" id="pay-amount" type="number" required>
+          <label id="lbl-pay-amount-desc">Amount Paid</label>
+          <input name="amount" id="pay-amount" type="number" required onkeyup="app.calcTotalPay()">
           
-          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
-             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
-             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
+          <!-- Dynamic Total Display for Renewals -->
+          <div id="pay-total-display" style="display:none; text-align:right; font-weight:bold; color:var(--primary); margin-bottom:10px;">
+             Total: <span id="pay-calc-total">0</span>
           </div>
+          
+          <div style="font-size:12px; color:var(--text-muted); margin-top:5px; background:#f9fafb; padding:10px; border-radius:6px;">
+             <div class="flex-between"><span>Plan Price:</span> <span id="pay-plan-price" style="font-weight:bold;">-</span></div>
+             <div class="flex-between"><span>Wallet Balance:</span> <span id="pay-wallet-bal" style="font-weight:bold;">0</span></div>
+          </div>
+
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
@@ -1427,7 +1438,7 @@ function renderDashboard(user: any) {
              }
              return '<tr>' +
                '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td>' +
-               '<td>' + formatDate(m.joined_at) + '</td>' + // Added Joined Date
+               '<td>' + formatDate(m.joined_at) + '</td>' + 
                '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
                '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
                '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
@@ -1579,8 +1590,8 @@ function renderDashboard(user: any) {
                
                for(let m=0; m<12; m++) {
                   const presentDays = this.activeHistory.history.filter(h => {
-                     const d = new Date(h.check_in_time);
-                     return d.getFullYear() === year && d.getMonth() === m;
+                      const d = new Date(h.check_in_time);
+                      return d.getFullYear() === year && d.getMonth() === m;
                   }).map(h => new Date(h.check_in_time).getDate());
                   
                   const unique = new Set(presentDays).size;
@@ -1589,10 +1600,10 @@ function renderDashboard(user: any) {
                   const badgeTxt = isP ? 'P' : 'A';
                   
                   gridHtml += '<div class="year-month-card">' +
-                     '<div class="ym-name">' + monthNames[m] + '</div>' +
-                     '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
-                     '<div class="ym-count">' + unique + ' Days</div>' +
-                  '</div>';
+                      '<div class="ym-name">' + monthNames[m] + '</div>' +
+                      '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
+                      '<div class="ym-count">' + unique + ' Days</div>' +
+                   '</div>';
                }
                gridHtml += '</div>';
                container.innerHTML = gridHtml;
@@ -1792,7 +1803,23 @@ function renderDashboard(user: any) {
             location.reload();
         },
         
+        async nukeDatabase() {
+            if(!confirm("⚠️ FACTORY RESET WARNING ⚠️\n\nThis will delete ALL data (Members, Payments, History, Users).\n\nAre you absolutely sure?")) return;
+            if(!confirm("Final Confirmation: Delete EVERYTHING?")) return;
+            const res = await fetch('/api/nuke');
+            if(res.ok) window.location.href = '/';
+            else alert("Failed to reset. You may not be authenticated.");
+        },
+        
         /* --- PAYMENTS & RENEWAL --- */
+        calcTotalPay() {
+            if (!app.isRenewalMode) return;
+            const renFee = Number(document.getElementById('pay-ren-fee').value || 0);
+            const amt = Number(document.getElementById('pay-amount').value || 0);
+            const total = renFee + amt;
+            document.getElementById('pay-calc-total').innerText = total;
+        },
+
         async pay(e) { 
             e.preventDefault(); 
             const endpoint = app.isRenewalMode ? '/api/members/renew' : '/api/payment';
@@ -1981,9 +2008,11 @@ function renderDashboard(user: any) {
                // Reset UI State
                document.getElementById('pay-status-warning').style.display = 'none';
                document.getElementById('pay-renewal-section').style.display = 'none';
-               document.getElementById('pay-standard-label').style.display = 'block';
+               document.getElementById('pay-total-display').style.display = 'none';
+               
+               // Default Label
+               document.getElementById('lbl-pay-amount-desc').innerText = 'Amount Paid';
                document.getElementById('pay-submit-btn').innerText = 'Confirm';
-               document.getElementById('pay-amount').required = true;
                app.isRenewalMode = false;
 
                // Inactive Logic
@@ -1991,9 +2020,20 @@ function renderDashboard(user: any) {
                    app.isRenewalMode = true;
                    document.getElementById('pay-status-warning').style.display = 'block';
                    document.getElementById('pay-renewal-section').style.display = 'block';
-                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
-                   document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
+                   document.getElementById('pay-total-display').style.display = 'block';
+                   
+                   // Set Label specifically for Plan Fee
+                   document.getElementById('lbl-pay-amount-desc').innerText = 'Plan Fee (Membership)';
+                   
+                   // Get fee from settings, set it to readonly input
+                   const rFee = app.data.settings.renewalFee || 0;
+                   document.getElementById('pay-ren-fee').value = rFee;
+                   
+                   // Pre-fill plan price to save time
+                   document.getElementById('pay-amount').value = price;
+                   
                    document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
+                   app.calcTotalPay(); // Init calc
                }
                
                document.getElementById('pay-plan-price').innerText = price;
@@ -2014,3 +2054,4 @@ function renderDashboard(user: any) {
   </body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
+
