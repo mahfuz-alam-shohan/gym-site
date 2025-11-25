@@ -374,12 +374,16 @@ export default {
         const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
+        
+        // NEW: Fetch recent transactions for the payments page log
+        const recentPayments = await env.DB.prepare("SELECT p.amount, p.date, m.name, m.id as member_id FROM payments p JOIN members m ON p.member_id = m.id ORDER BY p.date DESC LIMIT 50").all<any>();
 
         return json({
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
+          recentPayments: recentPayments.results || [],
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang }
         });
@@ -631,7 +635,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead>
+                  <thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-joined">Joined</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead>
                   <tbody id="tbl-members"></tbody>
                 </table>
               </div>
@@ -673,30 +677,52 @@ function renderDashboard(user: any) {
 
           <!-- VIEW: PAYMENTS -->
           <div id="view-payments" class="hidden">
+            <!-- Total Dues Card -->
+            <div class="card" style="border-left: 5px solid var(--danger);">
+               <div class="flex-between">
+                  <div>
+                    <div style="font-size:12px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Total Outstanding Dues</div>
+                    <div id="total-outstanding-amount" style="font-size:28px; font-weight:800; color:var(--danger); margin-top:5px;">0</div>
+                  </div>
+                  <div style="text-align:right">
+                    <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print List (PDF)</button>
+                  </div>
+               </div>
+            </div>
+
             <div class="card">
               <h3 id="lbl-search-col">Search & Collect</h3>
               <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
               <div id="pay-search-results" class="checkin-results"></div>
             </div>
+            
             <div class="card">
-              <div class="flex-between" style="margin-bottom:10px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
-                <div class="flex">
+               <div class="flex-between" style="margin-bottom:10px;">
+                  <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
                   <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
                     <option value="all">All Members</option>
                     <option value="due">Dues Only</option>
                     <option value="running">Running</option>
                     <option value="advanced">Advanced</option>
                   </select>
-                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print List (PDF)</button>
-                </div>
-              </div>
+               </div>
               <div class="table-responsive">
                 <table>
                   <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
                   <tbody id="tbl-payment-list"></tbody>
                 </table>
               </div>
+            </div>
+
+            <!-- RECENT TRANSACTIONS TABLE -->
+            <div class="card">
+               <h3 style="margin-bottom:15px;">Recent Transactions</h3>
+               <div class="table-responsive">
+                  <table>
+                     <thead><tr><th>Date</th><th>Name</th><th>Amount</th></tr></thead>
+                     <tbody id="tbl-recent-transactions"></tbody>
+                  </table>
+               </div>
             </div>
           </div>
 
@@ -897,7 +923,7 @@ function renderDashboard(user: any) {
           act_mem: "Active Members", tod_vis: "Today's Visits", tot_rev: "Total Revenue", mem_due: "Members With Due",
           due_ov: "Dues Overview", quick_chk: "⚡ Quick Check-In",
           search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
-          nm: "Name", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
+          nm: "Name", joined: "Joined", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
           tod_att: "Today's Attendance", time: "Time", res: "Result",
           act_log: "Activity Log (Last 50)", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
@@ -911,15 +937,15 @@ function renderDashboard(user: any) {
         },
         bn: {
           dash: "ড্যাশবোর্ড", over: "সারসংক্ষেপ", mem: "সদস্যবৃন্দ", att: "উপস্থিতি", hist: "ইতিহাস", pay: "পেমেন্ট", set: "সেটিংস", user: "ব্যবহারকারী",
-          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য",
-          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন",
+          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য",
+          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন",
           search_ph: "আইডি, নাম বা ফোন খুঁজুন...", add_mem: "+ সদস্য যোগ",
-          nm: "নাম", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
-          tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
+          nm: "নাম", joined: "ভর্তি", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
+          tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
           act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
           search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
           sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
-          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়",
+          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়",
           mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
           user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
           chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
@@ -946,6 +972,11 @@ function renderDashboard(user: any) {
             hour: '2-digit', minute: '2-digit', hour12: true
          });
       }
+      
+      function formatDate(iso) {
+         if(!iso) return '-';
+         return new Date(iso).toLocaleDateString('en-GB'); // DD/MM/YYYY
+      }
 
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
@@ -970,7 +1001,6 @@ function renderDashboard(user: any) {
           if (v !== 'users' && !this.can(v)) return alert('Access Denied');
           sessionStorage.setItem('gym_view', v);
           
-          // Render Nav dynamically for lang support
           const lang = this.data?.settings?.lang || 'en';
           const nav = document.getElementById('nav-container');
           let html = '';
@@ -984,12 +1014,12 @@ function renderDashboard(user: any) {
           nav.innerHTML = html;
 
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          // Simple active check based on text match logic won't work well with lang, so relies on index or re-render
-          // For simplicity, we just re-rendered nav, now add active class based on v
+          // Simple active highlighting
+          const navItems = document.querySelectorAll('.nav-item');
           const map = {home:0, members:1, attendance:2, history:3, payments:4, settings:5, users:6}; 
-          // This simplistic mapping assumes all perms. Better to just highlight by checking nav text or rebuilding nav every time.
-          // Re-rendering nav every time is safest for lang switch.
-          
+          // Note: map index depends on permissions. Simple search is better:
+          navItems.forEach(el => { if(el.innerText === t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user')) el.classList.add('active'); });
+
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
             const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
           });
@@ -1012,6 +1042,7 @@ function renderDashboard(user: any) {
            document.getElementById('search').placeholder = t('search_ph');
            document.getElementById('btn-add-mem').innerText = t('add_mem');
            document.getElementById('th-name').innerText = t('nm');
+           document.getElementById('th-joined').innerText = t('joined');
            document.getElementById('th-phone').innerText = t('ph');
            document.getElementById('th-plan').innerText = t('pl');
            document.getElementById('th-exp').innerText = t('exp');
@@ -1049,12 +1080,10 @@ function renderDashboard(user: any) {
         },
 
         getPlanPrice(planName) {
-           const plans = this.data.settings.membershipPlans || [];
-           const found = plans.find(p => p.name === planName);
-           return found ? Number(found.price) : 0;
+            const plans = this.data.settings.membershipPlans || [];
+            const found = plans.find(p => p.name === planName);
+            return found ? Number(found.price) : 0;
         },
-
-        getDueDetails(m) { return ''; }, // logic inline now
 
         render() {
           const cur = this.data.settings.currency || 'BDT';
@@ -1067,27 +1096,28 @@ function renderDashboard(user: any) {
           this.renderMembersTable();
           
           const todayRows = (this.data.attendanceToday || []).map(a => {
-             let dueStr = '-';
-             if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
-             else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-             return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
+              let dueStr = '-';
+              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
+              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
+              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
           this.renderPaymentsTable(); 
+          this.renderRecentTransactions();
           this.renderCharts();
-          this.updateLabels(); // Ensure text updated
+          this.updateLabels();
         },
 
         renderMembersTable() {
-           const q = document.getElementById('search').value.trim().toLowerCase();
-           const filter = document.getElementById('member-filter').value;
-           const isNumeric = /^\d+$/.test(q);
-           const isIdSearch = isNumeric && q.length > 0 && q.length < 6;
-           const isPhoneSearch = isNumeric && q.length >= 6;
+            const q = document.getElementById('search').value.trim().toLowerCase();
+            const filter = document.getElementById('member-filter').value;
+            const isNumeric = /^\d+$/.test(q);
+            const isIdSearch = isNumeric && q.length > 0 && q.length < 6;
+            const isPhoneSearch = isNumeric && q.length >= 6;
 
-           let list = (this.data.members || []).filter(m => {
+            let list = (this.data.members || []).filter(m => {
               let matchSearch = true;
               if (q) {
                   if (isIdSearch) matchSearch = m.id.toString().startsWith(q);
@@ -1102,228 +1132,249 @@ function renderDashboard(user: any) {
                   else if (filter === 'inactive') matchStatus = m.status === 'inactive';
               }
               return matchSearch && matchStatus;
-           });
+            });
 
-           document.getElementById('tbl-members').innerHTML = list.map(m => {
-            let statusBadge = '<span class="badge bg-green">Active</span>';
-            let dueTxt = '-';
-            let dueColor = 'gray';
-            if (m.dueMonths > 0) {
-                const price = this.getPlanPrice(m.plan);
-                dueTxt = (m.dueMonths * price) + ' (' + m.dueMonths + ' Mo Due)';
-                dueColor = 'red';
-                statusBadge = '<span class="badge bg-amber">Due</span>';
-                if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-            } else if (m.dueMonths < 0) {
-                dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
-                dueColor = 'green';
-                statusBadge = '<span class="badge bg-blue">Advance</span>';
-            }
-            return '<tr>' +
-              '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td><td>' + m.phone + '</td><td>' + m.plan + '</td>' +
-              '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
-              '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
-              '<td>' +
-                '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">History</button> ' +
-                '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
-                '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
-              '</td>' +
-            '</tr>';
-          }).join('') || '<tr><td colspan="7">No members found.</td></tr>';
+            document.getElementById('tbl-members').innerHTML = list.map(m => {
+             let statusBadge = '<span class="badge bg-green">Active</span>';
+             let dueTxt = '-';
+             let dueColor = 'gray';
+             if (m.dueMonths > 0) {
+                 const price = this.getPlanPrice(m.plan);
+                 dueTxt = (m.dueMonths * price) + ' (' + m.dueMonths + ' Mo Due)';
+                 dueColor = 'red';
+                 statusBadge = '<span class="badge bg-amber">Due</span>';
+                 if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
+             } else if (m.dueMonths < 0) {
+                 dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
+                 dueColor = 'green';
+                 statusBadge = '<span class="badge bg-blue">Advance</span>';
+             }
+             return '<tr>' +
+               '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td>' +
+               '<td>' + formatDate(m.joined_at) + '</td>' + // Added Joined Date
+               '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
+               '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+               '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
+               '<td>' +
+                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">History</button> ' +
+                 '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
+                 '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
+               '</td>' +
+             '</tr>';
+            }).join('') || '<tr><td colspan="8">No members found.</td></tr>';
         },
 
         renderPaymentsTable() {
-           const filter = document.getElementById('pay-filter').value;
-           const cur = this.data.settings.currency || 'BDT';
-           let list = (this.data.members || []).slice(); 
-           if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
-           else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
-           else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
+            const filter = document.getElementById('pay-filter').value;
+            const cur = this.data.settings.currency || 'BDT';
+            let list = (this.data.members || []).slice(); 
+            if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
+            else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
+            else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
 
-           list.sort((a, b) => {
-              const getWeight = (m) => {
-                 if (m.dueMonths > 0) return 3; 
-                 if (!m.dueMonths || m.dueMonths === 0) return 2; 
-                 return 1; 
-              };
-              const wA = getWeight(a);
-              const wB = getWeight(b);
-              if (wA !== wB) return wB - wA; 
-              return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
-           });
+            let totalOutstanding = 0; // Calculate Total Due
 
-           document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
-              const price = this.getPlanPrice(m.plan);
-              let statusHtml = '<span class="badge bg-green">Running</span>';
-              let infoTxt = '-';
-              let amtTxt = '0';
-              if (m.dueMonths > 0) {
-                 statusHtml = '<span class="badge bg-amber">Due</span>';
-                 if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                 infoTxt = m.dueMonths + ' Mo Due';
-                 amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + (m.dueMonths * price) + '</span>';
-              } else if (m.dueMonths < 0) {
-                 statusHtml = '<span class="badge bg-blue">Advanced</span>';
-                 infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
-                 amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
-              }
-              return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
-           }).join('') || '<tr><td colspan="6">No data.</td></tr>';
+            list.sort((a, b) => {
+               const getWeight = (m) => {
+                  if (m.dueMonths > 0) return 3; 
+                  if (!m.dueMonths || m.dueMonths === 0) return 2; 
+                  return 1; 
+               };
+               const wA = getWeight(a);
+               const wB = getWeight(b);
+               if (wA !== wB) return wB - wA; 
+               return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
+            });
+
+            document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
+               const price = this.getPlanPrice(m.plan);
+               let statusHtml = '<span class="badge bg-green">Running</span>';
+               let infoTxt = '-';
+               let amtTxt = '0';
+               
+               if (m.dueMonths > 0) {
+                  statusHtml = '<span class="badge bg-amber">Due</span>';
+                  if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
+                  infoTxt = m.dueMonths + ' Mo Due';
+                  const dueAmt = m.dueMonths * price;
+                  totalOutstanding += dueAmt;
+                  amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + dueAmt + '</span>';
+               } else if (m.dueMonths < 0) {
+                  statusHtml = '<span class="badge bg-blue">Advanced</span>';
+                  infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
+                  amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
+               }
+               return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
+            }).join('') || '<tr><td colspan="6">No data.</td></tr>';
+
+            // Update Total Due Card
+            document.getElementById('total-outstanding-amount').innerText = cur + ' ' + totalOutstanding;
+        },
+
+        renderRecentTransactions() {
+            const list = this.data.recentPayments || [];
+            const cur = this.data.settings.currency || 'BDT';
+            const table = document.getElementById('tbl-recent-transactions');
+            if(!list.length) { table.innerHTML = '<tr><td colspan="3" style="text-align:center">No recent transactions.</td></tr>'; return; }
+
+            table.innerHTML = list.map(p => 
+               '<tr><td>' + formatTime(p.date) + '</td><td><strong>' + p.name + '</strong></td><td>' + cur + ' ' + p.amount + '</td></tr>'
+            ).join('');
         },
 
         async showHistory(id, name) {
-           document.getElementById('mh-title').innerText = name;
-           const container = document.getElementById('calendar-container');
-           container.innerHTML = '<div style="text-align:center;">Loading...</div>';
-           document.getElementById('modal-member-history').style.display = 'flex';
-           
-           const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
-           const data = await res.json();
-           this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || new Date()) };
-           
-           const yearSelect = document.getElementById('hist-year');
-           yearSelect.innerHTML = '';
-           const startYear = this.activeHistory.joinedAt.getFullYear();
-           const endYear = new Date().getFullYear();
-           for(let y = endYear; y >= startYear; y--) {
-              const opt = document.createElement('option');
-              opt.value = y;
-              opt.innerText = y;
-              yearSelect.appendChild(opt);
-           }
-           const now = new Date();
-           yearSelect.value = now.getFullYear();
-           document.getElementById('hist-month').value = now.getMonth();
-           this.renderCalendar();
+            document.getElementById('mh-title').innerText = name;
+            const container = document.getElementById('calendar-container');
+            container.innerHTML = '<div style="text-align:center;">Loading...</div>';
+            document.getElementById('modal-member-history').style.display = 'flex';
+            
+            const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
+            const data = await res.json();
+            this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || new Date()) };
+            
+            const yearSelect = document.getElementById('hist-year');
+            yearSelect.innerHTML = '';
+            const startYear = this.activeHistory.joinedAt.getFullYear();
+            const endYear = new Date().getFullYear();
+            for(let y = endYear; y >= startYear; y--) {
+               const opt = document.createElement('option');
+               opt.value = y;
+               opt.innerText = y;
+               yearSelect.appendChild(opt);
+            }
+            const now = new Date();
+            yearSelect.value = now.getFullYear();
+            document.getElementById('hist-month').value = now.getMonth();
+            this.renderCalendar();
         },
 
         renderCalendar() {
-           if (!this.activeHistory) return;
-           const year = parseInt(document.getElementById('hist-year').value);
-           const monthVal = parseInt(document.getElementById('hist-month').value);
-           const container = document.getElementById('calendar-container');
-           const threshold = this.data.settings.attendanceThreshold || 3;
+            if (!this.activeHistory) return;
+            const year = parseInt(document.getElementById('hist-year').value);
+            const monthVal = parseInt(document.getElementById('hist-month').value);
+            const container = document.getElementById('calendar-container');
+            const threshold = this.data.settings.attendanceThreshold || 3;
 
-           // Yearly Summary View
-           if (monthVal === -1) {
-              let gridHtml = '<div class="year-grid">';
-              const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-              
-              for(let m=0; m<12; m++) {
-                 const presentDays = this.activeHistory.history.filter(h => {
-                    const d = new Date(h.check_in_time);
-                    return d.getFullYear() === year && d.getMonth() === m;
-                 }).map(h => new Date(h.check_in_time).getDate());
-                 
-                 const unique = new Set(presentDays).size;
-                 const isP = unique >= threshold;
-                 const badgeCls = isP ? 'ym-p' : 'ym-a';
-                 const badgeTxt = isP ? 'P' : 'A';
-                 
-                 gridHtml += '<div class="year-month-card">' +
-                    '<div class="ym-name">' + monthNames[m] + '</div>' +
-                    '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
-                    '<div class="ym-count">' + unique + ' Days</div>' +
-                 '</div>';
-              }
-              gridHtml += '</div>';
-              container.innerHTML = gridHtml;
-              return;
-           }
+            // Yearly Summary View
+            if (monthVal === -1) {
+               let gridHtml = '<div class="year-grid">';
+               const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+               
+               for(let m=0; m<12; m++) {
+                  const presentDays = this.activeHistory.history.filter(h => {
+                     const d = new Date(h.check_in_time);
+                     return d.getFullYear() === year && d.getMonth() === m;
+                  }).map(h => new Date(h.check_in_time).getDate());
+                  
+                  const unique = new Set(presentDays).size;
+                  const isP = unique >= threshold;
+                  const badgeCls = isP ? 'ym-p' : 'ym-a';
+                  const badgeTxt = isP ? 'P' : 'A';
+                  
+                  gridHtml += '<div class="year-month-card">' +
+                     '<div class="ym-name">' + monthNames[m] + '</div>' +
+                     '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
+                     '<div class="ym-count">' + unique + ' Days</div>' +
+                  '</div>';
+               }
+               gridHtml += '</div>';
+               container.innerHTML = gridHtml;
+               return;
+            }
 
-           // Detailed Monthly View
-           const monthName = new Date(year, monthVal).toLocaleString('default', { month: 'long' });
-           const daysInMonth = new Date(year, monthVal + 1, 0).getDate();
-           const presentDays = this.activeHistory.history.filter(h => {
-              const d = new Date(h.check_in_time);
-              return d.getFullYear() === year && d.getMonth() === monthVal;
-           }).map(h => new Date(h.check_in_time).getDate());
-           
-           const uniquePresent = [...new Set(presentDays)];
-           const count = uniquePresent.length;
-           const isBillable = count >= threshold;
-           
-           let gridHtml = '';
-           for(let i=1; i<=daysInMonth; i++) {
-              const isPresent = uniquePresent.includes(i);
-              const cls = isPresent ? 'present' : 'absent';
-              const mark = isPresent ? 'P' : i;
-              gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
-           }
-           
-           container.innerHTML = '<div class="calendar-month">' +
-              '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
-              '<div class="cal-grid">' + gridHtml + '</div>' +
-              '<div class="cal-stats">' +
-                 '<span>Days: <strong>' + count + '</strong></span>' +
-                 '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
-              '</div>' +
-           '</div>';
+            // Detailed Monthly View
+            const monthName = new Date(year, monthVal).toLocaleString('default', { month: 'long' });
+            const daysInMonth = new Date(year, monthVal + 1, 0).getDate();
+            const presentDays = this.activeHistory.history.filter(h => {
+               const d = new Date(h.check_in_time);
+               return d.getFullYear() === year && d.getMonth() === monthVal;
+            }).map(h => new Date(h.check_in_time).getDate());
+            
+            const uniquePresent = [...new Set(presentDays)];
+            const count = uniquePresent.length;
+            const isBillable = count >= threshold;
+            
+            let gridHtml = '';
+            for(let i=1; i<=daysInMonth; i++) {
+               const isPresent = uniquePresent.includes(i);
+               const cls = isPresent ? 'present' : 'absent';
+               const mark = isPresent ? 'P' : i;
+               gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
+            }
+            
+            container.innerHTML = '<div class="calendar-month">' +
+               '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
+               '<div class="cal-grid">' + gridHtml + '</div>' +
+               '<div class="cal-stats">' +
+                  '<span>Days: <strong>' + count + '</strong></span>' +
+                  '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
+               '</div>' +
+            '</div>';
         },
 
         renderHistoryTable(filterDate) {
           const list = filterDate ? (this.data.attendanceHistory || []).filter(a => a.check_in_time.startsWith(filterDate)) : (this.data.attendanceHistory || []);
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-            '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
+             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
         /* --- USER MGMT --- */
         openAddUser() {
-           document.getElementById('modal-user').style.display='flex'; 
-           document.getElementById('user-modal-title').innerText="Add New User";
-           document.getElementById('user-form').reset();
-           document.getElementById('u-id').value = "";
-           document.getElementById('u-password').required = true;
-           document.getElementById('u-pass-hint').innerText = "";
-           this.togglePerms('staff'); 
+            document.getElementById('modal-user').style.display='flex'; 
+            document.getElementById('user-modal-title').innerText="Add New User";
+            document.getElementById('user-form').reset();
+            document.getElementById('u-id').value = "";
+            document.getElementById('u-password').required = true;
+            document.getElementById('u-pass-hint').innerText = "";
+            this.togglePerms('staff'); 
         },
 
         editUser(id) {
-           const u = this.userList.find(x => x.id === id);
-           if(!u) return;
-           document.getElementById('user-modal-title').innerText = "Edit User";
-           document.getElementById('u-id').value = u.id;
-           document.getElementById('u-name').value = u.name;
-           document.getElementById('u-email').value = u.email;
-           document.getElementById('u-password').required = false;
-           document.getElementById('u-pass-hint').innerText = "(Leave blank to keep)";
-           document.getElementById('u-role').value = u.role;
-           const perms = JSON.parse(u.permissions || '[]');
-           document.querySelectorAll('input[name="permissions"]').forEach(cb => cb.checked = perms.includes(cb.value));
-           this.togglePerms(u.role);
-           document.getElementById('modal-user').style.display='flex'; 
+            const u = this.userList.find(x => x.id === id);
+            if(!u) return;
+            document.getElementById('user-modal-title').innerText = "Edit User";
+            document.getElementById('u-id').value = u.id;
+            document.getElementById('u-name').value = u.name;
+            document.getElementById('u-email').value = u.email;
+            document.getElementById('u-password').required = false;
+            document.getElementById('u-pass-hint').innerText = "(Leave blank to keep)";
+            document.getElementById('u-role').value = u.role;
+            const perms = JSON.parse(u.permissions || '[]');
+            document.querySelectorAll('input[name="permissions"]').forEach(cb => cb.checked = perms.includes(cb.value));
+            this.togglePerms(u.role);
+            document.getElementById('modal-user').style.display='flex'; 
         },
 
         togglePerms(role) {
-           const container = document.getElementById('u-perms-container');
-           if(role === 'admin') container.classList.add('hidden');
-           else container.classList.remove('hidden');
+            const container = document.getElementById('u-perms-container');
+            if(role === 'admin') container.classList.add('hidden');
+            else container.classList.remove('hidden');
         },
         
         async loadUsers() {
-           const res = await fetch('/api/users/list');
-           if(res.ok) {
-             const data = await res.json();
-             this.userList = data.users;
-             document.getElementById('tbl-users').innerHTML = this.userList.map(u => 
-               '<tr><td>#' + u.id + '</td><td>' + u.name + '</td><td>' + u.email + '</td><td>' + u.role + '</td>' +
-               '<td style="font-size:11px; white-space:normal; max-width:150px;">' + (u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))) + '</td>' +
-               '<td><button class="btn btn-outline" onclick="app.editUser(' + u.id + ')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(' + u.id + ')">Del</button></td></tr>'
-             ).join('');
-           }
+            const res = await fetch('/api/users/list');
+            if(res.ok) {
+              const data = await res.json();
+              this.userList = data.users;
+              document.getElementById('tbl-users').innerHTML = this.userList.map(u => 
+                '<tr><td>#' + u.id + '</td><td>' + u.name + '</td><td>' + u.email + '</td><td>' + u.role + '</td>' +
+                '<td style="font-size:11px; white-space:normal; max-width:150px;">' + (u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))) + '</td>' +
+                '<td><button class="btn btn-outline" onclick="app.editUser(' + u.id + ')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(' + u.id + ')">Del</button></td></tr>'
+              ).join('');
+            }
         },
         
         async saveUser(e) {
-           e.preventDefault();
-           const data = Object.fromEntries(new FormData(e.target));
-           const perms = [];
-           document.querySelectorAll('input[name="permissions"]:checked').forEach(cb => perms.push(cb.value));
-           data.permissions = perms;
-           const url = data.id ? '/api/users/update' : '/api/users/add';
-           const res = await fetch(url, { method: 'POST', body: JSON.stringify(data)});
-           if(res.ok) { document.getElementById('modal-user').style.display='none'; this.loadUsers(); } 
-           else { alert((await res.json()).error); }
+            e.preventDefault();
+            const data = Object.fromEntries(new FormData(e.target));
+            const perms = [];
+            document.querySelectorAll('input[name="permissions"]:checked').forEach(cb => perms.push(cb.value));
+            data.permissions = perms;
+            const url = data.id ? '/api/users/update' : '/api/users/add';
+            const res = await fetch(url, { method: 'POST', body: JSON.stringify(data)});
+            if(res.ok) { document.getElementById('modal-user').style.display='none'; this.loadUsers(); } 
+            else { alert((await res.json()).error); }
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
 
@@ -1350,54 +1401,54 @@ function renderDashboard(user: any) {
         },
 
         addPlanRow() {
-           const id = 'new-' + Date.now();
-           const html = '<div class="plan-row" id="' + id + '">' +
+            const id = 'new-' + Date.now();
+            const html = '<div class="plan-row" id="' + id + '">' +
                '<input type="text" placeholder="Plan Name" class="plan-name">' +
                '<input type="number" placeholder="Price" value="0" class="plan-price">' +
                '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">X</button>' +
             '</div>';
-           document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
+            document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
         },
 
         async saveSettings(e) {
-           e.preventDefault();
-           
-           const plans = [];
-           document.querySelectorAll('.plan-row').forEach(row => {
-              const name = row.querySelector('.plan-name').value.trim();
-              const price = row.querySelector('.plan-price').value.trim();
-              if(name) plans.push({ name, price: Number(price) });
-           });
+            e.preventDefault();
+            
+            const plans = [];
+            document.querySelectorAll('.plan-row').forEach(row => {
+               const name = row.querySelector('.plan-name').value.trim();
+               const price = row.querySelector('.plan-price').value.trim();
+               if(name) plans.push({ name, price: Number(price) });
+            });
 
-           const form = e.target;
-           document.getElementById('settings-status').innerText = 'Saving...';
-           
-           await fetch('/api/settings', { 
-              method:'POST', 
-              body:JSON.stringify({
-                 currency: form.querySelector('input[name="currency"]').value,
-                 lang: form.querySelector('select[name="lang"]').value,
-                 attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
-                 inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
-                 membershipPlans: plans
-              }) 
-           });
-           location.reload();
+            const form = e.target;
+            document.getElementById('settings-status').innerText = 'Saving...';
+            
+            await fetch('/api/settings', { 
+               method:'POST', 
+               body:JSON.stringify({
+                  currency: form.querySelector('input[name="currency"]').value,
+                  lang: form.querySelector('select[name="lang"]').value,
+                  attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
+                  inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
+                  membershipPlans: plans
+               }) 
+            });
+            location.reload();
         },
         
         /* --- PAY AUTO-FILL --- */
         calcMonthsFromAmount() {
-           if(!this.payingMemberId) return;
-           const m = this.data.members.find(x => x.id === this.payingMemberId);
-           if(!m) return;
-           
-           const amount = Number(document.getElementById('pay-amount').value) || 0;
-           const price = this.getPlanPrice(m.plan);
-           
-           if (price > 0) {
-              const months = Math.floor(amount / price); 
-              document.getElementById('pay-months').value = months;
-           }
+            if(!this.payingMemberId) return;
+            const m = this.data.members.find(x => x.id === this.payingMemberId);
+            if(!m) return;
+            
+            const amount = Number(document.getElementById('pay-amount').value) || 0;
+            const price = this.getPlanPrice(m.plan);
+            
+            if (price > 0) {
+               const months = Math.floor(amount / price); 
+               document.getElementById('pay-months').value = months;
+            }
         },
 
         /* --- ACTIONS --- */
@@ -1425,30 +1476,30 @@ function renderDashboard(user: any) {
           }
         },
         onCheckinInput(e) {
-           if (e.key === 'Enter') {
-              this.checkIn();
-              return;
-           }
-           
-           const val = e.target.value;
-           if(this.searchTimeout) clearTimeout(this.searchTimeout);
-           this.searchTimeout = setTimeout(async ()=>{
-              if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
-              const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-              const data = await res.json();
-              document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
-                let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
-                if (m.dueMonths > 0) {
-                    statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
-                } else if (m.dueMonths < 0) {
-                    statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
-                }
-                
-                return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
-                       '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + 
-                       '</div>';
-              }).join('');
-           }, 200);
+            if (e.key === 'Enter') {
+               this.checkIn();
+               return;
+            }
+            
+            const val = e.target.value;
+            if(this.searchTimeout) clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(async ()=>{
+               if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
+               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
+               const data = await res.json();
+               document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
+                 let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
+                 if (m.dueMonths > 0) {
+                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
+                 } else if (m.dueMonths < 0) {
+                     statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
+                 }
+                 
+                 return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\'; app.checkIn()">' +
+                        '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + 
+                        '</div>';
+               }).join('');
+            }, 200);
         },
         
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
@@ -1459,25 +1510,25 @@ function renderDashboard(user: any) {
         applyHistoryFilter() { this.renderHistoryTable(document.getElementById('history-date').value); },
         clearHistoryFilter() { document.getElementById('history-date').value=''; this.renderHistoryTable(null); },
         onPaymentSearchInput(e) {
-           const val = e.target.value;
-           setTimeout(async ()=>{
-              if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
-              const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-              const data = await res.json();
-              document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
-                let dueStr = 'Active';
-                if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
-                else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
-              }).join('');
-           }, 200);
+            const val = e.target.value;
+            setTimeout(async ()=>{
+               if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
+               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
+               const data = await res.json();
+               document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
+                 let dueStr = 'Active';
+                 if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
+                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
+                 return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
+               }).join('');
+            }, 200);
         },
         
         renderCharts() {
-           if(typeof Chart === 'undefined') return;
-           const members = this.data.members || [];
-           const ctx1 = document.getElementById('chart-dues');
-           if(ctx1) new Chart(ctx1.getContext('2d'), { type: 'bar', data: { labels: ['No Due', '1 Mo', '2+ Mo', 'Inactive'], datasets: [{ data: [ members.filter(m=>!m.dueMonths||m.dueMonths<=0).length, members.filter(m=>m.dueMonths===1).length, members.filter(m=>m.dueMonths>=2 && m.status!=='inactive').length, members.filter(m=>m.status==='inactive').length ], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'] }] }, options: {plugins:{legend:{display:false}}} });
+            if(typeof Chart === 'undefined') return;
+            const members = this.data.members || [];
+            const ctx1 = document.getElementById('chart-dues');
+            if(ctx1) new Chart(ctx1.getContext('2d'), { type: 'bar', data: { labels: ['No Due', '1 Mo', '2+ Mo', 'Inactive'], datasets: [{ data: [ members.filter(m=>!m.dueMonths||m.dueMonths<=0).length, members.filter(m=>m.dueMonths===1).length, members.filter(m=>m.dueMonths>=2 && m.status!=='inactive').length, members.filter(m=>m.status==='inactive').length ], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'] }] }, options: {plugins:{legend:{display:false}}} });
         },
 
         modals: {
