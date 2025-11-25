@@ -48,6 +48,7 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
     (now.getMonth() - exp.getMonth());
 
   // Adjust for day of month
+  // If today is 20th and expiry was 15th, we have entered the next month cycle
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
@@ -131,7 +132,7 @@ function baseHead(title: string): string {
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:hover { background: #ffffff; }
 
-    .plan-row { display: grid; grid-template-columns: 1fr 100px 40px; gap: 10px; margin-bottom: 10px; }
+    .plan-row { display: grid; grid-template-columns: 2fr 1fr 1fr 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
 
     /* Calendar Styles */
@@ -176,6 +177,10 @@ function baseHead(title: string): string {
       .btn { padding: 6px 10px; font-size: 11px; }
       .flex-between { gap: 8px; }
       input, select { font-size: 13px; }
+      
+      .plan-row { grid-template-columns: 1fr 1fr; }
+      .plan-row input:nth-child(3) { grid-column: span 2; }
+      .plan-row button { grid-column: span 2; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -200,9 +205,7 @@ async function initDB(env: Env) {
   // Migration: Add balance column if not exists
   try {
     await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run();
-  } catch (e) {
-    // ignore if exists
-  }
+  } catch (e) {}
 }
 
 async function factoryReset(env: Env) {
@@ -241,12 +244,10 @@ export default {
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
         
-        const defaultPlans = JSON.stringify([{name:"Standard", price:500}, {name:"Premium", price:1000}]);
+        const defaultPlans = JSON.stringify([{name:"Standard", price:500, admissionFee: 0}, {name:"Premium", price:1000, admissionFee: 0}]);
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind("en").run();
-        // Default fees
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind("0").run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind("0").run();
 
         return json({ success: true });
@@ -344,7 +345,6 @@ export default {
 
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
-        const admissionFee = parseInt(config["admission_fee"] || "0", 10);
         const renewalFee = parseInt(config["renewal_fee"] || "0", 10);
         const currency = config["currency"] || "BDT";
         const lang = config["lang"] || "en";
@@ -353,13 +353,10 @@ export default {
         try {
           const raw = JSON.parse(config["membership_plans"] || '[]');
           if(Array.isArray(raw)) {
-             if(raw.length > 0 && typeof raw[0] === 'string') {
-                membershipPlans = raw.map(p => ({name: p, price: 0}));
-             } else {
-                membershipPlans = raw;
-             }
+             // Migration check: convert old strings to objects if needed
+             membershipPlans = raw.map(p => typeof p === 'string' ? {name:p, price:0, admissionFee:0} : p);
           }
-        } catch { membershipPlans = [{name:"Standard", price:0}]; }
+        } catch { membershipPlans = [{name:"Standard", price:0, admissionFee:0}]; }
 
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const membersProcessed: any[] = [];
@@ -395,7 +392,7 @@ export default {
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
-        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
+        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 100").all<any>();
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
         
@@ -405,7 +402,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, admissionFee, renewalFee }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
         });
       }
 
@@ -414,6 +411,27 @@ export default {
         const history = await env.DB.prepare("SELECT check_in_time, status FROM attendance WHERE member_id = ? ORDER BY check_in_time DESC").bind(memberId).all();
         const member = await env.DB.prepare("SELECT joined_at FROM members WHERE id = ?").bind(memberId).first<any>();
         return json({ history: history.results || [], joinedAt: member?.joined_at });
+      }
+
+      if (url.pathname === "/api/history/list" && req.method === "POST") {
+        const body = await req.json() as any;
+        let query = "SELECT a.check_in_time, a.status, m.name, m.id AS member_id FROM attendance a JOIN members m ON a.member_id = m.id";
+        const params = [];
+        
+        if (body.date) {
+            query += " WHERE date(a.check_in_time) = ?";
+            params.push(body.date);
+        }
+        
+        query += " ORDER BY a.id DESC";
+        
+        // If no date filter, limit to recent
+        if (!body.date) {
+            query += " LIMIT 100"; 
+        }
+        
+        const history = await env.DB.prepare(query).bind(...params).all();
+        return json({ history: history.results || [] });
       }
 
       if (url.pathname === "/api/payments/history" && req.method === "POST") {
@@ -475,13 +493,22 @@ export default {
 
       if (url.pathname === "/api/members/add" && req.method === "POST") {
         const body = await req.json() as any;
-        const expiry = new Date();
+        let expiry = new Date();
         
-        if (body.legacyDues && parseInt(body.legacyDues) > 0) {
-           expiry.setMonth(expiry.getMonth() - parseInt(body.legacyDues));
+        // Handle Migration Mode Custom Expiry
+        if (body.migrationMode && body.expiryDate) {
+            expiry = new Date(body.expiryDate);
+        } else {
+            // New Member Mode Logic
+            if (body.legacyDues && parseInt(body.legacyDues) > 0) {
+               expiry.setMonth(expiry.getMonth() - parseInt(body.legacyDues));
+            }
+            
+            // Add initial duration
+            if (body.duration && parseInt(body.duration) > 0) {
+                expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
+            }
         }
-        
-        expiry.setMonth(expiry.getMonth() + parseInt(body.duration));
         
         const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date) VALUES (?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), expiry.toISOString()).run();
         
@@ -490,6 +517,14 @@ export default {
             const fee = parseInt(body.admissionFee || "0");
             if (fee > 0) {
                 await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, fee, new Date().toISOString()).run();
+            }
+        }
+        
+        // Handle Initial Plan Payment (if any)
+        if (body.initialPayment && result.meta.last_row_id) {
+            const amt = parseInt(body.initialPayment || "0");
+            if (amt > 0) {
+                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, amt, new Date().toISOString()).run();
             }
         }
 
@@ -598,7 +633,6 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind(String(body.admissionFee)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
         return json({ success: true });
       }
@@ -794,7 +828,7 @@ function renderDashboard(user: any) {
           <div id="view-history" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;" id="lbl-act-log">Activity Log (Last 50)</h3>
+                <h3 style="margin:0;" id="lbl-act-log">Activity Log</h3>
                 <div class="flex" style="gap:8px;">
                   <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
                   <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
@@ -881,19 +915,16 @@ function renderDashboard(user: any) {
                    </div>
                 </div>
 
-                <div class="flex">
-                   <div class="w-full">
-                      <label id="lbl-adm-fee">Admission Fee</label>
-                      <input name="admissionFee" type="number" min="0" required>
-                   </div>
-                   <div class="w-full">
-                      <label id="lbl-ren-fee">Renewal Fee</label>
-                      <input name="renewalFee" type="number" min="0" required>
-                   </div>
+                <div class="w-full">
+                   <label id="lbl-ren-fee">Renewal Fee (Global)</label>
+                   <input name="renewalFee" type="number" min="0" required>
                 </div>
                 
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
+                   <div class="plan-row" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
+                      <span>Plan Name</span><span>Price</span><span>Adm. Fee</span><span></span>
+                   </div>
                    <div id="plans-container"></div>
                    <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
                 </div>
@@ -951,38 +982,62 @@ function renderDashboard(user: any) {
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
         <h3 id="lbl-new-mem">New Member</h3>
+        
+        <!-- TABS -->
+        <div style="display:flex; border-bottom:1px solid #e5e7eb; margin-bottom:20px;">
+           <div id="tab-new" class="nav-item active" style="color:var(--primary); border-bottom:2px solid var(--primary); background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('new')">New Admission</div>
+           <div id="tab-mig" class="nav-item" style="background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('mig')">Migrating / Old</div>
+        </div>
+
         <form onsubmit="app.addMember(event)">
+          <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
+          
           <label>Full Name</label><input name="name" required>
           <label>Phone Number</label><input name="phone" required>
+          
           <div class="flex">
-            <div class="w-full"><label>Plan</label><select name="plan" id="plan-select"></select></div>
+            <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
           </div>
           
           <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
-             <label style="margin-bottom:8px; font-weight:bold;">Fees & Dues</label>
              
-             <div class="flex" style="margin-bottom:10px;">
-                <div class="w-full">
-                   <label>Admission Fee</label>
-                   <input name="admissionFee" id="new-adm-fee" type="number" min="0">
-                </div>
-                <div style="padding-top:22px;">
-                   <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
-                      <input type="checkbox" name="admissionFeePaid" value="yes" style="width:auto; margin:0;"> Paid Now?
-                   </label>
-                </div>
+             <!-- SECTION: NEW MEMBER -->
+             <div id="sec-new-fees">
+                 <label style="margin-bottom:8px; font-weight:bold;">Fees (New)</label>
+                 <div class="flex" style="margin-bottom:10px;">
+                    <div class="w-full">
+                       <label>Admission Fee</label>
+                       <input name="admissionFee" id="new-adm-fee" type="number" min="0">
+                    </div>
+                    <div style="padding-top:22px;">
+                       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                          <input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto; margin:0;"> Paid Now?
+                       </label>
+                    </div>
+                 </div>
+                 <div class="w-full">
+                    <label>Initial Payment (Required)</label>
+                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required>
+                 </div>
              </div>
 
-             <div class="flex">
-                <div class="w-full">
-                   <label>Legacy Dues (Months)</label>
-                   <input name="legacyDues" type="number" value="0" min="0">
-                </div>
-                <div class="w-full">
-                   <label>Initial Payment (Months)</label>
-                   <input name="duration" type="number" value="1" min="1" required>
-                </div>
+             <!-- SECTION: MIGRATING MEMBER -->
+             <div id="sec-mig-fees" style="display:none;">
+                 <label style="margin-bottom:8px; font-weight:bold;">Migration Status</label>
+                 <div class="w-full" style="margin-bottom:10px;">
+                    <label>Last Plan Expiry Date</label>
+                    <input name="expiryDate" id="mig-exp-date" type="date" onchange="app.calcMonthsDueFromDate()">
+                 </div>
+                 <div class="w-full" style="margin-bottom:10px;">
+                    <label>Months Due (Calculated)</label>
+                    <input type="number" id="mig-months-due" placeholder="-" readonly style="background:#e5e7eb;">
+                 </div>
+                 <div class="w-full">
+                    <label>Payment Now (Optional)</label>
+                    <input name="initialPayment" id="mig-init-pay" type="number" min="0" value="0">
+                 </div>
              </div>
+
           </div>
 
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
@@ -1118,7 +1173,7 @@ function renderDashboard(user: any) {
           search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
           nm: "Name", joined: "Joined", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
           tod_att: "Today's Attendance", time: "Time", res: "Result",
-          act_log: "Activity Log (Last 50)", filter: "Filter", clear: "Clear",
+          act_log: "Activity Log", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
           att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
@@ -1263,7 +1318,6 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-lang').innerText = t('lang');
            document.getElementById('lbl-att-th').innerText = t('att_th');
            document.getElementById('lbl-inact-th').innerText = t('inact_th');
-           document.getElementById('lbl-adm-fee').innerText = t('adm_fee');
            document.getElementById('lbl-ren-fee').innerText = t('ren_fee');
            document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
            document.getElementById('btn-add-plan').innerText = t('add_plan');
@@ -1284,6 +1338,12 @@ function renderDashboard(user: any) {
             const plans = this.data.settings.membershipPlans || [];
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.price) : 0;
+        },
+        
+        getPlanAdmFee(planName) {
+            const plans = this.data.settings.membershipPlans || [];
+            const found = plans.find(p => p.name === planName);
+            return found ? Number(found.admissionFee || 0) : 0;
         },
 
         render() {
@@ -1560,8 +1620,33 @@ function renderDashboard(user: any) {
             '</div>';
         },
 
-        renderHistoryTable(filterDate) {
-          const list = filterDate ? (this.data.attendanceHistory || []).filter(a => a.check_in_time.startsWith(filterDate)) : (this.data.attendanceHistory || []);
+        async applyHistoryFilter() {
+            const date = document.getElementById('history-date').value;
+            const tbody = document.getElementById('tbl-attendance-history');
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
+            
+            const res = await fetch('/api/history/list', { 
+               method:'POST', 
+               body:JSON.stringify({ date }) 
+            });
+            const data = await res.json();
+            this.renderHistoryTable(null, data.history);
+        },
+        
+        clearHistoryFilter() {
+            document.getElementById('history-date').value='';
+            this.applyHistoryFilter(); 
+        },
+        
+        renderHistoryTable(filterDate, dataList = null) {
+          // If specific list provided (from API), use it. Otherwise fallback to local cache (bootstrap)
+          let list = dataList || this.data.attendanceHistory || [];
+          
+          // If we are filtering locally on bootstrap data (old way, keep for safety)
+          if(filterDate && !dataList) {
+             list = list.filter(a => a.check_in_time.startsWith(filterDate));
+          }
+          
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
              '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
@@ -1634,7 +1719,6 @@ function renderDashboard(user: any) {
           form.querySelector('select[name="lang"]').value = s.lang || 'en';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
-          form.querySelector('input[name="admissionFee"]').value = s.admissionFee;
           form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
           
           // Render Plan List
@@ -1643,11 +1727,12 @@ function renderDashboard(user: any) {
             '<div class="plan-row" id="plan-' + i + '">' +
                '<input type="text" placeholder="Plan Name" value="' + p.name + '" class="plan-name">' +
                '<input type="number" placeholder="Price" value="' + p.price + '" class="plan-price">' +
+               '<input type="number" placeholder="Adm Fee" value="' + (p.admissionFee || 0) + '" class="plan-adm">' +
                '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
             '</div>'
           ).join('');
           
-          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+' ('+p.price+')</option>').join('');
+          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+'</option>').join('');
         },
 
         addPlanRow() {
@@ -1655,6 +1740,7 @@ function renderDashboard(user: any) {
             const html = '<div class="plan-row" id="' + id + '">' +
                '<input type="text" placeholder="Plan Name" class="plan-name">' +
                '<input type="number" placeholder="Price" value="0" class="plan-price">' +
+               '<input type="number" placeholder="Adm Fee" value="0" class="plan-adm">' +
                '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">X</button>' +
             '</div>';
             document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
@@ -1667,7 +1753,8 @@ function renderDashboard(user: any) {
             document.querySelectorAll('.plan-row').forEach(row => {
                const name = row.querySelector('.plan-name').value.trim();
                const price = row.querySelector('.plan-price').value.trim();
-               if(name) plans.push({ name, price: Number(price) });
+               const admissionFee = row.querySelector('.plan-adm').value.trim();
+               if(name) plans.push({ name, price: Number(price), admissionFee: Number(admissionFee) });
             });
 
             const form = e.target;
@@ -1680,7 +1767,6 @@ function renderDashboard(user: any) {
                   lang: form.querySelector('select[name="lang"]').value,
                   attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                   inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
-                  admissionFee: form.querySelector('input[name="admissionFee"]').value,
                   renewalFee: form.querySelector('input[name="renewalFee"]').value,
                   membershipPlans: plans
                }) 
@@ -1774,12 +1860,57 @@ function renderDashboard(user: any) {
             }, 200);
         },
         
+        /* --- NEW: ADD MEMBER TABS & LOGIC --- */
+        switchAddTab(tab) {
+            const isMig = tab === 'mig';
+            // Toggle UI
+            document.getElementById('tab-new').className = isMig ? 'nav-item' : 'nav-item active';
+            document.getElementById('tab-new').style.borderBottom = isMig ? 'none' : '2px solid var(--primary)';
+            document.getElementById('tab-new').style.color = isMig ? '#9ca3af' : 'var(--primary)';
+            
+            document.getElementById('tab-mig').className = isMig ? 'nav-item active' : 'nav-item';
+            document.getElementById('tab-mig').style.borderBottom = isMig ? '2px solid var(--primary)' : 'none';
+            document.getElementById('tab-mig').style.color = isMig ? 'var(--primary)' : '#9ca3af';
+            
+            // Toggle Form Sections
+            document.getElementById('sec-new-fees').style.display = isMig ? 'none' : 'block';
+            document.getElementById('sec-mig-fees').style.display = isMig ? 'block' : 'none';
+            
+            // Update hidden input
+            document.getElementById('add-mig-mode').value = isMig ? 'true' : 'false';
+            
+            // Set requirements
+            document.getElementById('new-init-pay').required = !isMig;
+            
+            // Trigger update to refresh fees
+            app.updateAddMemberFees();
+        },
+        
+        updateAddMemberFees() {
+            const planName = document.getElementById('plan-select').value;
+            const fee = app.getPlanAdmFee(planName);
+            document.getElementById('new-adm-fee').value = fee;
+        },
+        
+        calcMonthsDueFromDate() {
+            const dateStr = document.getElementById('mig-exp-date').value;
+            if(!dateStr) return;
+            
+            const expiry = new Date(dateStr);
+            const now = new Date();
+            
+            let months = (now.getFullYear() - expiry.getFullYear()) * 12 + (now.getMonth() - expiry.getMonth());
+            // Same logic as backend
+            if (now.getDate() > expiry.getDate()) {
+               months += 1;
+            }
+            document.getElementById('mig-months-due').value = months;
+        },
+
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
         
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
-        applyHistoryFilter() { this.renderHistoryTable(document.getElementById('history-date').value); },
-        clearHistoryFilter() { document.getElementById('history-date').value=''; this.renderHistoryTable(null); },
         onPaymentSearchInput(e) {
             const val = e.target.value;
             setTimeout(async ()=>{
@@ -1808,8 +1939,13 @@ function renderDashboard(user: any) {
           quickPay: { open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; document.getElementById('qp-search').focus(); }, close:()=>document.getElementById('modal-quick-pay').style.display='none' },
           add: { 
              open:()=>{
-                // Set default admission fee
-                document.getElementById('new-adm-fee').value = app.data.settings.admissionFee || 0;
+                // Init defaults
+                app.switchAddTab('new');
+                app.updateAddMemberFees(); // Set default fee
+                // Set default migration date to today
+                document.getElementById('mig-exp-date').valueAsDate = new Date();
+                app.calcMonthsDueFromDate();
+                
                 document.getElementById('modal-add').style.display='flex';
              }, 
              close:()=>document.getElementById('modal-add').style.display='none' 
