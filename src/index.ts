@@ -164,17 +164,23 @@ function baseHead(title: string): string {
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
-      .flex-between { flex-direction: column; gap: 10px; align-items: flex-start; }
-      .flex { flex-direction: column; gap: 10px; align-items: flex-start; }
-      select, input { max-width: 100%; }
-      .table-responsive { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-      table { min-width: 600px; } /* Force horizontal scroll if needed on small screens */
-      .plan-row { grid-template-columns: 1fr; gap: 5px; }
-      .plan-row input, .plan-row button { width: 100%; }
-      .card { padding: 16px; }
-      .btn { width: 100%; }
-      .stats-grid { grid-template-columns: 1fr; }
-      .hist-controls { flex-direction: column; gap: 5px; }
+
+      /* Mobile Optimization */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+      .stat-card { padding: 12px; border-radius: 8px; }
+      .stat-val { font-size: 18px; margin-top: 2px; }
+      .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+     
+      .card { padding: 16px; border-radius: 8px; }
+      h2, h3 { font-size: 18px; }
+     
+      .btn { padding: 6px 10px; font-size: 11px; }
+      .flex-between { gap: 8px; }
+      input, select { font-size: 13px; }
+     
+      .plan-row { grid-template-columns: 1fr 1fr; }
+      .plan-row input:nth-child(3) { grid-column: span 2; }
+      .plan-row button { grid-column: span 2; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -282,7 +288,7 @@ export default {
         const members = (membersRaw.results || []).map((m: any) => ({ ...m, dueMonths: calcDueMonths(m.expiry_date) })).filter((m:any) => m.dueMonths && m.dueMonths > 0);
         
         let rows = members.map((m:any) => `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${m.dueMonths} Month(s)</td></tr>`).join('');
-        if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr';
+        if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
           <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${new Date().toLocaleDateString()}</p></div>
@@ -363,35 +369,31 @@ export default {
         let totalOutstanding = 0;
 
         for (const m of membersRaw.results || []) {
-          const history = attendanceByMember[m.id] || [];
-          const dueMonths = calcDueMonths(m.expiry_date, history, attendanceThreshold);
+          const dueMonths = calcDueMonths(m.expiry_date);
           let newStatus = m.status || "active";
           
-          if (dueMonths > 0) newStatus = "due";
-
-          const absentMonths = calcDueMonths(history.length > 0 ? history.reduce((max, d) => d > max ? d : max, '') : m.joined_at);
-
-          if (absentMonths >= inactiveAfterMonths) {
-            newStatus = "inactive";
+          if (dueMonths != null) {
+             if (dueMonths >= inactiveAfterMonths) { 
+               newStatus = "inactive"; 
+               inactiveMembersCount++; 
+             } else if (dueMonths > 0) { 
+               newStatus = "due"; 
+               dueMembersCount++; 
+             } else { 
+               newStatus = "active"; 
+               activeCount++; 
+             }
+             
+             // Calc Outstanding (considering balance)
+             if (dueMonths > 0) {
+                 const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
+                 const owed = (dueMonths * planPrice) - (m.balance || 0);
+                 totalOutstanding += Math.max(0, owed);
+             }
           }
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
-
-          if (newStatus === "inactive") {
-            inactiveMembersCount++;
-          } else if (newStatus === "due") {
-            dueMembersCount++;
-          } else {
-            activeCount++;
-          }
-
-          // Calc Outstanding (considering balance)
-          if (dueMonths > 0) {
-              const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
-              const owed = (dueMonths * planPrice) - (m.balance || 0);
-              totalOutstanding += Math.max(0, owed);
-          }
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
@@ -1045,8 +1047,12 @@ function renderDashboard(user: any) {
              <div id="sec-mig-fees" style="display:none;">
                  <label style="margin-bottom:8px; font-weight:bold;">Migration Status</label>
                  <div class="w-full" style="margin-bottom:10px;">
-                    <label>Due Months</label>
-                    <input name="dueMonths" id="mig-due-months" type="number" min="0" value="0">
+                    <label>Last Plan Expiry Date</label>
+                    <input name="expiryDate" id="mig-exp-date" type="date" onchange="app.calcMonthsDueFromDate()">
+                 </div>
+                 <div class="w-full" style="margin-bottom:10px;">
+                    <label>Months Due (Calculated)</label>
+                    <input type="number" id="mig-months-due" placeholder="-" readonly style="background:#e5e7eb;">
                  </div>
                  <div class="w-full">
                     <label>Payment Now (Optional)</label>
