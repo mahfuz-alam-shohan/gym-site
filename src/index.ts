@@ -946,11 +946,11 @@ function renderDashboard(user: any) {
                
                 <div class="flex">
                    <div class="w-full">
-                      <label id="lbl-att-th">Attendance Threshold (Days)</label>
+                      <label id="lbl-att-th">Min. Attendance for fees (Days)</label>
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-inact-th">Inactive after X absent months</label>
+                      <label id="lbl-inact-th">Inactive after how many absent months?</label>
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
                    </div>
                 </div>
