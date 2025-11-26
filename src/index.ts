@@ -353,12 +353,18 @@ export default {
         try {
           const raw = JSON.parse(config["membership_plans"] || '[]');
           if(Array.isArray(raw)) {
-             // Migration check: convert old strings to objects if needed
              membershipPlans = raw.map(p => typeof p === 'string' ? {name:p, price:0, admissionFee:0} : p);
           }
         } catch { membershipPlans = [{name:"Standard", price:0, admissionFee:0}]; }
 
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
+        const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
+        const attendanceByMember: Record<number, string[]> = {};
+        for (const a of attendanceAll.results || []) {
+          if (!attendanceByMember[a.member_id]) attendanceByMember[a.member_id] = [];
+          attendanceByMember[a.member_id].push(a.check_in_time);
+        }
+
         const membersProcessed: any[] = [];
         let activeCount=0, dueMembersCount=0, inactiveMembersCount=0;
         let totalOutstanding = 0;
@@ -366,28 +372,40 @@ export default {
         for (const m of membersRaw.results || []) {
           const dueMonths = calcDueMonths(m.expiry_date);
           let newStatus = m.status || "active";
-        
+          
           if (dueMonths != null) {
-             if (dueMonths >= inactiveAfterMonths) { 
-               newStatus = "inactive"; 
-               inactiveMembersCount++; 
-             } else if (dueMonths > 0) { 
-               newStatus = "due"; 
-               dueMembersCount++; 
-             } else { 
-               newStatus = "active"; 
-               activeCount++; 
-             }
-             
-             // Calc Outstanding (considering balance)
-             if (dueMonths > 0) {
-                 const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
-                 const owed = (dueMonths * planPrice) - (m.balance || 0);
-                 totalOutstanding += Math.max(0, owed);
-             }
+             if (dueMonths > 0) newStatus = "due";
           }
-        
+
+          const history = attendanceByMember[m.id] || [];
+          let lastAttendance: string | null = null;
+          if (history.length > 0) {
+            lastAttendance = history.reduce((max, d) => d > max ? d : max, '');
+          } 
+          if (!lastAttendance) lastAttendance = m.joined_at;
+          const absentMonths = calcDueMonths(lastAttendance) || 0;
+
+          if (absentMonths >= inactiveAfterMonths) {
+            newStatus = "inactive";
+          }
+
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
+
+          if (newStatus === "inactive") {
+            inactiveMembersCount++;
+          } else if (newStatus === "due") {
+            dueMembersCount++;
+          } else {
+            activeCount++;
+          }
+
+          // Calc Outstanding (considering balance)
+          if (dueMonths > 0) {
+              const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
+              const owed = (dueMonths * planPrice) - (m.balance || 0);
+              totalOutstanding += Math.max(0, owed);
+          }
+          
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
 
@@ -927,7 +945,7 @@ function renderDashboard(user: any) {
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-inact-th">Inactive after X months due</label>
+                      <label id="lbl-inact-th">Inactive after X absent months</label>
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
                    </div>
                 </div>
@@ -1196,7 +1214,7 @@ function renderDashboard(user: any) {
           act_log: "Activity Log", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
-          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
+          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X absent months", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
           mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
           user_acc: "User Access", add_user: "+ Add User",
           chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
@@ -1214,7 +1232,7 @@ function renderDashboard(user: any) {
           act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
           search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
           sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
-          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস বকেয়া হলে নিষ্ক্রিয়", adm_fee: "ভর্তি ফি", ren_fee: "রিনিউয়াল ফি",
+          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস অনুপস্থিত হলে নিষ্ক্রিয়", adm_fee: "ভর্তি ফি", ren_fee: "রিনিউয়াল ফি",
           mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
           user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
           chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
