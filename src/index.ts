@@ -33,26 +33,26 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return hashed === hash;
 }
 
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 function calcDueMonths(expiry: string | null | undefined): number | null {
   if (!expiry) return null;
   const exp = new Date(expiry);
   if (isNaN(exp.getTime())) return null;
-
   const now = new Date();
-  
+ 
   // Calculate difference in months
   // Positive = Due (Past Expiry)
   // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
-
   // Adjust for day of month
   // If today is 20th and expiry was 15th, we have entered the next month cycle
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
-  
+ 
   return months;
 }
 
@@ -83,7 +83,7 @@ function baseHead(title: string): string {
     .app-layout { display: flex; height: 100%; }
     .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
-    
+   
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
     .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
     .btn-primary { background: var(--primary); color: white; }
@@ -91,20 +91,20 @@ function baseHead(title: string): string {
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
     .btn-danger { background: var(--danger); color: white; }
     .w-full { width: 100%; }
-    
+   
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
-    
+   
     .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
     th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
     td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    
+   
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
     .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
     .stat-val { font-size: 24px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
@@ -114,17 +114,17 @@ function baseHead(title: string): string {
     .flex { display: flex; align-items: center; gap: 12px; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
-    
+   
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
     .bg-blue { background: #dbeafe; color: #1e40af; }
-    
+   
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
     .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
-    
+   
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
     .modal-content { background: white; width: 100%; max-width: 600px; padding: 24px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
 
@@ -144,7 +144,7 @@ function baseHead(title: string): string {
     .cal-cell.present { background: #22c55e; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3); }
     .cal-cell.absent { background: #fecaca; color: #ef4444; opacity: 0.5; }
     .cal-stats { margin-top: 15px; font-size: 13px; display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #f3f4f6; }
-    
+   
     /* Yearly Summary Grid */
     .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 15px; }
     .year-month-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; text-align: center; background: #fff; }
@@ -170,14 +170,14 @@ function baseHead(title: string): string {
       .stat-card { padding: 12px; border-radius: 8px; }
       .stat-val { font-size: 18px; margin-top: 2px; }
       .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      
+     
       .card { padding: 16px; border-radius: 8px; }
       h2, h3 { font-size: 18px; }
-      
+     
       .btn { padding: 6px 10px; font-size: 11px; }
       .flex-between { gap: 8px; }
       input, select { font-size: 13px; }
-      
+     
       .plan-row { grid-template-columns: 1fr 1fr; }
       .plan-row input:nth-child(3) { grid-column: span 2; }
       .plan-row button { grid-column: span 2; }
@@ -243,13 +243,12 @@ export default {
         await env.DB.prepare("DELETE FROM users").run(); 
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
-         
+        
         const defaultPlans = JSON.stringify([{name:"Standard", price:500, admissionFee: 0}, {name:"Premium", price:1000, admissionFee: 0}]);
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind("en").run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind("0").run();
-
         return json({ success: true });
       }
 
@@ -371,6 +370,15 @@ export default {
 
         for (const m of membersRaw.results || []) {
           const dueMonths = calcDueMonths(m.expiry_date);
+          let dueList = [];
+          if (dueMonths > 0) {
+            let current = new Date(m.expiry_date);
+            for (let i = 0; i < dueMonths; i++) {
+              current.setMonth(current.getMonth() + 1);
+              dueList.push(monthNames[current.getMonth()]);
+            }
+          }
+
           let newStatus = m.status || "active";
           
           if (dueMonths != null) {
@@ -388,8 +396,10 @@ export default {
           if (absentMonths >= inactiveAfterMonths) {
             newStatus = "inactive";
           }
-
+          
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
+
+          membersProcessed.push({ ...m, status: newStatus, dueMonths, dueList });
 
           if (newStatus === "inactive") {
             inactiveMembersCount++;
@@ -405,8 +415,6 @@ export default {
               const owed = (dueMonths * planPrice) - (m.balance || 0);
               totalOutstanding += Math.max(0, owed);
           }
-          
-          membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
@@ -542,27 +550,24 @@ export default {
         const initialAmt = parseInt(body.initialPayment || "0");
         if (initialAmt > 0 && result.meta.last_row_id) {
             await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, initialAmt, new Date().toISOString()).run();
-
             // Process payment to update balance and expiry
             const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(result.meta.last_row_id).first<any>();
             const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
             const plans = JSON.parse(config.value || '[]');
             const plan = plans.find((p: any) => p.name === member.plan);
             const price = plan ? Number(plan.price) : 0;
-
             let currentBalance = (member.balance || 0) + initialAmt;
             let expiryUpdated = new Date(member.expiry_date);
-            
+           
             if (price > 0) {
                 while (currentBalance >= price) {
                     currentBalance -= price;
                     expiryUpdated.setMonth(expiryUpdated.getMonth() + 1);
                 }
             }
-            
+           
             await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ? WHERE id = ?").bind(expiryUpdated.toISOString(), currentBalance, member.id).run();
         }
-
         return json({ success: true });
       }
 
@@ -852,7 +857,7 @@ function renderDashboard(user: any) {
               <h3 id="lbl-today-att">Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
+                  <thead><tr><th id="th-time">Time</th><th>ID & Name</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -872,7 +877,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Time</th><th>ID & Name</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
@@ -900,7 +905,7 @@ function renderDashboard(user: any) {
               <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
               <div id="pay-search-results" class="checkin-results"></div>
             </div>
-            
+           
             <div class="card">
                <div class="flex-between" style="margin-bottom:10px;">
                   <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
@@ -938,7 +943,7 @@ function renderDashboard(user: any) {
                       </select>
                    </div>
                 </div>
-                
+               
                 <div class="flex">
                    <div class="w-full">
                       <label id="lbl-att-th">Attendance Threshold (Days)</label>
@@ -954,7 +959,7 @@ function renderDashboard(user: any) {
                   <label id="lbl-ren-fee">Renewal Fee (Global)</label>
                   <input name="renewalFee" type="number" min="0" required>
                 </div>
-                
+               
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
                    <div class="plan-row" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
@@ -963,7 +968,7 @@ function renderDashboard(user: any) {
                    <div id="plans-container"></div>
                    <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
                 </div>
-                
+               
                 <div class="flex-between" style="margin-top:15px; gap:10px;">
                   <button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button>
                   <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
@@ -1006,7 +1011,7 @@ function renderDashboard(user: any) {
         <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
       </div>
     </div>
-    
+   
     <!-- QUICK PAY SEARCH MODAL -->
     <div id="modal-quick-pay" class="modal-backdrop">
       <div class="modal-content">
@@ -1020,7 +1025,7 @@ function renderDashboard(user: any) {
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
         <h3 id="lbl-new-mem">New Member</h3>
-        
+       
         <!-- TABS -->
         <div style="display:flex; border-bottom:1px solid #e5e7eb; margin-bottom:20px;">
            <div id="tab-new" class="nav-item active" style="color:var(--primary); border-bottom:2px solid var(--primary); background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('new')">New Admission</div>
@@ -1029,16 +1034,16 @@ function renderDashboard(user: any) {
 
         <form onsubmit="app.addMember(event)">
           <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
-          
+         
           <label>Full Name</label><input name="name" required>
           <label>Phone Number</label><input name="phone" required>
-          
+         
           <div class="flex">
             <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
           </div>
-          
+         
           <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
-              
+             
              <!-- SECTION: NEW MEMBER -->
              <div id="sec-new-fees">
                  <label style="margin-bottom:8px; font-weight:bold;">Fees (New)</label>
@@ -1091,20 +1096,20 @@ function renderDashboard(user: any) {
         <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
         <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
         <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
-        
+       
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
-          
+         
           <!-- Renewal Section -->
           <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
              <label>Renewal Fee</label>
              <input name="renewalFee" id="pay-ren-fee" type="number" readonly>
              <label>Initial Plan Payment (Optional - Extends Membership)</label>
           </div>
-          
+         
           <div id="pay-standard-label"><label>Amount Paid</label></div>
           <input name="amount" id="pay-amount" type="number" required>
-          
+         
           <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
              Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
              Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
@@ -1156,7 +1161,7 @@ function renderDashboard(user: any) {
             <h3 id="mh-title" style="margin:0;">Attendance History</h3>
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
-        
+       
         <div class="hist-controls">
            <div class="flex" style="align-items:center;">
               <label style="margin:0; white-space:nowrap;">Year:</label>
@@ -1177,7 +1182,7 @@ function renderDashboard(user: any) {
         <div id="calendar-container" class="calendar-wrapper" style="display:block;"></div>
       </div>
     </div>
-    
+   
     <!-- TRANSACTION HISTORY MODAL -->
     <div id="modal-payment-history" class="modal-backdrop">
       <div class="modal-content" style="max-width:700px;">
@@ -1185,14 +1190,14 @@ function renderDashboard(user: any) {
             <h3 id="ph-title" style="margin:0;">Transaction History</h3>
             <button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
          </div>
-         
+        
          <div class="hist-controls">
             <div class="flex" style="align-items:center;">
                <input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()">
                <button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button>
             </div>
          </div>
-         
+        
          <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
             <table style="width:100%;">
                <thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead>
@@ -1260,7 +1265,7 @@ function renderDashboard(user: any) {
             hour: '2-digit', minute: '2-digit', hour12: true
          });
       }
-      
+     
       function formatDate(iso) {
          if(!iso) return '-';
          return new Date(iso).toLocaleDateString('en-GB'); // DD/MM/YYYY
@@ -1326,7 +1331,7 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-mem-due').innerText = t('mem_due');
            document.getElementById('lbl-total-due-money').innerText = t('total_due_amt');
            document.getElementById('lbl-due-overview').innerText = t('due_ov');
-           
+          
            document.getElementById('search').placeholder = t('search_ph');
            document.getElementById('btn-add-mem').innerText = t('add_mem');
            document.getElementById('th-name').innerText = t('nm');
@@ -1336,19 +1341,19 @@ function renderDashboard(user: any) {
            document.getElementById('th-exp').innerText = t('exp');
            document.getElementById('th-due').innerText = t('due');
            document.getElementById('th-act').innerText = t('act');
-           
+          
            document.getElementById('lbl-today-att').innerText = t('tod_att');
            document.getElementById('th-time').innerText = t('time');
-           
+          
            document.getElementById('lbl-act-log').innerText = t('act_log');
            document.getElementById('btn-filter').innerText = t('filter');
            document.getElementById('btn-clear').innerText = t('clear');
-           
+          
            document.getElementById('lbl-search-col').innerText = t('search_col');
            document.getElementById('lbl-pay-stat').innerText = t('pay_stat');
            document.getElementById('btn-print').innerText = t('print');
            document.getElementById('btn-history').innerText = t('trans_hist');
-           
+          
            document.getElementById('lbl-sys-set').innerText = t('sys_set');
            document.getElementById('lbl-cur').innerText = t('cur');
            document.getElementById('lbl-lang').innerText = t('lang');
@@ -1358,10 +1363,10 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
            document.getElementById('btn-add-plan').innerText = t('add_plan');
            document.getElementById('btn-save-set').innerText = t('save_set');
-           
+          
            document.getElementById('lbl-user-acc').innerText = t('user_acc');
            document.getElementById('btn-add-user').innerText = t('add_user');
-           
+          
            document.getElementById('lbl-chk-title').innerText = t('chk_title');
            document.getElementById('lbl-qp-title').innerText = t('quick_pay_search');
            document.getElementById('btn-sub-chk').innerText = t('submit');
@@ -1375,7 +1380,7 @@ function renderDashboard(user: any) {
             const found = plans.find(p => p.name === planName);
             return found ? Number(found.price) : 0;
         },
-        
+       
         getPlanAdmFee(planName) {
             const plans = this.data.settings.membershipPlans || [];
             const found = plans.find(p => p.name === planName);
@@ -1392,13 +1397,13 @@ function renderDashboard(user: any) {
             document.getElementById('stat-total-due').innerText = cur + ' ' + this.data.stats.totalOutstanding;
           }
           this.renderMembersTable();
-          
+         
           const todayRows = (this.data.attendanceToday || []).map(a => {
               let dueStr = '-';
               if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
               else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="4">No data.</td></tr>';
+              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td># ' + a.member_id + ' · ' + a.name + '</td><td>' + dueStr + '</td></tr>';
+          }).join('') || '<tr><td colspan="3">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
@@ -1440,10 +1445,10 @@ function renderDashboard(user: any) {
                  const paid = m.balance || 0;
                  const owed = (m.dueMonths * price);
                  const remaining = Math.max(0, owed - paid);
-                 
-                 dueTxt = (remaining) + ' (' + m.dueMonths + ' Mo Due)';
+                
+                 dueTxt = remaining + ' (' + m.dueMonths + ' Mo Due - ' + m.dueList.join(', ') + ')';
                  if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
-                 
+                
                  dueColor = 'red';
                  statusBadge = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
@@ -1499,7 +1504,7 @@ function renderDashboard(user: any) {
                if (m.dueMonths > 0) {
                    statusHtml = '<span class="badge bg-amber">Due</span>';
                    if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                   infoTxt = m.dueMonths + ' Mo Due';
+                   infoTxt = m.dueMonths + ' Mo Due - ' + m.dueList.join(', ');
                  
                    const dueAmt = m.dueMonths * price;
                    const paid = m.balance || 0;
@@ -1567,7 +1572,7 @@ function renderDashboard(user: any) {
         },
 
         async showHistory(id, name) {
-            document.getElementById('mh-title').innerText = name;
+            document.getElementById('mh-title').innerText = '#' + id + ' · ' + name;
             const container = document.getElementById('calendar-container');
             container.innerHTML = '<div style="text-align:center;">Loading...</div>';
             document.getElementById('modal-member-history').style.display = 'flex';
@@ -1684,8 +1689,8 @@ function renderDashboard(user: any) {
           }
           
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
-          ).join('') : '<tr><td colspan="4">No data.</td></tr>';
+             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td># ' + a.member_id + ' · ' + a.name + '</td></tr>'
+          ).join('') : '<tr><td colspan="3">No data.</td></tr>';
         },
 
         /* --- USER MGMT --- */
@@ -1756,7 +1761,7 @@ function renderDashboard(user: any) {
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
           form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
-          
+         
           // Render Plan List
           const plansDiv = document.getElementById('plans-container');
           plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
@@ -1767,7 +1772,7 @@ function renderDashboard(user: any) {
                '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
             '</div>'
           ).join('');
-          
+         
           document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+'</option>').join('');
         },
 
@@ -1784,7 +1789,7 @@ function renderDashboard(user: any) {
 
         async saveSettings(e) {
             e.preventDefault();
-            
+           
             const plans = [];
             // FIX: Only select rows inside the container to exclude the header row
             document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row => {
@@ -1876,20 +1881,20 @@ function renderDashboard(user: any) {
                  } else if (m.dueMonths < 0) {
                      statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
                  }
-                 
+                
                  // Already checked in badge
                  let checkedInBadge = '';
                  if (m.checkedIn) {
                     checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
                  }
-                 
+                
                  return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';">' +
                         '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + checkedInBadge +
                         '</div>';
                }).join('');
             }, 200);
         },
-        
+       
         onQuickPayInput(e) {
             const val = e.target.value;
             if(this.searchTimeout) clearTimeout(this.searchTimeout);
@@ -1908,7 +1913,7 @@ function renderDashboard(user: any) {
                }).join('');
             }, 200);
         },
-        
+       
         /* --- NEW: ADD MEMBER TABS & LOGIC --- */
         switchAddTab(tab) {
             const isMig = tab === 'mig';
@@ -1916,38 +1921,38 @@ function renderDashboard(user: any) {
             document.getElementById('tab-new').className = isMig ? 'nav-item' : 'nav-item active';
             document.getElementById('tab-new').style.borderBottom = isMig ? 'none' : '2px solid var(--primary)';
             document.getElementById('tab-new').style.color = isMig ? '#9ca3af' : 'var(--primary)';
-            
+           
             document.getElementById('tab-mig').className = isMig ? 'nav-item active' : 'nav-item';
             document.getElementById('tab-mig').style.borderBottom = isMig ? '2px solid var(--primary)' : 'none';
             document.getElementById('tab-mig').style.color = isMig ? 'var(--primary)' : '#9ca3af';
-            
+           
             // Toggle Form Sections
             document.getElementById('sec-new-fees').style.display = isMig ? 'none' : 'block';
             document.getElementById('sec-mig-fees').style.display = isMig ? 'block' : 'none';
-            
+           
             // Update hidden input
             document.getElementById('add-mig-mode').value = isMig ? 'true' : 'false';
-            
+           
             // Set requirements
             document.getElementById('new-init-pay').required = !isMig;
-            
+           
             // Trigger update to refresh fees
             app.updateAddMemberFees();
         },
-        
+       
         updateAddMemberFees() {
             const planName = document.getElementById('plan-select').value;
             const fee = app.getPlanAdmFee(planName);
             document.getElementById('new-adm-fee').value = fee;
         },
-        
+       
         calcMonthsDueFromDate() {
             const dateStr = document.getElementById('mig-exp-date').value;
             if(!dateStr) return;
-            
+           
             const expiry = new Date(dateStr);
             const now = new Date();
-            
+           
             let months = (now.getFullYear() - expiry.getFullYear()) * 12 + (now.getMonth() - expiry.getMonth());
             // Same logic as backend
             if (now.getDate() > expiry.getDate()) {
@@ -1958,7 +1963,7 @@ function renderDashboard(user: any) {
 
         async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
         async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
-        
+       
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
         onPaymentSearchInput(e) {
             const val = e.target.value;
@@ -1975,7 +1980,7 @@ function renderDashboard(user: any) {
                }).join('');
             }, 200);
         },
-        
+       
         renderCharts() {
             if(typeof Chart === 'undefined') return;
             const members = this.data.members || [];
@@ -1994,7 +1999,7 @@ function renderDashboard(user: any) {
                 // Set default migration date to today
                 document.getElementById('mig-exp-date').valueAsDate = new Date();
                 app.calcMonthsDueFromDate();
-                
+               
                 document.getElementById('modal-add').style.display='flex';
              }, 
              close:()=>document.getElementById('modal-add').style.display='none' 
