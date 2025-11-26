@@ -2031,7 +2031,9 @@ function renderDashboard(user: any) {
           if (lblClock) {
             const tz = s.time?.timezone || 'Asia/Dhaka';
             const now = s.time?.now ? new Date(s.time.now) : getClientNow();
-            lblClock.innerText = `Current system time (${tz}): ${now.toLocaleString('en-GB', { timeZone: tz })}${s.time?.simulated ? ' (simulation active)' : ''}`;
+            const formatted = now.toLocaleString('en-GB', { timeZone: tz });
+            const suffix = s.time?.simulated ? ' (simulation active)' : '';
+            lblClock.innerText = 'Current system time (' + tz + '): ' + formatted + suffix;
           }
 
           // Render Plan List
