@@ -46,6 +46,94 @@ function nextMonthStart(date: Date): Date {
   return d;
 }
 
+function zonedNow(timezone: string): Date {
+  // Ensure we always operate using the target timezone (GMT+6 by default)
+  return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
+}
+
+function formatDateOnly(date: Date, timezone: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+type SystemClock = {
+  timezone: string;
+  simulated: boolean;
+  simulatedTime: string | null;
+  now: Date;
+  today: string;
+};
+
+const DEFAULT_TIMEZONE = "Asia/Dhaka"; // GMT+6
+
+async function loadSettings(env: Env): Promise<{
+  configMap: Record<string, string>;
+  attendanceThreshold: number;
+  inactiveAfterMonths: number;
+  renewalFee: number;
+  currency: string;
+  lang: string;
+  membershipPlans: any[];
+  clock: SystemClock;
+}> {
+  const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
+  const configMap: Record<string, string> = {};
+  for (const row of configRows.results || []) configMap[row.key] = row.value;
+
+  const timezone = configMap["timezone"] || DEFAULT_TIMEZONE;
+  const attendanceThreshold = parseInt(configMap["attendance_threshold_days"] || "3", 10);
+  const inactiveAfterMonths = parseInt(configMap["inactive_after_due_months"] || "3", 10);
+  const renewalFee = parseInt(configMap["renewal_fee"] || "0", 10);
+  const currency = configMap["currency"] || "BDT";
+  const lang = configMap["lang"] || "en";
+
+  const simEnabled = configMap["time_simulation_enabled"] === "true";
+  const simValue = configMap["time_simulation_value"] || null;
+  let clockNow = zonedNow(timezone);
+  let simulated = false;
+
+  if (simEnabled && simValue) {
+    const parsed = new Date(simValue);
+    if (!isNaN(parsed.getTime())) {
+      clockNow = parsed;
+      simulated = true;
+    }
+  }
+
+  const clock: SystemClock = {
+    timezone,
+    simulated,
+    simulatedTime: simulated ? clockNow.toISOString() : null,
+    now: clockNow,
+    today: formatDateOnly(clockNow, timezone),
+  };
+
+  let membershipPlans: any[] = [];
+  try {
+    const raw = JSON.parse(configMap["membership_plans"] || "[]");
+    if (Array.isArray(raw)) {
+      membershipPlans = raw.map((p) => (typeof p === "string" ? { name: p, price: 0, admissionFee: 0 } : p));
+    }
+  } catch {
+    membershipPlans = [{ name: "Standard", price: 0, admissionFee: 0 }];
+  }
+
+  return {
+    configMap,
+    attendanceThreshold,
+    inactiveAfterMonths,
+    renewalFee,
+    currency,
+    lang,
+    membershipPlans,
+    clock,
+  };
+}
+
 function buildAttendanceMonthMap(attendance?: string[]): Record<string, Set<number>> {
   const map: Record<string, Set<number>> = {};
   for (const ts of attendance || []) {
@@ -58,16 +146,16 @@ function buildAttendanceMonthMap(attendance?: string[]): Record<string, Set<numb
   return map;
 }
 
-function formatMonthLabel(date: Date): string {
+function formatMonthLabel(date: Date, today: Date = zonedNow(DEFAULT_TIMEZONE)): string {
   const monthName = date.toLocaleString("en-US", { month: "short" });
-  const currentYear = new Date().getFullYear();
+  const currentYear = today.getFullYear();
   return date.getFullYear() === currentYear ? monthName : `${monthName} ${date.getFullYear()}`;
 }
 
-function buildManualDueMonths(manualDue: number): Date[] {
+function buildManualDueMonths(manualDue: number, today: Date = zonedNow(DEFAULT_TIMEZONE)): Date[] {
   if (!manualDue || manualDue <= 0) return [];
   const months: Date[] = [];
-  const anchor = new Date();
+  const anchor = new Date(today);
   anchor.setDate(1);
 
   for (let i = manualDue - 1; i >= 0; i--) {
@@ -80,25 +168,26 @@ function calcDueDetails(
   expiry: string | null | undefined,
   attendance: string[] | undefined,
   threshold: number,
-  manualDue: number = 0
+  manualDue: number = 0,
+  today: Date = zonedNow(DEFAULT_TIMEZONE)
 ): { count: number; months: Date[]; labels: string[] } {
   let dueMonths: Date[] = [];
 
   if (!expiry) {
-    dueMonths = buildManualDueMonths(manualDue);
-    return { count: manualDue, months: dueMonths, labels: dueMonths.map(formatMonthLabel) };
+    dueMonths = buildManualDueMonths(manualDue, today);
+    return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
   }
 
   const paidThrough = monthEnd(new Date(expiry));
   if (isNaN(paidThrough.getTime())) {
-    dueMonths = buildManualDueMonths(manualDue);
-    return { count: manualDue, months: dueMonths, labels: dueMonths.map(formatMonthLabel) };
+    dueMonths = buildManualDueMonths(manualDue, today);
+    return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
   }
 
   const attMap = buildAttendanceMonthMap(attendance);
-  const today = new Date();
+  const todayCopy = new Date(today);
 
-  for (let cursor = nextMonthStart(paidThrough); cursor <= today; cursor = nextMonthStart(cursor)) {
+  for (let cursor = nextMonthStart(paidThrough); cursor <= todayCopy; cursor = nextMonthStart(cursor)) {
     const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
     const days = attMap[key]?.size || 0;
     if (days >= threshold) dueMonths.push(new Date(cursor));
@@ -112,16 +201,17 @@ function calcDueDetails(
     }
   }
 
-  return { count: dueMonths.length, months: dueMonths, labels: dueMonths.map(formatMonthLabel) };
+  return { count: dueMonths.length, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
 }
 
 function calcDueMonths(
   expiry: string | null | undefined,
   attendance: string[] | undefined,
   threshold: number,
-  manualDue: number = 0
+  manualDue: number = 0,
+  today: Date = zonedNow(DEFAULT_TIMEZONE)
 ): number {
-  return calcDueDetails(expiry, attendance, threshold, manualDue).count;
+  return calcDueDetails(expiry, attendance, threshold, manualDue, today).count;
 }
 
 function addPaidMonths(paidThrough: Date, months: number): Date {
@@ -363,10 +453,10 @@ export default {
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
       if (url.pathname === "/dues/print") {
+        const settings = await loadSettings(env);
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
         const gymName = (gymRow && gymRow.value) || "Gym OS";
-        const thresholdRow = await env.DB.prepare("SELECT value FROM config WHERE key='attendance_threshold_days'").first<any>();
-        const attendanceThreshold = parseInt(thresholdRow?.value || '0', 10);
+        const attendanceThreshold = settings.attendanceThreshold;
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         const attendanceByMember: Record<number, string[]> = {};
@@ -376,7 +466,7 @@ export default {
         }
 
         const members = (membersRaw.results || []).map((m: any) => {
-          const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0);
+          const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
           return { ...m, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
         }).filter((m:any) => m.dueMonths && m.dueMonths > 0);
 
@@ -389,7 +479,7 @@ export default {
         if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
-          <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${new Date().toLocaleDateString()}</p></div>
+          <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${settings.clock.now.toLocaleDateString('en-GB', { timeZone: settings.clock.timezone })}</p></div>
           <button class="btn" onclick="window.print()" style="display:block;margin:0 auto 20px;padding:10px 20px;cursor:pointer;">Print PDF</button>
           <table><thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table>
           <script>window.onload=function(){window.print();}</script>
@@ -436,23 +526,14 @@ export default {
       }
 
       if (url.pathname === "/api/bootstrap") {
-        const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
-        const config: Record<string, string> = {};
-        for (const row of configRows.results || []) config[row.key] = row.value;
-
-        const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
-        const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
-        const renewalFee = parseInt(config["renewal_fee"] || "0", 10);
-        const currency = config["currency"] || "BDT";
-        const lang = config["lang"] || "en";
-        
-        let membershipPlans: any[] = [];
-        try {
-          const raw = JSON.parse(config["membership_plans"] || '[]');
-          if(Array.isArray(raw)) {
-             membershipPlans = raw.map(p => typeof p === 'string' ? {name:p, price:0, admissionFee:0} : p);
-          }
-        } catch { membershipPlans = [{name:"Standard", price:0, admissionFee:0}]; }
+        const settings = await loadSettings(env);
+        const attendanceThreshold = settings.attendanceThreshold;
+        const inactiveAfterMonths = settings.inactiveAfterMonths;
+        const renewalFee = settings.renewalFee;
+        const currency = settings.currency;
+        const lang = settings.lang;
+        const membershipPlans = settings.membershipPlans;
+        const clock = settings.clock;
 
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
@@ -471,7 +552,8 @@ export default {
             m.expiry_date,
             attendanceByMember[m.id],
             attendanceThreshold,
-            m.manual_due_months || 0
+            m.manual_due_months || 0,
+            clock.now
           );
           const dueMonths = dueInfo.count;
           const dueMonthLabels = dueInfo.labels;
@@ -501,24 +583,24 @@ export default {
           membersProcessed.push({ ...m, status: newStatus, dueMonths, dueMonthLabels });
         }
 
-        const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
+        const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = ? ORDER BY a.id DESC").bind(clock.today).all<any>();
         const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 100").all<any>();
-        const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = date('now')").first<any>();
+        const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = ?").bind(clock.today).first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
-        
+
         return json({
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => {
-            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0);
+            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0, clock.now);
             return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
           }),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => {
-            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0);
+            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0, clock.now);
             return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
           }),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, time: { timezone: clock.timezone, simulated: clock.simulated, simulatedTime: clock.simulatedTime, now: clock.now.toISOString() } }
         });
       }
 
@@ -587,16 +669,18 @@ export default {
         const isNumeric = /^\d+$/.test(qRaw);
         
         // Optimized query to check attendance status for today
-        const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, status, manual_due_months, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = date('now')) as today_visits FROM members";
+        const settings = await loadSettings(env);
+        const today = settings.clock.today;
+        const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, status, manual_due_months, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = ?) as today_visits FROM members";
         
         if (isNumeric) {
            if (qRaw.length < 6) {
-              res = await env.DB.prepare(baseQuery + " WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(`${qRaw}%`).all();
+              res = await env.DB.prepare(baseQuery + " WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(today, `${qRaw}%`).all();
            } else {
-              res = await env.DB.prepare(baseQuery + " WHERE phone LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
+              res = await env.DB.prepare(baseQuery + " WHERE phone LIKE ? LIMIT 10").bind(today, `%${qRaw}%`).all();
            }
         } else {
-           res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? LIMIT 10").bind(`%${qRaw}%`).all();
+           res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? LIMIT 10").bind(today, `%${qRaw}%`).all();
         }
         
         // Preload attendance for matched members to respect monthly billing threshold
@@ -611,11 +695,10 @@ export default {
           }
         }
 
-        const settingsRow = await env.DB.prepare("SELECT value FROM config WHERE key='attendance_threshold_days'").first<any>();
-        const attendanceThreshold = parseInt(settingsRow?.value || '0', 10);
+        const attendanceThreshold = settings.attendanceThreshold;
 
         const results = (res.results || []).map((m: any) => {
-            const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0);
+            const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
             return {
                 ...m,
                 dueMonths: dueInfo.count,
@@ -627,42 +710,41 @@ export default {
       }
 
       if (url.pathname === "/api/members/add" && req.method === "POST") {
+        const settings = await loadSettings(env);
         const body = await req.json() as any;
         const isMigration = body.migrationMode === true || body.migrationMode === "true";
         const legacyDues = Math.max(0, parseInt(body.legacyDues || "0", 10));
 
         // Default paid-through month is the previous month end
-        const base = new Date();
+        const base = new Date(settings.clock.now);
         base.setMonth(base.getMonth() - 1, 1);
         let paidThrough = monthEnd(base);
         let manualDueMonths = 0;
 
         if (isMigration) {
-            const anchor = new Date();
+            const anchor = new Date(settings.clock.now);
             anchor.setMonth(anchor.getMonth() - legacyDues, 1);
             paidThrough = monthEnd(anchor);
             manualDueMonths = legacyDues;
         }
 
-        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, new Date().toISOString(), paidThrough.toISOString(), manualDueMonths).run();
-        
+        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), manualDueMonths).run();
+
         // Handle Admission Fee Payment
         if (body.admissionFeePaid && result.meta.last_row_id) {
             const fee = parseInt(body.admissionFee || "0");
             if (fee > 0) {
-                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, fee, new Date().toISOString()).run();
+                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, fee, settings.clock.now.toISOString()).run();
             }
         }
         
         // Handle Initial Plan Payment (if any)
         const initialAmt = parseInt(body.initialPayment || "0");
         if (initialAmt > 0 && result.meta.last_row_id) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, initialAmt, new Date().toISOString()).run();
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, initialAmt, settings.clock.now.toISOString()).run();
             // Process payment to update balance and expiry
             const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(result.meta.last_row_id).first<any>();
-            const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
-            const plans = JSON.parse(config.value || '[]');
-            const plan = plans.find((p: any) => p.name === member.plan);
+            const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
             const price = plan ? Number(plan.price) : 0;
             let currentBalance = (member.balance || 0) + initialAmt;
             let expiryUpdated = monthEnd(new Date(member.expiry_date));
@@ -686,45 +768,45 @@ export default {
       }
 
       if (url.pathname === "/api/checkin" && req.method === "POST") {
+        const settings = await loadSettings(env);
         const { memberId } = await req.json() as any;
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
-        
+
         // Strict Inactive Block
         if (member.status === 'inactive') return json({ error: "Membership Inactive. Please Renew.", code: "INACTIVE" }, 400);
 
-        const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = date('now') LIMIT 1").bind(memberId).first();
+        const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = ? LIMIT 1").bind(memberId, settings.clock.today).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
-        const isExpired = new Date(member.expiry_date) < new Date();
+        const isExpired = new Date(member.expiry_date) < settings.clock.now;
         const status = isExpired ? 'expired' : 'success';
-        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, new Date().toISOString(), status).run();
+        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, settings.clock.now.toISOString(), status).run();
         return json({ success: true, status, name: member.name, isExpired });
       }
 
       // RE-ADMISSION / RENEWAL ENDPOINT
       if (url.pathname === "/api/members/renew" && req.method === "POST") {
+        const settings = await loadSettings(env);
         const { memberId, renewalFee, amount } = await req.json() as any;
         const rFee = Number(renewalFee);
         const planAmt = Number(amount);
 
         // 1. Record Renewal Fee
         if (rFee > 0) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, new Date().toISOString()).run();
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, settings.clock.now.toISOString()).run();
         }
 
         // 2. Record Plan Payment
         if (planAmt > 0) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, planAmt, new Date().toISOString()).run();
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, planAmt, settings.clock.now.toISOString()).run();
         }
 
         // 3. Reset Member Status & Expiry
         const member = await env.DB.prepare("SELECT plan FROM members WHERE id = ?").bind(memberId).first<any>();
-        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
-        const plans = JSON.parse(config.value || '[]');
-        const plan = plans.find((p: any) => p.name === member.plan);
+        const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
         const price = plan ? Number(plan.price) : 0;
 
-        let newExpiry = monthEnd(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
+        let newExpiry = monthEnd(new Date(settings.clock.now.getFullYear(), settings.clock.now.getMonth() - 1, 1));
         let balance = 0;
         let manualDue = member.manual_due_months || 0;
 
@@ -751,17 +833,16 @@ export default {
       }
 
       if (url.pathname === "/api/payment" && req.method === "POST") {
+        const settings = await loadSettings(env);
         const { memberId, amount } = await req.json() as any;
         const amt = Number(amount);
-        
+
         // Record the transaction
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, new Date().toISOString()).run();
+        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, settings.clock.now.toISOString()).run();
         
         // Update member balance and expiry logic
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
-        const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
-        const plans = JSON.parse(config.value || '[]');
-        const plan = plans.find((p: any) => p.name === member.plan);
+        const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
         const price = plan ? Number(plan.price) : 0;
 
         let currentBalance = (member.balance || 0) + amt;
@@ -797,12 +878,17 @@ export default {
       if (url.pathname === "/api/settings" && req.method === "POST") {
         if (user.role !== 'admin') return json({ error: 'Unauthorized' }, 403);
         const body = await req.json() as any;
+        const simEnabled = body.timeSimulationEnabled === true || body.timeSimulationEnabled === 'true' || body.timeSimulationEnabled === 'on';
+        const simValue = simEnabled ? (body.simulatedTime || '') : '';
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('time_simulation_enabled', ?)").bind(simEnabled ? 'true' : 'false').run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('time_simulation_value', ?)").bind(simEnabled && simValue ? String(simValue) : '').run();
+        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('timezone', ?)").bind(String(body.timezone || DEFAULT_TIMEZONE)).run();
         return json({ success: true });
       }
 
@@ -1088,7 +1174,22 @@ function renderDashboard(user: any) {
                   <label id="lbl-ren-fee">Renewal Fee (Global)</label>
                   <input name="renewalFee" type="number" min="0" required>
                 </div>
-               
+
+                <div class="flex">
+                  <div class="w-full">
+                    <label>Timezone (GMT+6)</label>
+                    <input name="timezone" type="text" placeholder="Asia/Dhaka">
+                  </div>
+                  <div class="w-full">
+                    <label>Simulated Date & Time</label>
+                    <input name="simulatedTime" type="datetime-local">
+                  </div>
+                </div>
+                <label class="checkbox-item" style="width:auto; margin-bottom:8px;">
+                  <input type="checkbox" name="timeSimulationEnabled"> Enable Time Simulation (Admin Testing)
+                </label>
+                <p id="lbl-current-time" style="font-size:12px; color:var(--text-muted); margin-top:-4px;"></p>
+
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
                    <div class="plan-row" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
@@ -1372,6 +1473,10 @@ function renderDashboard(user: any) {
         }
       };
 
+      let clientClock = { now: null };
+      function setClientNow(iso) { clientClock.now = iso || null; }
+      function getClientNow() { return clientClock.now ? new Date(clientClock.now) : new Date(); }
+
       function t(key) {
          const lang = app.data?.settings?.lang || 'en';
          return translations[lang][key] || key;
@@ -1401,7 +1506,7 @@ function renderDashboard(user: any) {
          const d = new Date(iso);
          if(isNaN(d.getTime())) return '-';
          const monthName = d.toLocaleString('en-US', { month: 'short' });
-         return d.getFullYear() === new Date().getFullYear() ? monthName : monthName + ' ' + d.getFullYear();
+         return d.getFullYear() === getClientNow().getFullYear() ? monthName : monthName + ' ' + d.getFullYear();
       }
 
       function formatDueMonthsLabel(obj) {
@@ -1427,6 +1532,7 @@ function renderDashboard(user: any) {
         async init() {
           const res = await fetch('/api/bootstrap');
           this.data = await res.json();
+          setClientNow(this.data?.settings?.time?.now);
           this.render();
           this.applySettingsUI();
           if(currentUser.role === 'admin') this.loadUsers();
@@ -1729,19 +1835,19 @@ function renderDashboard(user: any) {
             
             const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
             const data = await res.json();
-            this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || new Date()) };
-            
+            this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || getClientNow()) };
+
             const yearSelect = document.getElementById('hist-year');
             yearSelect.innerHTML = '';
             const startYear = this.activeHistory.joinedAt.getFullYear();
-            const endYear = new Date().getFullYear();
+            const endYear = getClientNow().getFullYear();
             for(let y = endYear; y >= startYear; y--) {
                const opt = document.createElement('option');
                opt.value = y;
                opt.innerText = y;
                yearSelect.appendChild(opt);
             }
-            const now = new Date();
+            const now = getClientNow();
             yearSelect.value = now.getFullYear();
             document.getElementById('hist-month').value = now.getMonth();
             this.renderCalendar();
@@ -1911,7 +2017,23 @@ function renderDashboard(user: any) {
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
           form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
-         
+          form.querySelector('input[name="timezone"]').value = (s.time && s.time.timezone) || 'Asia/Dhaka';
+          setClientNow(s.time?.now);
+
+          const simInput = form.querySelector('input[name="simulatedTime"]');
+          if (simInput) {
+             const iso = s.time?.simulatedTime || s.time?.now || '';
+             simInput.value = iso ? new Date(iso).toISOString().slice(0,16) : '';
+          }
+          const simToggle = form.querySelector('input[name="timeSimulationEnabled"]');
+          if (simToggle) simToggle.checked = !!s.time?.simulated;
+          const lblClock = document.getElementById('lbl-current-time');
+          if (lblClock) {
+            const tz = s.time?.timezone || 'Asia/Dhaka';
+            const now = s.time?.now ? new Date(s.time.now) : getClientNow();
+            lblClock.innerText = `Current system time (${tz}): ${now.toLocaleString('en-GB', { timeZone: tz })}${s.time?.simulated ? ' (simulation active)' : ''}`;
+          }
+
           // Render Plan List
           const plansDiv = document.getElementById('plans-container');
           plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
@@ -1966,8 +2088,11 @@ function renderDashboard(user: any) {
                   attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                   inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
                   renewalFee: form.querySelector('input[name="renewalFee"]').value,
-                  membershipPlans: plans
-               }) 
+                  membershipPlans: plans,
+                  timezone: form.querySelector('input[name="timezone"]').value,
+                  timeSimulationEnabled: form.querySelector('input[name="timeSimulationEnabled"]').checked,
+                  simulatedTime: form.querySelector('input[name="simulatedTime"]').value
+               })
             });
             location.reload();
         },
