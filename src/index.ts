@@ -33,27 +33,29 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return hashed === hash;
 }
 
-const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-function calcDueMonths(expiry: string | null | undefined): number | null {
-  if (!expiry) return null;
-  const exp = new Date(expiry);
-  if (isNaN(exp.getTime())) return null;
+function calcDueMonths(expiry: string | null | undefined, attendance_dates: string[], threshold: number): number {
   const now = new Date();
- 
-  // Calculate difference in months
-  // Positive = Due (Past Expiry)
-  // Negative = Advance (Future Expiry)
-  let months =
-    (now.getFullYear() - exp.getFullYear()) * 12 +
-    (now.getMonth() - exp.getMonth());
-  // Adjust for day of month
-  // If today is 20th and expiry was 15th, we have entered the next month cycle
-  if (now.getDate() > exp.getDate()) {
-     months += 1;
+  const exp = expiry ? new Date(expiry) : now;
+  if (isNaN(exp.getTime())) return 0;
+  let due = 0;
+  let current = new Date(exp.getFullYear(), exp.getMonth() + 1, 1); // start of next month
+
+  while (current < now) {
+    const month_start = new Date(current.getFullYear(), current.getMonth(), 1);
+    const month_end = new Date(current.getFullYear(), current.getMonth() + 1, 0);
+    const attended_days = new Set();
+    for (const d of attendance_dates) {
+      const dt = new Date(d);
+      if (dt >= month_start && dt <= month_end) {
+        attended_days.add(dt.getDate());
+      }
+    }
+    if (attended_days.size >= threshold) {
+      due += 1;
+    }
+    current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
   }
- 
-  return months;
+  return due;
 }
 
 /* ========================================================================
@@ -83,7 +85,7 @@ function baseHead(title: string): string {
     .app-layout { display: flex; height: 100%; }
     .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
-   
+    
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
     .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
     .btn-primary { background: var(--primary); color: white; }
@@ -91,20 +93,20 @@ function baseHead(title: string): string {
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
     .btn-danger { background: var(--danger); color: white; }
     .w-full { width: 100%; }
-   
+    
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
-   
+    
     .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
     th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
     td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-   
+    
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
     .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
     .stat-val { font-size: 24px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
@@ -114,17 +116,17 @@ function baseHead(title: string): string {
     .flex { display: flex; align-items: center; gap: 12px; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
-   
+    
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
     .bg-blue { background: #dbeafe; color: #1e40af; }
-   
+    
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
     .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
-   
+    
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
     .modal-content { background: white; width: 100%; max-width: 600px; padding: 24px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
 
@@ -369,37 +371,20 @@ export default {
         let totalOutstanding = 0;
 
         for (const m of membersRaw.results || []) {
-          const dueMonths = calcDueMonths(m.expiry_date);
-          let dueList = [];
-          if (dueMonths > 0) {
-            let current = new Date(m.expiry_date);
-            for (let i = 0; i < dueMonths; i++) {
-              current.setMonth(current.getMonth() + 1);
-              dueList.push(monthNames[current.getMonth()]);
-            }
-          }
-
+          const history = attendanceByMember[m.id] || [];
+          const dueMonths = calcDueMonths(m.expiry_date, history, attendanceThreshold);
           let newStatus = m.status || "active";
           
-          if (dueMonths != null) {
-             if (dueMonths > 0) newStatus = "due";
-          }
-
-          const history = attendanceByMember[m.id] || [];
-          let lastAttendance: string | null = null;
-          if (history.length > 0) {
-            lastAttendance = history.reduce((max, d) => d > max ? d : max, '');
-          } 
-          if (!lastAttendance) lastAttendance = m.joined_at;
-          const absentMonths = calcDueMonths(lastAttendance) || 0;
+          if (dueMonths > 0) newStatus = "due";
+          
+          const absentMonths = calcDueMonths(history.length > 0 ? history.reduce((max, d) => d > max ? d : max, '') : m.joined_at);
 
           if (absentMonths >= inactiveAfterMonths) {
             newStatus = "inactive";
           }
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
-
-          membersProcessed.push({ ...m, status: newStatus, dueMonths, dueList });
+          membersProcessed.push({ ...m, status: newStatus, dueMonths });
 
           if (newStatus === "inactive") {
             inactiveMembersCount++;
@@ -522,8 +507,9 @@ export default {
         let expiry = new Date();
         
         // Handle Migration Mode Custom Expiry
-        if (body.migrationMode && body.expiryDate) {
-            expiry = new Date(body.expiryDate);
+        if (body.migrationMode) {
+            const dueMonths = parseInt(body.dueMonths || "0");
+            expiry.setMonth(expiry.getMonth() - dueMonths);
         } else {
             // New Member Mode Logic
             if (body.legacyDues && parseInt(body.legacyDues) > 0) {
@@ -857,7 +843,7 @@ function renderDashboard(user: any) {
               <h3 id="lbl-today-att">Today's Attendance</h3>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th id="th-time">Time</th><th>ID & Name</th><th>Due / Adv</th></tr></thead>
+                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
@@ -877,7 +863,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="table-responsive">
                 <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>ID & Name</th></tr></thead>
+                  <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
@@ -946,11 +932,11 @@ function renderDashboard(user: any) {
                
                 <div class="flex">
                    <div class="w-full">
-                      <label id="lbl-att-th">Min. Attendance for fees (Days)</label>
+                      <label id="lbl-att-th">Attendance Threshold (Days)</label>
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-inact-th">Inactive after how many absent months?</label>
+                      <label id="lbl-inact-th">Inactive after X absent months</label>
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
                    </div>
                 </div>
@@ -1068,12 +1054,8 @@ function renderDashboard(user: any) {
              <div id="sec-mig-fees" style="display:none;">
                  <label style="margin-bottom:8px; font-weight:bold;">Migration Status</label>
                  <div class="w-full" style="margin-bottom:10px;">
-                    <label>Last Plan Expiry Date</label>
-                    <input name="expiryDate" id="mig-exp-date" type="date" onchange="app.calcMonthsDueFromDate()">
-                 </div>
-                 <div class="w-full" style="margin-bottom:10px;">
-                    <label>Months Due (Calculated)</label>
-                    <input type="number" id="mig-months-due" placeholder="-" readonly style="background:#e5e7eb;">
+                    <label>Due Months</label>
+                    <input name="dueMonths" id="mig-due-months" type="number" min="0" value="0">
                  </div>
                  <div class="w-full">
                     <label>Payment Now (Optional)</label>
@@ -1402,8 +1384,8 @@ function renderDashboard(user: any) {
               let dueStr = '-';
               if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
               else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td># ' + a.member_id + ' · ' + a.name + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="3">No data.</td></tr>';
+              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
+          }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
@@ -1446,7 +1428,7 @@ function renderDashboard(user: any) {
                  const owed = (m.dueMonths * price);
                  const remaining = Math.max(0, owed - paid);
                 
-                 dueTxt = remaining + ' (' + m.dueMonths + ' Mo Due - ' + m.dueList.join(', ') + ')';
+                 dueTxt = (remaining) + ' (' + m.dueMonths + ' Mo Due)';
                  if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
                 
                  dueColor = 'red';
@@ -1504,7 +1486,7 @@ function renderDashboard(user: any) {
                if (m.dueMonths > 0) {
                    statusHtml = '<span class="badge bg-amber">Due</span>';
                    if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                   infoTxt = m.dueMonths + ' Mo Due - ' + m.dueList.join(', ');
+                   infoTxt = m.dueMonths + ' Mo Due';
                  
                    const dueAmt = m.dueMonths * price;
                    const paid = m.balance || 0;
@@ -1689,8 +1671,8 @@ function renderDashboard(user: any) {
           }
           
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td># ' + a.member_id + ' · ' + a.name + '</td></tr>'
-          ).join('') : '<tr><td colspan="3">No data.</td></tr>';
+             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
+          ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
         /* --- USER MGMT --- */
