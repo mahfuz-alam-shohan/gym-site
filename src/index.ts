@@ -33,29 +33,27 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
   return hashed === hash;
 }
 
-function calcDueMonths(expiry: string | null | undefined, attendance_dates: string[], threshold: number): number {
-  const now = new Date();
-  const exp = expiry ? new Date(expiry) : now;
-  if (isNaN(exp.getTime())) return 0;
-  let due = 0;
-  let current = new Date(exp.getFullYear(), exp.getMonth() + 1, 1); // start of next month
+function calcDueMonths(expiry: string | null | undefined): number | null {
+  if (!expiry) return null;
+  const exp = new Date(expiry);
+  if (isNaN(exp.getTime())) return null;
 
-  while (current < now) {
-    const month_start = new Date(current.getFullYear(), current.getMonth(), 1);
-    const month_end = new Date(current.getFullYear(), current.getMonth() + 1, 0);
-    const attended_days = new Set();
-    for (const d of attendance_dates) {
-      const dt = new Date(d);
-      if (dt >= month_start && dt <= month_end) {
-        attended_days.add(dt.getDate());
-      }
-    }
-    if (attended_days.size >= threshold) {
-      due += 1;
-    }
-    current = new Date(current.getFullYear(), current.getMonth() + 1, 1);
+  const now = new Date();
+  
+  // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
+  let months =
+    (now.getFullYear() - exp.getFullYear()) * 12 +
+    (now.getMonth() - exp.getMonth());
+
+  // Adjust for day of month
+  // If today is 20th and expiry was 15th, we have entered the next month cycle
+  if (now.getDate() > exp.getDate()) {
+     months += 1;
   }
-  return due;
+  
+  return months;
 }
 
 /* ========================================================================
@@ -166,23 +164,17 @@ function baseHead(title: string): string {
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
-
-      /* Mobile Optimization */
-      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-      .stat-card { padding: 12px; border-radius: 8px; }
-      .stat-val { font-size: 18px; margin-top: 2px; }
-      .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-     
-      .card { padding: 16px; border-radius: 8px; }
-      h2, h3 { font-size: 18px; }
-     
-      .btn { padding: 6px 10px; font-size: 11px; }
-      .flex-between { gap: 8px; }
-      input, select { font-size: 13px; }
-     
-      .plan-row { grid-template-columns: 1fr 1fr; }
-      .plan-row input:nth-child(3) { grid-column: span 2; }
-      .plan-row button { grid-column: span 2; }
+      .flex-between { flex-direction: column; gap: 10px; align-items: flex-start; }
+      .flex { flex-direction: column; gap: 10px; align-items: flex-start; }
+      select, input { max-width: 100%; }
+      .table-responsive { max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      table { min-width: 600px; } /* Force horizontal scroll if needed on small screens */
+      .plan-row { grid-template-columns: 1fr; gap: 5px; }
+      .plan-row input, .plan-row button { width: 100%; }
+      .card { padding: 16px; }
+      .btn { width: 100%; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .hist-controls { flex-direction: column; gap: 5px; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -290,7 +282,7 @@ export default {
         const members = (membersRaw.results || []).map((m: any) => ({ ...m, dueMonths: calcDueMonths(m.expiry_date) })).filter((m:any) => m.dueMonths && m.dueMonths > 0);
         
         let rows = members.map((m:any) => `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${m.dueMonths} Month(s)</td></tr>`).join('');
-        if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
+        if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
           <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${new Date().toLocaleDateString()}</p></div>
@@ -376,7 +368,7 @@ export default {
           let newStatus = m.status || "active";
           
           if (dueMonths > 0) newStatus = "due";
-          
+
           const absentMonths = calcDueMonths(history.length > 0 ? history.reduce((max, d) => d > max ? d : max, '') : m.joined_at);
 
           if (absentMonths >= inactiveAfterMonths) {
@@ -507,9 +499,8 @@ export default {
         let expiry = new Date();
         
         // Handle Migration Mode Custom Expiry
-        if (body.migrationMode) {
-            const dueMonths = parseInt(body.dueMonths || "0");
-            expiry.setMonth(expiry.getMonth() - dueMonths);
+        if (body.migrationMode && body.expiryDate) {
+            expiry = new Date(body.expiryDate);
         } else {
             // New Member Mode Logic
             if (body.legacyDues && parseInt(body.legacyDues) > 0) {
