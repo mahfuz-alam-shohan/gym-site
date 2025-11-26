@@ -81,6 +81,38 @@ function calcDueMonths(
   return due;
 }
 
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function formatMonthLabel(date: Date): string | null {
+  if (isNaN(date.getTime())) return null;
+  const now = new Date();
+  const month = MONTH_NAMES[date.getMonth()];
+  const needsYear = date.getFullYear() !== now.getFullYear();
+  const base = needsYear ? `${month} ${date.getFullYear()}` : month;
+  if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) {
+    return `Current Month (${base})`;
+  }
+  return base;
+}
+
+function buildDueMonthLabels(expiry: string | null | undefined, dueMonths: number): string[] {
+  if (!expiry || !dueMonths || dueMonths <= 0) return [];
+  const start = new Date(expiry);
+  if (isNaN(start.getTime())) return [];
+
+  const safeMonths = Math.min(Math.abs(dueMonths), 120);
+  const labels: string[] = [];
+  let cursor = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+
+  for (let i = 0; i < safeMonths; i++) {
+    const label = formatMonthLabel(cursor);
+    if (label) labels.push(label);
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+
+  return labels;
+}
+
 function addPaidMonths(paidThrough: Date, months: number): Date {
   let updated = monthEnd(paidThrough);
   for (let i = 0; i < months; i++) {
@@ -332,12 +364,19 @@ export default {
           attendanceByMember[a.member_id].push(a.check_in_time);
         }
 
-        const members = (membersRaw.results || []).map((m: any) => ({
-          ...m,
-          dueMonths: calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0)
-        })).filter((m:any) => m.dueMonths && m.dueMonths > 0);
-        
-        let rows = members.map((m:any) => `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${m.dueMonths} Month(s)</td></tr>`).join('');
+        const members = (membersRaw.results || []).map((m: any) => {
+          const dueMonths = calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0);
+          return {
+            ...m,
+            dueMonths,
+            dueMonthLabels: buildDueMonthLabels(m.expiry_date, dueMonths)
+          };
+        }).filter((m:any) => m.dueMonths && m.dueMonths > 0);
+
+        let rows = members.map((m:any) => {
+          const dueText = m.dueMonthLabels?.length ? `Due of ${m.dueMonthLabels.join(', ')}` : `${m.dueMonths} Month(s)`;
+          return `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${dueText}</td></tr>`;
+        }).join('');
         if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
@@ -448,7 +487,7 @@ export default {
           }
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
-          membersProcessed.push({ ...m, status: newStatus, dueMonths });
+          membersProcessed.push({ ...m, status: newStatus, dueMonths, dueMonthLabels: buildDueMonthLabels(m.expiry_date, dueMonths) });
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
@@ -459,14 +498,14 @@ export default {
         return json({
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
-          attendanceToday: (attendanceToday.results || []).map((r:any) => ({
-            ...r,
-            dueMonths: calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
-          })),
-          attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({
-            ...r,
-            dueMonths: calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
-          })),
+          attendanceToday: (attendanceToday.results || []).map((r:any) => {
+            const dueMonths = calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0);
+            return { ...r, dueMonths, dueMonthLabels: buildDueMonthLabels(r.expiry_date, dueMonths) };
+          }),
+          attendanceHistory: (attendanceHistory.results || []).map((r:any) => {
+            const dueMonths = calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0);
+            return { ...r, dueMonths, dueMonthLabels: buildDueMonthLabels(r.expiry_date, dueMonths) };
+          }),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
         });
@@ -564,11 +603,15 @@ export default {
         const settingsRow = await env.DB.prepare("SELECT value FROM config WHERE key='attendance_threshold_days'").first<any>();
         const attendanceThreshold = parseInt(settingsRow?.value || '0', 10);
 
-        const results = (res.results || []).map((m: any) => ({
-            ...m,
-            dueMonths: calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0),
-            checkedIn: m.today_visits > 0
-        }));
+        const results = (res.results || []).map((m: any) => {
+            const dueMonths = calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0);
+            return {
+              ...m,
+              dueMonths,
+              dueMonthLabels: buildDueMonthLabels(m.expiry_date, dueMonths),
+              checkedIn: m.today_visits > 0
+            };
+        });
         return json({ results });
       }
 
@@ -1342,6 +1385,53 @@ function renderDashboard(user: any) {
          return new Date(iso).toLocaleDateString('en-GB'); // DD/MM/YYYY
       }
 
+      const MONTH_NAMES_CLIENT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+      function formatExpiryMonth(iso) {
+         if(!iso) return '-';
+         const d = new Date(iso);
+         if(isNaN(d.getTime())) return '-';
+         const month = MONTH_NAMES_CLIENT[d.getMonth()];
+         return `${month} ${d.getFullYear()}`;
+      }
+
+      function computeDueMonthLabels(expiryIso, dueMonths) {
+         if(!expiryIso || !dueMonths || dueMonths <= 0) return [];
+         const parsed = new Date(expiryIso);
+         if(isNaN(parsed.getTime())) return [];
+
+         const now = new Date();
+         const cap = Math.min(Math.abs(dueMonths), 120);
+         const labels = [];
+         let cursor = new Date(parsed.getFullYear(), parsed.getMonth() + 1, 1);
+
+         for(let i=0; i<cap; i++) {
+            const month = MONTH_NAMES_CLIENT[cursor.getMonth()];
+            const needsYear = cursor.getFullYear() !== now.getFullYear();
+            const base = needsYear ? `${month} ${cursor.getFullYear()}` : month;
+            const label = (cursor.getFullYear() === now.getFullYear() && cursor.getMonth() === now.getMonth()) ? `Current Month (${base})` : base;
+            labels.push(label);
+            cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+         }
+
+         return labels;
+      }
+
+      function getDueDetails(entity) {
+         const dueMonths = Number(entity?.dueMonths || 0);
+         const providedLabels = Array.isArray(entity?.dueMonthLabels) ? entity.dueMonthLabels : [];
+         const labels = providedLabels.length ? providedLabels : computeDueMonthLabels(entity?.expiry_date, dueMonths);
+
+         let dueText = 'Active';
+         if (dueMonths > 0) {
+            dueText = labels.length ? ('Due of ' + labels.join(', ')) : (dueMonths + ' Mo Due');
+         } else if (dueMonths < 0) {
+            dueText = Math.abs(dueMonths) + ' Mo Adv';
+         }
+
+         return { dueMonths, labels, dueText };
+      }
+
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
@@ -1470,9 +1560,8 @@ function renderDashboard(user: any) {
           this.renderMembersTable();
          
           const todayRows = (this.data.attendanceToday || []).map(a => {
-              let dueStr = '-';
-              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
-              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
+              const dueInfo = getDueDetails(a);
+              const dueStr = dueInfo.dueText;
               return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
@@ -1509,22 +1598,23 @@ function renderDashboard(user: any) {
 
             document.getElementById('tbl-members').innerHTML = list.map(m => {
              let statusBadge = '<span class="badge bg-green">Active</span>';
-             let dueTxt = '-';
+             const dueInfo = getDueDetails(m);
+             let dueTxt = dueInfo.dueText;
              let dueColor = 'gray';
              if (m.dueMonths > 0) {
                  const price = this.getPlanPrice(m.plan);
                  const paid = m.balance || 0;
                  const owed = (m.dueMonths * price);
                  const remaining = Math.max(0, owed - paid);
-                
-                 dueTxt = (remaining) + ' (' + m.dueMonths + ' Mo Due)';
+
+                 dueTxt = (remaining) + ' (' + dueInfo.dueText + ')';
                  if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
-                
+
                  dueColor = 'red';
                  statusBadge = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
              } else if (m.dueMonths < 0) {
-                 dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
+                 dueTxt = dueInfo.dueText;
                  dueColor = 'green';
                  statusBadge = '<span class="badge bg-blue">Advance</span>';
              }
@@ -1532,7 +1622,7 @@ function renderDashboard(user: any) {
                '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td>' +
                '<td>' + formatDate(m.joined_at) + '</td>' + // Added Joined Date
                '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
-               '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+               '<td>' + formatExpiryMonth(m.expiry_date) + '</td>' +
                '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
                '<td><div class="flex" style="gap:4px;">' +
                  '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">Attn</button> ' +
@@ -1556,9 +1646,9 @@ function renderDashboard(user: any) {
 
             list.sort((a, b) => {
                const getWeight = (m) => {
-                  if (m.dueMonths > 0) return 3; 
-                  if (!m.dueMonths || m.dueMonths === 0) return 2; 
-                  return 1; 
+                  if (m.dueMonths > 0) return 3;
+                  if (!m.dueMonths || m.dueMonths === 0) return 2;
+                  return 1;
                };
                const wA = getWeight(a);
                const wB = getWeight(b);
@@ -1568,15 +1658,16 @@ function renderDashboard(user: any) {
 
             document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
                const price = this.getPlanPrice(m.plan);
+               const dueInfo = getDueDetails(m);
                let statusHtml = '<span class="badge bg-green">Running</span>';
                let infoTxt = '-';
                let amtTxt = '0';
-               
+
                if (m.dueMonths > 0) {
                    statusHtml = '<span class="badge bg-amber">Due</span>';
                    if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                   infoTxt = m.dueMonths + ' Mo Due';
-                 
+                   infoTxt = dueInfo.dueText;
+
                    const dueAmt = m.dueMonths * price;
                    const paid = m.balance || 0;
                    const remaining = Math.max(0, dueAmt - paid);
@@ -1944,13 +2035,14 @@ function renderDashboard(user: any) {
                const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
                const data = await res.json();
                document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
+                 const dueInfo = getDueDetails(m);
                  let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
                  if (m.status === 'inactive') {
                      statusStr = '<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';
                  } else if (m.dueMonths > 0) {
-                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
+                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + dueInfo.dueText + '</span>';
                  } else if (m.dueMonths < 0) {
-                     statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
+                     statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + dueInfo.dueText + '</span>';
                  }
                 
                  // Already checked in badge
@@ -1974,13 +2066,12 @@ function renderDashboard(user: any) {
                const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
                const data = await res.json();
                document.getElementById('qp-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
+                 const dueInfo = getDueDetails(m);
+                 let dueStr = dueInfo.dueText || 'Active';
                  if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' + 
-                        '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + 
-                        '</div>';
+                return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' +
+                       '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr +
+                       '</div>';
                }).join('');
             }, 200);
         },
@@ -2029,10 +2120,9 @@ function renderDashboard(user: any) {
                const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
                const data = await res.json();
                document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
+                 const dueInfo = getDueDetails(m);
+                 let dueStr = dueInfo.dueText || 'Active';
                  if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
                  return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
                }).join('');
             }, 200);
