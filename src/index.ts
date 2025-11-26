@@ -81,6 +81,36 @@ function calcDueMonths(
   return due;
 }
 
+function formatMonthLabel(date: Date): string {
+  const month = date.toLocaleString("default", { month: "short" });
+  const year = date.getFullYear();
+  const currentYear = new Date().getFullYear();
+  return year === currentYear ? month : `${month} ${year}`;
+}
+
+function calcDueDetails(
+  expiry: string | null | undefined,
+  attendance: string[] | undefined,
+  threshold: number,
+  manualDue: number = 0
+): { dueMonths: number; dueLabels: string[] } {
+  const dueMonths = calcDueMonths(expiry, attendance, threshold, manualDue);
+  if (!expiry || !dueMonths || dueMonths <= 0) return { dueMonths, dueLabels: [] };
+
+  const paidThrough = monthEnd(new Date(expiry));
+  if (isNaN(paidThrough.getTime())) return { dueMonths, dueLabels: [] };
+
+  const dueLabels: string[] = [];
+  let cursor = nextMonthStart(paidThrough);
+
+  for (let i = 0; i < dueMonths; i++) {
+    dueLabels.push(formatMonthLabel(cursor));
+    cursor = nextMonthStart(cursor);
+  }
+
+  return { dueMonths, dueLabels };
+}
+
 function addPaidMonths(paidThrough: Date, months: number): Date {
   let updated = monthEnd(paidThrough);
   for (let i = 0; i < months; i++) {
@@ -332,12 +362,15 @@ export default {
           attendanceByMember[a.member_id].push(a.check_in_time);
         }
 
-        const members = (membersRaw.results || []).map((m: any) => ({
-          ...m,
-          dueMonths: calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0)
-        })).filter((m:any) => m.dueMonths && m.dueMonths > 0);
-        
-        let rows = members.map((m:any) => `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${m.dueMonths} Month(s)</td></tr>`).join('');
+        const members = (membersRaw.results || []).map((m: any) => {
+          const dueDetails = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0);
+          return { ...m, ...dueDetails };
+        }).filter((m:any) => m.dueMonths && m.dueMonths > 0);
+
+        let rows = members.map((m:any) => {
+          const dueText = (m.dueLabels && m.dueLabels.length) ? m.dueLabels.join(', ') : `${m.dueMonths} Month(s)`;
+          return `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${dueText}</td></tr>`;
+        }).join('');
         if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
@@ -419,12 +452,13 @@ export default {
         let totalOutstanding = 0;
 
         for (const m of membersRaw.results || []) {
-          const dueMonths = calcDueMonths(
+          const dueDetails = calcDueDetails(
             m.expiry_date,
             attendanceByMember[m.id],
             attendanceThreshold,
             m.manual_due_months || 0
           );
+          const dueMonths = dueDetails.dueMonths;
           let newStatus = m.status || "active";
           
           if (dueMonths != null) {
@@ -448,7 +482,7 @@ export default {
           }
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
-          membersProcessed.push({ ...m, status: newStatus, dueMonths });
+          membersProcessed.push({ ...m, status: newStatus, ...dueDetails });
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = date('now') ORDER BY a.id DESC").all<any>();
@@ -461,11 +495,11 @@ export default {
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({
             ...r,
-            dueMonths: calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
+            ...calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
           })),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({
             ...r,
-            dueMonths: calcDueMonths(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
+            ...calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0)
           })),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
@@ -566,7 +600,7 @@ export default {
 
         const results = (res.results || []).map((m: any) => ({
             ...m,
-            dueMonths: calcDueMonths(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0),
+            ...calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0),
             checkedIn: m.today_visits > 0
         }));
         return json({ results });
@@ -1342,6 +1376,26 @@ function renderDashboard(user: any) {
          return new Date(iso).toLocaleDateString('en-GB'); // DD/MM/YYYY
       }
 
+      function formatMonthOnly(iso) {
+         if(!iso) return '-';
+         const d = new Date(iso);
+         if(isNaN(d.getTime())) return '-';
+         const month = d.toLocaleString('default', { month: 'short' });
+         const year = d.getFullYear();
+         const currentYear = new Date().getFullYear();
+         return year === currentYear ? month : `${month} ${year}`;
+      }
+
+      function readableDueText(obj) {
+         const labels = obj?.dueLabels || [];
+         if (obj?.dueMonths > 0) {
+            if (labels.length) return 'Due of ' + labels.join(', ');
+            return obj.dueMonths + ' Mo Due';
+         }
+         if (obj?.dueMonths < 0) return Math.abs(obj.dueMonths) + ' Mo Adv';
+         return 'Active';
+      }
+
       const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
       const app = {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
@@ -1470,9 +1524,7 @@ function renderDashboard(user: any) {
           this.renderMembersTable();
          
           const todayRows = (this.data.attendanceToday || []).map(a => {
-              let dueStr = '-';
-              if (a.dueMonths > 0) dueStr = a.dueMonths + ' Mo Due';
-              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
+              const dueStr = readableDueText(a);
               return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
@@ -1511,20 +1563,21 @@ function renderDashboard(user: any) {
              let statusBadge = '<span class="badge bg-green">Active</span>';
              let dueTxt = '-';
              let dueColor = 'gray';
-             if (m.dueMonths > 0) {
+            if (m.dueMonths > 0) {
                  const price = this.getPlanPrice(m.plan);
                  const paid = m.balance || 0;
                  const owed = (m.dueMonths * price);
                  const remaining = Math.max(0, owed - paid);
-                
-                 dueTxt = (remaining) + ' (' + m.dueMonths + ' Mo Due)';
+
+                 const dueLabel = readableDueText(m);
+                 dueTxt = (remaining) + ' (' + dueLabel + ')';
                  if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
-                
+
                  dueColor = 'red';
                  statusBadge = '<span class="badge bg-amber">Due</span>';
                  if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
              } else if (m.dueMonths < 0) {
-                 dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
+                 dueTxt = readableDueText(m);
                  dueColor = 'green';
                  statusBadge = '<span class="badge bg-blue">Advance</span>';
              }
@@ -1532,7 +1585,7 @@ function renderDashboard(user: any) {
                '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td>' +
                '<td>' + formatDate(m.joined_at) + '</td>' + // Added Joined Date
                '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
-               '<td>' + (m.expiry_date ? m.expiry_date.split('T')[0] : '-') + '</td>' +
+               '<td>' + formatMonthOnly(m.expiry_date) + '</td>' +
                '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
                '<td><div class="flex" style="gap:4px;">' +
                  '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">Attn</button> ' +
@@ -1571,12 +1624,12 @@ function renderDashboard(user: any) {
                let statusHtml = '<span class="badge bg-green">Running</span>';
                let infoTxt = '-';
                let amtTxt = '0';
-               
+
                if (m.dueMonths > 0) {
                    statusHtml = '<span class="badge bg-amber">Due</span>';
                    if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                   infoTxt = m.dueMonths + ' Mo Due';
-                 
+                   infoTxt = readableDueText(m);
+
                    const dueAmt = m.dueMonths * price;
                    const paid = m.balance || 0;
                    const remaining = Math.max(0, dueAmt - paid);
@@ -1586,8 +1639,8 @@ function renderDashboard(user: any) {
                    if (paid > 0) amtTxt += '<br><span style="font-size:10px; color:gray;">(Paid: ' + paid + ')</span>';
                } else if (m.dueMonths < 0) {
                    statusHtml = '<span class="badge bg-blue">Advanced</span>';
-                   infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
-                   amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
+                   infoTxt = readableDueText(m);
+                   amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>';
                }
                return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
             }).join('') || '<tr><td colspan="6">No data.</td></tr>';
@@ -1937,23 +1990,22 @@ function renderDashboard(user: any) {
                return;
             }
             
-            const val = e.target.value;
-            if(this.searchTimeout) clearTimeout(this.searchTimeout);
-            this.searchTimeout = setTimeout(async ()=>{
-               if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
-               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-               document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
-                 let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
-                 if (m.status === 'inactive') {
-                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';
-                 } else if (m.dueMonths > 0) {
-                     statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + m.dueMonths + ' Mo Due</span>';
-                 } else if (m.dueMonths < 0) {
-                     statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
-                 }
-                
-                 // Already checked in badge
+                 const val = e.target.value;
+                if(this.searchTimeout) clearTimeout(this.searchTimeout);
+                this.searchTimeout = setTimeout(async ()=>{
+                   if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
+                   const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
+                   const data = await res.json();
+                   document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
+                     let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
+                     if (m.status === 'inactive') {
+                         statusStr = '<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';
+                     } else if (m.dueMonths !== 0) {
+                         const color = m.dueMonths > 0 ? 'red' : 'green';
+                         statusStr = '<span style="color:' + color + '; font-weight:bold; font-size:11px;">' + readableDueText(m) + '</span>';
+                     }
+
+                     // Already checked in badge
                  let checkedInBadge = '';
                  if (m.checkedIn) {
                     checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
@@ -1972,15 +2024,14 @@ function renderDashboard(user: any) {
             this.searchTimeout = setTimeout(async ()=>{
                if(!val.trim()) { document.getElementById('qp-results').innerHTML=''; return; }
                const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-               document.getElementById('qp-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
-                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' + 
-                        '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + 
-                        '</div>';
+                const data = await res.json();
+                document.getElementById('qp-results').innerHTML = data.results.map(m => {
+                  let dueStr = 'Active';
+                  if (m.status === 'inactive') dueStr = '⛔ Inactive';
+                  else dueStr = readableDueText(m);
+                  return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' +
+                         '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr +
+                         '</div>';
                }).join('');
             }, 200);
         },
@@ -2027,15 +2078,14 @@ function renderDashboard(user: any) {
             setTimeout(async ()=>{
                if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
                const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-               document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
-                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = m.dueMonths + ' Mo Due';
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
-               }).join('');
-            }, 200);
+                const data = await res.json();
+                document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
+                  let dueStr = 'Active';
+                  if (m.status === 'inactive') dueStr = '⛔ Inactive';
+                  else dueStr = readableDueText(m);
+                  return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
+                }).join('');
+             }, 200);
         },
        
         renderCharts() {
