@@ -41,11 +41,14 @@ function calcDueMonths(expiry: string | null | undefined): number | null {
   const now = new Date();
   
   // Calculate difference in months
+  // Positive = Due (Past Expiry)
+  // Negative = Advance (Future Expiry)
   let months =
     (now.getFullYear() - exp.getFullYear()) * 12 +
     (now.getMonth() - exp.getMonth());
 
   // Adjust for day of month
+  // If today is 20th and expiry was 15th, we have entered the next month cycle
   if (now.getDate() > exp.getDate()) {
      months += 1;
   }
@@ -92,7 +95,6 @@ function baseHead(title: string): string {
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
-    .help-text { font-size: 11px; color: var(--text-muted); margin-top: -8px; margin-bottom: 10px; display: block; }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
@@ -241,7 +243,7 @@ export default {
         await env.DB.prepare("DELETE FROM users").run(); 
         const allPerms = JSON.stringify(['home','members','attendance','history','payments','settings']);
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, 'admin', ?)").bind(email, hash, body.adminName, allPerms).run();
-        
+         
         const defaultPlans = JSON.stringify([{name:"Standard", price:500, admissionFee: 0}, {name:"Premium", price:1000, admissionFee: 0}]);
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(defaultPlans).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind("BDT").run();
@@ -344,7 +346,6 @@ export default {
         const attendanceThreshold = parseInt(config["attendance_threshold_days"] || "3", 10);
         const inactiveAfterMonths = parseInt(config["inactive_after_due_months"] || "3", 10);
         const renewalFee = parseInt(config["renewal_fee"] || "0", 10);
-        const admissionFee = parseInt(config["admission_fee"] || "0", 10);
         const currency = config["currency"] || "BDT";
         const lang = config["lang"] || "en";
         
@@ -365,7 +366,7 @@ export default {
         for (const m of membersRaw.results || []) {
           const dueMonths = calcDueMonths(m.expiry_date);
           let newStatus = m.status || "active";
-          
+        
           if (dueMonths != null) {
              if (dueMonths >= inactiveAfterMonths) { 
                newStatus = "inactive"; 
@@ -385,7 +386,7 @@ export default {
                  totalOutstanding += Math.max(0, owed);
              }
           }
-          
+        
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
           membersProcessed.push({ ...m, status: newStatus, dueMonths });
         }
@@ -401,7 +402,7 @@ export default {
           attendanceToday: (attendanceToday.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => ({...r, dueMonths: calcDueMonths(r.expiry_date)})),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, admissionFee }
+          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee }
         });
       }
 
@@ -520,11 +521,28 @@ export default {
         }
         
         // Handle Initial Plan Payment (if any)
-        if (body.initialPayment && result.meta.last_row_id) {
-            const amt = parseInt(body.initialPayment || "0");
-            if (amt > 0) {
-                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, amt, new Date().toISOString()).run();
+        const initialAmt = parseInt(body.initialPayment || "0");
+        if (initialAmt > 0 && result.meta.last_row_id) {
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, initialAmt, new Date().toISOString()).run();
+
+            // Process payment to update balance and expiry
+            const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(result.meta.last_row_id).first<any>();
+            const config = await env.DB.prepare("SELECT value FROM config WHERE key = 'membership_plans'").first<any>();
+            const plans = JSON.parse(config.value || '[]');
+            const plan = plans.find((p: any) => p.name === member.plan);
+            const price = plan ? Number(plan.price) : 0;
+
+            let currentBalance = (member.balance || 0) + initialAmt;
+            let expiryUpdated = new Date(member.expiry_date);
+            
+            if (price > 0) {
+                while (currentBalance >= price) {
+                    currentBalance -= price;
+                    expiryUpdated.setMonth(expiryUpdated.getMonth() + 1);
+                }
             }
+            
+            await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ? WHERE id = ?").bind(expiryUpdated.toISOString(), currentBalance, member.id).run();
         }
 
         return json({ success: true });
@@ -632,7 +650,6 @@ export default {
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('admission_fee', ?)").bind(String(body.admissionFee)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
         return json({ success: true });
       }
@@ -793,11 +810,11 @@ function renderDashboard(user: any) {
                 <div class="flex">
                   <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
                   <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
-                      <option value="all">All Status</option>
-                      <option value="active">Active</option>
-                      <option value="due">Due</option>
-                      <option value="advanced">Advanced</option>
-                      <option value="inactive">Inactive</option>
+                     <option value="all">All Status</option>
+                     <option value="active">Active</option>
+                     <option value="due">Due</option>
+                     <option value="advanced">Advanced</option>
+                     <option value="inactive">Inactive</option>
                   </select>
                 </div>
                 <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
@@ -876,12 +893,12 @@ function renderDashboard(user: any) {
                     <option value="advanced">Advanced</option>
                   </select>
                </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
-                  <tbody id="tbl-payment-list"></tbody>
-                </table>
-              </div>
+               <div class="table-responsive">
+                 <table>
+                   <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
+                   <tbody id="tbl-payment-list"></tbody>
+                 </table>
+               </div>
             </div>
           </div>
 
@@ -904,31 +921,20 @@ function renderDashboard(user: any) {
                    </div>
                 </div>
                 
-                <h4 style="margin: 15px 0 10px 0; border-bottom: 1px solid var(--border); padding-bottom: 5px;">Rules & Fees</h4>
-
                 <div class="flex">
                    <div class="w-full">
                       <label id="lbl-att-th">Attendance Threshold (Days)</label>
                       <input name="attendanceThreshold" type="number" min="1" max="31" required>
-                      <span class="help-text">Min. days present to count month as "Active" in history.</span>
                    </div>
                    <div class="w-full">
-                      <label id="lbl-inact-th">Inactive Limit (Months)</label>
+                      <label id="lbl-inact-th">Inactive after X months due</label>
                       <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
-                      <span class="help-text">Mark member "Inactive" after this many months of dues.</span>
                    </div>
                 </div>
 
-                <div class="flex">
-                   <div class="w-full">
-                      <label id="lbl-adm-fee">Default Admission Fee</label>
-                      <input name="admissionFee" type="number" min="0" required>
-                   </div>
-                   <div class="w-full">
-                      <label id="lbl-ren-fee">Default Renewal Fee (Global)</label>
-                      <input name="renewalFee" type="number" min="0" required>
-                      <span class="help-text">Auto-filled when re-admitting an inactive member.</span>
-                   </div>
+                <div class="w-full">
+                  <label id="lbl-ren-fee">Renewal Fee (Global)</label>
+                  <input name="renewalFee" type="number" min="0" required>
                 </div>
                 
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
@@ -944,15 +950,10 @@ function renderDashboard(user: any) {
                   <button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button>
                   <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
                 </div>
-
-                <!-- DANGER ZONE -->
-                <div style="margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-                    <h4 style="color: var(--danger); margin-top:0;">Danger Zone</h4>
-                    <p class="help-text">These actions are irreversible. Please be careful.</p>
-                    <button type="button" class="btn btn-danger" onclick="app.nuke()">Factory Reset System (Delete All Data)</button>
-                </div>
-
               </form>
+              <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
+                <button onclick="app.resetDB()" class="btn btn-danger" id="btn-reset-db">⚠️ Factory Reset Database</button>
+              </div>
             </div>
           </div>
 
@@ -1019,7 +1020,7 @@ function renderDashboard(user: any) {
           </div>
           
           <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
-             
+              
              <!-- SECTION: NEW MEMBER -->
              <div id="sec-new-fees">
                  <label style="margin-bottom:8px; font-weight:bold;">Fees (New)</label>
@@ -1070,7 +1071,7 @@ function renderDashboard(user: any) {
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
         <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px; border-bottom:1px solid #eee; padding-bottom:10px;"></p>
+        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
         <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
         
         <form onsubmit="app.pay(event)">
@@ -1078,21 +1079,18 @@ function renderDashboard(user: any) {
           
           <!-- Renewal Section -->
           <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
-             <label style="color:var(--danger)">Renewal Fee (Fixed)</label>
-             <input name="renewalFee" id="pay-ren-fee" type="number" placeholder="Default from settings">
-             <span class="help-text">Auto-filled from settings. Can be overridden.</span>
+             <label>Renewal Fee</label>
+             <input name="renewalFee" id="pay-ren-fee" type="number" readonly>
+             <label>Initial Plan Payment (Optional - Extends Membership)</label>
           </div>
           
-          <div class="w-full">
-              <label id="lbl-pay-amount">Amount Paid</label>
-              <input name="amount" id="pay-amount" type="number" required>
-          </div>
+          <div id="pay-standard-label"><label>Amount Paid</label></div>
+          <input name="amount" id="pay-amount" type="number" required>
           
-          <div style="font-size:12px; color:var(--text-muted); margin-top:5px; background: #f9fafb; padding: 10px; border-radius: 6px;">
-             <div>Plan Cost: <span id="pay-plan-price" style="font-weight:bold; color:var(--text-main)">-</span></div>
-             <div>Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold; color:var(--text-main)">0</span></div>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
+             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
           </div>
-
           <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
@@ -1198,7 +1196,7 @@ function renderDashboard(user: any) {
           act_log: "Activity Log", filter: "Filter", clear: "Clear",
           search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
           sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
-          att_th: "Attendance Threshold (Days)", inact_th: "Inactive Limit (Months)", adm_fee: "Default Admission Fee", ren_fee: "Default Renewal Fee (Global)",
+          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X months due", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
           mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
           user_acc: "User Access", add_user: "+ Add User",
           chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
@@ -1288,8 +1286,6 @@ function renderDashboard(user: any) {
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
           // Simple active highlighting
           const navItems = document.querySelectorAll('.nav-item');
-          const map = {home:0, members:1, attendance:2, history:3, payments:4, settings:5, users:6}; 
-          // Note: map index depends on permissions. Simple search is better:
           navItems.forEach(el => { if(el.innerText === t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user')) el.classList.add('active'); });
 
           ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
@@ -1340,7 +1336,6 @@ function renderDashboard(user: any) {
            document.getElementById('lbl-lang').innerText = t('lang');
            document.getElementById('lbl-att-th').innerText = t('att_th');
            document.getElementById('lbl-inact-th').innerText = t('inact_th');
-           document.getElementById('lbl-adm-fee').innerText = t('adm_fee');
            document.getElementById('lbl-ren-fee').innerText = t('ren_fee');
            document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
            document.getElementById('btn-add-plan').innerText = t('add_plan');
@@ -1484,21 +1479,21 @@ function renderDashboard(user: any) {
                let amtTxt = '0';
                
                if (m.dueMonths > 0) {
-                  statusHtml = '<span class="badge bg-amber">Due</span>';
-                  if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                  infoTxt = m.dueMonths + ' Mo Due';
-                  
-                  const dueAmt = m.dueMonths * price;
-                  const paid = m.balance || 0;
-                  const remaining = Math.max(0, dueAmt - paid);
-                  totalOutstanding += remaining;
-                  
-                  amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + remaining + '</span>';
-                  if (paid > 0) amtTxt += '<br><span style="font-size:10px; color:gray;">(Paid: ' + paid + ')</span>';
+                   statusHtml = '<span class="badge bg-amber">Due</span>';
+                   if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
+                   infoTxt = m.dueMonths + ' Mo Due';
+                 
+                   const dueAmt = m.dueMonths * price;
+                   const paid = m.balance || 0;
+                   const remaining = Math.max(0, dueAmt - paid);
+                   totalOutstanding += remaining;
+                 
+                   amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + remaining + '</span>';
+                   if (paid > 0) amtTxt += '<br><span style="font-size:10px; color:gray;">(Paid: ' + paid + ')</span>';
                } else if (m.dueMonths < 0) {
-                  statusHtml = '<span class="badge bg-blue">Advanced</span>';
-                  infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
-                  amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
+                   statusHtml = '<span class="badge bg-blue">Advanced</span>';
+                   infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
+                   amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
                }
                return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
             }).join('') || '<tr><td colspan="6">No data.</td></tr>';
@@ -1592,21 +1587,21 @@ function renderDashboard(user: any) {
                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                
                for(let m=0; m<12; m++) {
-                  const presentDays = this.activeHistory.history.filter(h => {
+                   const presentDays = this.activeHistory.history.filter(h => {
                       const d = new Date(h.check_in_time);
                       return d.getFullYear() === year && d.getMonth() === m;
-                  }).map(h => new Date(h.check_in_time).getDate());
-                  
-                  const unique = new Set(presentDays).size;
-                  const isP = unique >= threshold;
-                  const badgeCls = isP ? 'ym-p' : 'ym-a';
-                  const badgeTxt = isP ? 'P' : 'A';
-                  
-                  gridHtml += '<div class="year-month-card">' +
+                   }).map(h => new Date(h.check_in_time).getDate());
+                   
+                   const unique = new Set(presentDays).size;
+                   const isP = unique >= threshold;
+                   const badgeCls = isP ? 'ym-p' : 'ym-a';
+                   const badgeTxt = isP ? 'P' : 'A';
+                   
+                   gridHtml += '<div class="year-month-card">' +
                       '<div class="ym-name">' + monthNames[m] + '</div>' +
                       '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
                       '<div class="ym-count">' + unique + ' Days</div>' +
-                  '</div>';
+                   '</div>';
                }
                gridHtml += '</div>';
                container.innerHTML = gridHtml;
@@ -1733,18 +1728,6 @@ function renderDashboard(user: any) {
             else { alert((await res.json()).error); }
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
-        
-        // Danger Zone: Nuke DB
-        async nuke() {
-             if(confirm("⚠ WARNING: This will delete ALL members, payments, and settings. This cannot be undone.\n\nType 'RESET' to confirm.")) {
-                 // Simple confirm for now to avoid prompt() if not needed, but prompt is safer.
-                 // Let's stick to standard confirm sequence for safety.
-                 if(confirm("Are you absolutely sure?")) {
-                     await fetch('/api/nuke');
-                     location.reload();
-                 }
-             }
-        },
 
         /* --- SETTINGS --- */
         applySettingsUI() {
@@ -1754,7 +1737,6 @@ function renderDashboard(user: any) {
           form.querySelector('select[name="lang"]').value = s.lang || 'en';
           form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
           form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
-          form.querySelector('input[name="admissionFee"]').value = s.admissionFee;
           form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
           
           // Render Plan List
@@ -1810,12 +1792,17 @@ function renderDashboard(user: any) {
                   lang: form.querySelector('select[name="lang"]').value,
                   attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
                   inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
-                  admissionFee: form.querySelector('input[name="admissionFee"]').value,
                   renewalFee: form.querySelector('input[name="renewalFee"]').value,
                   membershipPlans: plans
                }) 
             });
             location.reload();
+        },
+        
+        async resetDB() {
+          if(!confirm("Delete ALL data and reset system? This is irreversible!")) return;
+          await fetch('/api/nuke');
+          location.reload();
         },
         
         /* --- PAYMENTS & RENEWAL --- */
@@ -2007,9 +1994,9 @@ function renderDashboard(user: any) {
                // Reset UI State
                document.getElementById('pay-status-warning').style.display = 'none';
                document.getElementById('pay-renewal-section').style.display = 'none';
+               document.getElementById('pay-standard-label').style.display = 'block';
                document.getElementById('pay-submit-btn').innerText = 'Confirm';
                document.getElementById('pay-amount').required = true;
-               document.getElementById('lbl-pay-amount').innerText = "Amount Paid";
                app.isRenewalMode = false;
 
                // Inactive Logic
@@ -2017,11 +2004,8 @@ function renderDashboard(user: any) {
                    app.isRenewalMode = true;
                    document.getElementById('pay-status-warning').style.display = 'block';
                    document.getElementById('pay-renewal-section').style.display = 'block';
-                   
-                   // Auto-fill renewal fee from settings
+                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
                    document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
-                   
-                   document.getElementById('lbl-pay-amount').innerText = "Plan Amount (Monthly Cost)";
                    document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
                }
                
