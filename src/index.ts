@@ -277,141 +277,115 @@ function baseHead(title: string): string {
     :root {
       --primary: #6366f1; --primary-dark: #4f46e5;
       --bg-body: #f3f4f6; --bg-nav: #111827; --bg-card: #ffffff;
-      --text-main: #1f2937; --text-muted: #6b7280;
+      --text-main: #111827; --text-muted: #6b7280;
       --border: #e5e7eb;
       --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
-      --radius: 12px;
+      --radius: 8px;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* LAYOUT */
-    .app-layout { display: flex; height: 100%; width: 100%; }
-    .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-    .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; scroll-behavior: smooth; }
+    .app-layout { display: flex; height: 100%; }
+    .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
+    .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
     
-    .card { background: var(--bg-card); padding: 24px; border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid var(--border); margin-bottom: 20px; transition: box-shadow 0.2s; }
-    .card:hover { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-
-    .btn { padding: 10px 16px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; outline: none; }
-    .btn:active { transform: scale(0.98); }
+    .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
+    .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
     .btn-primary { background: var(--primary); color: white; }
     .btn-primary:hover { background: var(--primary-dark); }
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
-    .btn-outline:hover { background: #f9fafb; border-color: #d1d5db; }
     .btn-danger { background: var(--danger); color: white; }
-    .btn-danger:hover { background: #dc2626; }
-    .btn-icon { padding: 8px; border-radius: 6px; }
-
     .w-full { width: 100%; }
     
-    input, select, textarea { width: 100%; padding: 11px 14px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: all 0.2s; background: #f9fafb; color: var(--text-main); font-family: inherit; }
-    input:focus, select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15); background: #fff; }
-    label { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #374151; }
-    .help-text { font-size: 12px; color: var(--text-muted); margin-top: -8px; margin-bottom: 12px; line-height: 1.4; }
+    input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
+    input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
+    label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
 
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .checkbox-item { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 10px; border-radius: 8px; background: #fff; transition: 0.2s; }
-    .checkbox-item:hover { border-color: var(--primary); background: #eef2ff; }
+    .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
     
-    /* TABLE & RESPONSIVENESS */
-    .table-container { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+    .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
-    th { background: #f9fafb; padding: 14px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 700; border-bottom: 1px solid var(--border); }
-    td { padding: 14px 16px; border-bottom: 1px solid #f3f4f6; font-size: 14px; vertical-align: middle; color: #4b5563; }
+    th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+    td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: #f9fafb; }
     
-    /* MOBILE CARD VIEW FOR TABLES */
-    .mobile-list { display: none; display: flex; flex-direction: column; gap: 12px; }
-    .mobile-card { background: white; padding: 16px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; position: relative; }
-    .mobile-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
-    .mobile-card-title { font-weight: 700; font-size: 15px; color: var(--text-main); }
-    .mobile-card-sub { font-size: 13px; color: var(--text-muted); }
-    .mobile-card-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; border-bottom: 1px dashed #f3f4f6; }
-    .mobile-card-row:last-child { border-bottom: none; }
-    .mobile-card-actions { display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f3f4f6; }
-    .mobile-card-actions .btn { flex: 1; padding: 8px; font-size: 12px; }
-
-    /* DASHBOARD STATS */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
-    .stat-card { background: white; padding: 24px; border-radius: 16px; border: 1px solid var(--border); display: flex; flex-direction: column; position: relative; overflow: hidden; }
-    .stat-card::after { content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, transparent 50%, rgba(99, 102, 241, 0.05) 50%); }
-    .stat-val { font-size: 28px; font-weight: 800; color: var(--text-main); margin-top: 8px; letter-spacing: -0.5px; }
-    .stat-label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
+    .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
+    .stat-val { font-size: 24px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
+    .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
 
     .hidden { display: none !important; }
     .flex { display: flex; align-items: center; gap: 12px; }
-    .flex-col { display: flex; flex-direction: column; }
-    .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; }
+    .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
     
-    .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; }
+    .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
     .bg-blue { background: #dbeafe; color: #1e40af; }
     
-    /* SIDEBAR */
-    .nav { padding: 16px; flex: 1; overflow-y: auto; }
-    .nav-item { padding: 12px 16px; border-radius: 10px; color: #9ca3af; cursor: pointer; margin-bottom: 4px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 12px; transition: all 0.2s; }
-    .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
-    .nav-item.active { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+    .nav { padding: 16px; flex: 1; }
+    .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
+    .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
     
-    /* MODALS */
-    .modal-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 39, 0.6); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 20px; opacity: 0; transition: opacity 0.2s; }
-    .modal-backdrop.show { opacity: 1; }
-    .modal-content { background: white; width: 100%; max-width: 550px; padding: 28px; border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; position: relative; transform: scale(0.95); transition: transform 0.2s; }
-    .modal-backdrop.show .modal-content { transform: scale(1); }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+    .modal-content { background: white; width: 100%; max-width: 600px; padding: 24px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
 
-    .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 12px; border: 1px solid var(--border); background: #f9fafb; }
-    .checkin-item { padding: 12px 16px; font-size: 14px; cursor: pointer; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
-    .checkin-item:hover { background: #eef2ff; }
+    .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
+    .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
+    .checkin-item:hover { background: #ffffff; }
 
-    .plan-row { display: grid; grid-template-columns: 2fr 1fr 1fr 40px; gap: 10px; margin-bottom: 10px; align-items: center; }
+    .plan-row { display: grid; grid-template-columns: 2fr 1fr 1fr 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
 
-    /* TOAST NOTIFICATIONS */
-    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
-    .toast { background: white; padding: 16px 20px; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); border-left: 5px solid var(--primary); display: flex; align-items: center; gap: 12px; min-width: 300px; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events: auto; }
-    .toast.show { transform: translateX(0); }
-    .toast-success { border-color: var(--success); }
-    .toast-error { border-color: var(--danger); }
-    .toast-msg { font-size: 14px; font-weight: 500; color: #1f2937; }
+    /* Calendar Styles */
+    .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; flex-wrap: wrap; }
+    .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+    .cal-header { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
+    .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; border-radius: 6px; background: #f3f4f6; color: #9ca3af; font-weight: 500; }
+    .cal-cell.present { background: #22c55e; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3); }
+    .cal-cell.absent { background: #fecaca; color: #ef4444; opacity: 0.5; }
+    .cal-stats { margin-top: 15px; font-size: 13px; display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #f3f4f6; }
+   
+    /* Yearly Summary Grid */
+    .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 15px; }
+    .year-month-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; text-align: center; background: #fff; }
+    .ym-name { font-weight: bold; font-size: 14px; margin-bottom: 5px; color: #374151; }
+    .ym-badge { display: inline-block; width: 30px; height: 30px; line-height: 30px; border-radius: 50%; font-weight: bold; font-size: 14px; color: white; margin-bottom: 5px; }
+    .ym-p { background: #22c55e; }
+    .ym-a { background: #ef4444; }
+    .ym-count { font-size: 11px; color: #6b7280; }
 
-    /* RESPONSIVE DESIGN */
-    .desktop-only { display: table-row; }
     .mobile-header { display: none; }
-    
     @media (max-width: 768px) {
-      .desktop-only { display: none; }
-      .mobile-list { display: flex; }
-      .table-container { display: none; }
-      
-      .app-layout { flex-direction: column; height: auto; min-height: 100vh; }
-      .sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; transform: translateX(-100%); box-shadow: 10px 0 25px -5px rgba(0,0,0,0.1); }
+      body { overflow: auto; }
+      .app-layout { flex-direction: column; height: auto; }
+      .sidebar { position: fixed; inset: 0 auto 0 0; height: 100%; transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); }
-      
-      .mobile-header { display: flex; justify-content: space-between; padding: 16px 20px; background: white; border-bottom: 1px solid var(--border); align-items: center; position: sticky; top: 0; z-index: 40; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
-      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; backdrop-filter: blur(2px); }
+      .mobile-header { display: flex; justify-content: space-between; padding: 16px; background: white; border-bottom: 1px solid var(--border); align-items: center; }
+      .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
-      
       .checkbox-group { grid-template-columns: 1fr; }
-      .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
-      .stat-card { padding: 16px; }
-      .stat-val { font-size: 20px; }
-      
-      .card { padding: 16px; margin-bottom: 16px; }
-      .btn { padding: 8px 12px; font-size: 13px; }
-      
-      .plan-row { grid-template-columns: 1fr 1fr; gap: 8px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 10px; }
+
+      /* Mobile Optimization */
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
+      .stat-card { padding: 12px; border-radius: 8px; }
+      .stat-val { font-size: 18px; margin-top: 2px; }
+      .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+     
+      .card { padding: 16px; border-radius: 8px; }
+      h2, h3 { font-size: 18px; }
+     
+      .btn { padding: 6px 10px; font-size: 11px; }
+      .flex-between { gap: 8px; }
+      input, select { font-size: 13px; }
+     
+      .plan-row { grid-template-columns: 1fr 1fr; }
       .plan-row input:nth-child(3) { grid-column: span 2; }
-      .plan-row button { grid-column: span 2; width: 100%; }
-      
-      /* Make search bars and filters stack nicely */
-      .flex-between { flex-direction: column; align-items: stretch; gap: 12px; }
-      .flex-between > * { width: 100%; }
-      #search, #member-filter, #pay-search, #pay-filter { margin-bottom: 0; }
+      .plan-row button { grid-column: span 2; }
     }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -503,6 +477,8 @@ export default {
       }
 
       if (url.pathname === "/api/nuke") {
+        // Protect nuke with session check inside if logic for safety, but here simple route
+        // Ideally should be authenticated. Adding rudimentary check
         const user = await getSession(req, env);
         if (!user || user.role !== 'admin') return errorResponse("Unauthorized", 401);
         await factoryReset(env);
@@ -527,7 +503,7 @@ export default {
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
         const gymName = (gymRow && gymRow.value) || "Gym OS";
         const attendanceThreshold = settings.attendanceThreshold;
-        
+        // Limit print to first 500 to avoid memory crash
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id LIMIT 500").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         const attendanceByMember: Record<number, string[]> = {};
@@ -600,6 +576,9 @@ export default {
         const settings = await loadSettings(env);
         const { attendanceThreshold, inactiveAfterMonths, renewalFee, currency, lang, membershipPlans, clock } = settings;
 
+        // Optimization: Don't load full attendance history for calculation, only load relevant recent attendance if possible
+        // For efficiency, we still fetch all, but we could LIMIT this if the gym grows > 5000 members.
+        // Currently assumes < 5000 members for single file worker memory limits.
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         
@@ -637,6 +616,7 @@ export default {
                activeCount++; 
              }
              
+             // Calc Outstanding (considering balance)
              if (dueMonths > 0) {
                  const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
                  const owed = (dueMonths * planPrice) - (m.balance || 0);
@@ -650,6 +630,7 @@ export default {
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = ? ORDER BY a.id DESC").bind(clock.today).all<any>();
         
+        // Limit history to 50 for bootstrap payload efficiency
         const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
         
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = ?").bind(clock.today).first<any>();
@@ -663,7 +644,7 @@ export default {
             return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
           }),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => {
-            return { ...r, dueMonths: 0 }; 
+            return { ...r, dueMonths: 0 }; // History doesn't strictly need due calculation for display, optimizes load
           }),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, time: { timezone: clock.timezone, simulated: clock.simulated, simulatedTime: clock.simulatedTime, now: clock.now.toISOString() } }
@@ -688,6 +669,8 @@ export default {
         }
         
         query += " ORDER BY a.id DESC";
+        
+        // If no date filter, limit to recent
         if (!body.date) {
             query += " LIMIT 100"; 
         }
@@ -698,6 +681,7 @@ export default {
 
       if (url.pathname === "/api/payments/history" && req.method === "POST") {
         const body = await req.json() as any;
+        // Changed JOIN to LEFT JOIN to include deleted members (where name might be null)
         let query = "SELECT p.amount, p.date, m.name, p.member_id FROM payments p LEFT JOIN members m ON p.member_id = m.id WHERE 1=1";
         const params: any[] = [];
         
@@ -731,6 +715,7 @@ export default {
         let res;
         const isNumeric = /^\d+$/.test(qRaw);
         
+        // Optimized query to check attendance status for today
         const settings = await loadSettings(env);
         const today = settings.clock.today;
         const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, status, manual_due_months, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = ?) as today_visits FROM members";
@@ -745,6 +730,7 @@ export default {
            res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? LIMIT 10").bind(today, `%${qRaw}%`).all();
         }
         
+        // Preload attendance for matched members to respect monthly billing threshold
         const ids = (res.results || []).map((m:any)=>m.id);
         let attendanceByMember: Record<number, string[]> = {};
         if (ids.length) {
@@ -776,6 +762,7 @@ export default {
         const isMigration = body.migrationMode === true || body.migrationMode === "true";
         const legacyDues = Math.max(0, parseInt(body.legacyDues || "0", 10));
 
+        // Default paid-through month is the previous month end
         const base = new Date(settings.clock.now);
         base.setMonth(base.getMonth() - 1, 1);
         let paidThrough = monthEnd(base);
@@ -792,6 +779,7 @@ export default {
         
         const newMemberId = result.id;
 
+        // Handle Admission Fee Payment
         if (body.admissionFeePaid && newMemberId) {
             const fee = parseInt(body.admissionFee || "0");
             if (fee > 0) {
@@ -799,9 +787,11 @@ export default {
             }
         }
         
+        // Handle Initial Plan Payment (if any)
         const initialAmt = parseInt(body.initialPayment || "0");
         if (initialAmt > 0 && newMemberId) {
             await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, initialAmt, settings.clock.now.toISOString()).run();
+            // Process payment to update balance and expiry
             const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(newMemberId).first<any>();
             const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
             const price = plan ? Number(plan.price) : 0;
@@ -832,6 +822,7 @@ export default {
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
 
+        // Strict Inactive Block
         if (member.status === 'inactive') return json({ error: "Membership Inactive. Please Renew.", code: "INACTIVE" }, 400);
 
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = ? LIMIT 1").bind(memberId, settings.clock.today).first();
@@ -842,20 +833,24 @@ export default {
         return json({ success: true, status, name: member.name, isExpired });
       }
 
+      // RE-ADMISSION / RENEWAL ENDPOINT
       if (url.pathname === "/api/members/renew" && req.method === "POST") {
         const settings = await loadSettings(env);
         const { memberId, renewalFee, amount } = await req.json() as any;
         const rFee = Number(renewalFee);
         const planAmt = Number(amount);
 
+        // 1. Record Renewal Fee
         if (rFee > 0) {
             await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, settings.clock.now.toISOString()).run();
         }
 
+        // 2. Record Plan Payment
         if (planAmt > 0) {
             await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, planAmt, settings.clock.now.toISOString()).run();
         }
 
+        // 3. Reset Member Status & Expiry
         const member = await env.DB.prepare("SELECT plan FROM members WHERE id = ?").bind(memberId).first<any>();
         const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
         const price = plan ? Number(plan.price) : 0;
@@ -866,7 +861,7 @@ export default {
 
         if (price > 0) {
             let months = Math.floor(planAmt / price);
-            balance = planAmt % price;
+            balance = planAmt % price; // Store remainder
 
             while (manualDue > 0 && months > 0) {
                 months -= 1;
@@ -878,6 +873,7 @@ export default {
                 newExpiry = addPaidMonths(newExpiry, months);
             }
         } else {
+            // Fallback if price is 0
             newExpiry = addPaidMonths(newExpiry, 1);
         }
 
@@ -890,8 +886,10 @@ export default {
         const { memberId, amount } = await req.json() as any;
         const amt = Number(amount);
 
+        // Record the transaction
         await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, settings.clock.now.toISOString()).run();
         
+        // Update member balance and expiry logic
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
         const price = plan ? Number(plan.price) : 0;
@@ -900,6 +898,7 @@ export default {
         let expiry = monthEnd(new Date(member.expiry_date));
         let manualDue = member.manual_due_months || 0;
 
+        // While balance allows, extend month
         if (price > 0) {
             while (manualDue > 0 && currentBalance >= price) {
                 currentBalance -= price;
@@ -919,6 +918,8 @@ export default {
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
+        // NOT deleting payments to preserve revenue history
+        // await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); 
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
         return json({ success: true });
       }
@@ -971,9 +972,16 @@ function renderSetup() {
           <button type="submit" class="btn btn-primary w-full" style="padding:12px">Install System</button>
         </form>
         <div id="error" style="color:var(--danger); margin-top:10px; font-size:13px; text-align:center;"></div>
+        <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
+           <button onclick="nukeDB()" class="btn btn-danger" style="font-size:11px;">⚠ Factory Reset Database</button>
+        </div>
       </div>
     </div>
     <script>
+      async function nukeDB() {
+        if(!confirm("Delete ALL data?")) return;
+        await fetch('/api/nuke'); location.reload();
+      }
       document.getElementById('form').onsubmit = async (e) => {
         e.preventDefault();
         try {
@@ -989,6 +997,7 @@ function renderSetup() {
 }
 
 function renderLogin(gymName: string) {
+  // Safe insertion
   const safeName = escapeHtml(gymName);
   const html = `${baseHead("Login")}
   <body>
@@ -1010,7 +1019,7 @@ function renderLogin(gymName: string) {
         try {
           const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
           if(res.ok) {
-            sessionStorage.removeItem('gym_view'); 
+            sessionStorage.removeItem('gym_view'); // Clear old session on login
             window.location.href = '/dashboard';
           } else { const d = await res.json(); throw new Error(d.error || "Login failed"); }
         } catch(err) { document.getElementById('error').textContent = err.message; }
@@ -1021,38 +1030,35 @@ function renderLogin(gymName: string) {
 }
 
 function renderDashboard(user: any) {
+  // Secure values before injecting into HTML string
   const safeUserName = escapeHtml(user.name);
   const safeRole = escapeHtml(user.role.toUpperCase());
-  const safePerms = user.permissions || '[]'; 
+  const safePerms = user.permissions || '[]'; // JSON string is safe here
+  const safeRoleRaw = escapeHtml(user.role);
 
   const html = `${baseHead("Dashboard")}
   <body>
     <div class="app-layout">
       <div class="mobile-header">
-         <div style="font-weight:700; font-size:18px;">Gym OS</div>
-         <button class="btn btn-outline btn-icon" onclick="toggleSidebar()">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-         </button>
+         <div style="font-weight:bold;">Gym OS</div>
+         <button class="btn btn-outline" onclick="toggleSidebar()">☰</button>
       </div>
       <div class="overlay" onclick="toggleSidebar()"></div>
 
       <aside class="sidebar">
-        <div style="padding:28px 24px; font-size:22px; font-weight:800; border-bottom:1px solid #1f2937; letter-spacing: -1px;">💪 Gym OS</div>
+        <div style="padding:24px; font-size:20px; font-weight:700; border-bottom:1px solid #1f2937;">💪 Gym OS</div>
         <div class="nav" id="nav-container"></div>
-        <div style="padding:20px; border-top:1px solid #1f2937; background: rgba(0,0,0,0.1);">
+        <div style="padding:20px; border-top:1px solid #1f2937;">
           <div style="font-weight:600;">${safeUserName}</div>
-          <div style="font-size:12px; opacity:0.6; margin-bottom:8px;">${safeRole}</div>
+          <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${safeRole}</div>
           <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;" id="txt-logout">Sign Out &rarr;</a>
         </div>
       </aside>
 
       <main class="main-content">
-        <!-- Toast Container -->
-        <div id="toast-container" class="toast-container"></div>
-
         <div class="flex-between" style="padding: 24px 24px 0 24px;">
-           <h2 id="page-title" style="margin:0; font-size: 24px;">Dashboard</h2>
-           <div class="flex" style="flex-wrap: wrap;">
+           <h2 id="page-title" style="margin:0;">Dashboard</h2>
+           <div class="flex">
               <button class="btn btn-primary" onclick="app.modals.quickPay.open()" id="btn-quick-pay">💰 Quick Pay</button>
               <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button>
            </div>
@@ -1076,7 +1082,7 @@ function renderDashboard(user: any) {
               </div>
               <div class="stat-card">
                 <span class="stat-label" id="lbl-mem-due">Members With Due</span>
-                <span class="stat-val" style="color:var(--warning)" id="stat-due">--</span>
+                <span class="stat-val" id="stat-due">--</span>
               </div>
               <div class="stat-card">
                 <span class="stat-label" id="lbl-total-due-money">Total Due Amount</span>
@@ -1085,7 +1091,7 @@ function renderDashboard(user: any) {
             </div>
             <div class="card">
               <h3 style="margin:0 0 15px 0;" id="lbl-due-overview">Dues Overview</h3>
-              <canvas id="chart-dues" height="80"></canvas>
+              <canvas id="chart-dues" height="100"></canvas>
             </div>
           </div>
 
@@ -1093,9 +1099,9 @@ function renderDashboard(user: any) {
           <div id="view-members" class="hidden">
             <div class="card">
               <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-                <div class="flex" style="flex-grow: 1;">
-                  <input id="search" placeholder="Search ID, Name or Phone..." style="margin:0; width:100%; max-width: 300px;" onkeyup="app.renderMembersTable()">
-                  <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:140px;">
+                <div class="flex">
+                  <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
+                  <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
                      <option value="all">All Status</option>
                      <option value="active">Active</option>
                      <option value="due">Due</option>
@@ -1105,31 +1111,25 @@ function renderDashboard(user: any) {
                 </div>
                 <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
               </div>
-              
-              <!-- DESKTOP TABLE -->
-              <div class="table-container">
+              <div class="table-responsive">
                 <table>
                   <thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-joined">Joined</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead>
                   <tbody id="tbl-members"></tbody>
                 </table>
               </div>
-              
-              <!-- MOBILE CARDS -->
-              <div class="mobile-list" id="list-members-mobile"></div>
             </div>
           </div>
 
           <!-- VIEW: ATTENDANCE (TODAY) -->
           <div id="view-attendance" class="hidden">
             <div class="card">
-              <h3 id="lbl-today-att" style="margin-top:0;">Today's Attendance</h3>
-              <div class="table-container">
+              <h3 id="lbl-today-att">Today's Attendance</h3>
+              <div class="table-responsive">
                 <table>
                   <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
                   <tbody id="tbl-attendance-today"></tbody>
                 </table>
               </div>
-              <div class="mobile-list" id="list-attendance-mobile"></div>
             </div>
           </div>
 
@@ -1138,19 +1138,18 @@ function renderDashboard(user: any) {
             <div class="card">
               <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
                 <h3 style="margin:0;" id="lbl-act-log">Activity Log</h3>
-                <div class="flex" style="gap:8px; flex-wrap:wrap;">
+                <div class="flex" style="gap:8px;">
                   <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
                   <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
                   <button class="btn btn-outline" onclick="app.clearHistoryFilter()" id="btn-clear">Clear</button>
                 </div>
               </div>
-              <div class="table-container">
+              <div class="table-responsive">
                 <table>
                   <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
                   <tbody id="tbl-attendance-history"></tbody>
                 </table>
               </div>
-               <div class="mobile-list" id="list-history-mobile"></div>
             </div>
           </div>
 
@@ -1163,7 +1162,7 @@ function renderDashboard(user: any) {
                     <div style="font-size:12px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Total Outstanding Dues</div>
                     <div id="total-outstanding-amount" style="font-size:28px; font-weight:800; color:var(--danger); margin-top:5px;">0</div>
                   </div>
-                  <div style="text-align:right" class="flex" style="gap:8px;">
+                  <div style="text-align:right" class="flex" style="gap:5px;">
                     <button class="btn btn-outline" onclick="app.openPaymentHistory()" id="btn-history">📜 History</button>
                     <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print PDF</button>
                   </div>
@@ -1171,35 +1170,34 @@ function renderDashboard(user: any) {
             </div>
 
             <div class="card">
-              <h3 id="lbl-search-col" style="margin-top:0;">Search & Collect</h3>
+              <h3 id="lbl-search-col">Search & Collect</h3>
               <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
               <div id="pay-search-results" class="checkin-results"></div>
             </div>
            
             <div class="card">
-               <div class="flex-between" style="margin-bottom:16px;">
+               <div class="flex-between" style="margin-bottom:10px;">
                   <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
-                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:140px;">
+                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
                     <option value="all">All Members</option>
                     <option value="due">Dues Only</option>
                     <option value="running">Running</option>
                     <option value="advanced">Advanced</option>
                   </select>
                </div>
-               <div class="table-container">
+               <div class="table-responsive">
                  <table>
                    <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
                    <tbody id="tbl-payment-list"></tbody>
                  </table>
                </div>
-               <div class="mobile-list" id="list-payments-mobile"></div>
             </div>
           </div>
 
           <!-- VIEW: SETTINGS -->
           <div id="view-settings" class="hidden">
             <div class="card">
-              <h3 id="lbl-sys-set" style="margin-top:0;">System Settings</h3>
+              <h3 id="lbl-sys-set">System Settings</h3>
               <form id="settings-form" onsubmit="app.saveSettings(event)">
                 <div class="flex">
                    <div class="w-full">
@@ -1208,7 +1206,7 @@ function renderDashboard(user: any) {
                    </div>
                    <div class="w-full">
                       <label id="lbl-lang">Language / ভাষা</label>
-                      <select name="lang" style="margin-bottom:12px;">
+                      <select name="lang" style="margin-bottom:15px;">
                          <option value="en">English</option>
                          <option value="bn">Bangla</option>
                       </select>
@@ -1248,11 +1246,11 @@ function renderDashboard(user: any) {
 
                 <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
                 <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
-                   <div class="plan-row desktop-only" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
+                   <div class="plan-row" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
                       <span>Plan Name</span><span>Price</span><span>Adm. Fee</span><span></span>
                    </div>
                    <div id="plans-container"></div>
-                   <button type="button" class="btn btn-outline w-full" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
+                   <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
                 </div>
                
                 <div class="flex-between" style="margin-top:15px; gap:10px;">
@@ -1273,14 +1271,11 @@ function renderDashboard(user: any) {
                  <h3 style="margin:0;" id="lbl-user-acc">User Access</h3>
                  <button class="btn btn-primary" onclick="app.openAddUser()" id="btn-add-user">+ Add User</button>
                </div>
-               <div class="table-container">
+               <div class="table-responsive">
                  <table>
                    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Permissions</th><th>Actions</th></tr></thead>
                    <tbody id="tbl-users"></tbody>
                  </table>
-               </div>
-               <div style="padding: 20px; text-align:center; color: #9ca3af; font-size: 13px;" class="mobile-list">
-                  User management is best viewed on desktop.
                </div>
             </div>
           </div>
@@ -1292,18 +1287,19 @@ function renderDashboard(user: any) {
 
     <div id="modal-checkin" class="modal-backdrop">
       <div class="modal-content">
-        <h3 style="text-align:center; margin-top:0;" id="lbl-chk-title">⚡ Check-In</h3>
+        <h3 style="text-align:center;" id="lbl-chk-title">⚡ Check-In</h3>
         <input id="checkin-id" type="text" placeholder="Search ID/Name..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onCheckinInput(event)">
         <div id="checkin-suggestions" class="checkin-results"></div>
-        <button class="btn btn-primary w-full" style="padding:14px; margin-top: 10px;" onclick="app.checkIn()" id="btn-sub-chk">Submit</button>
-        <button class="btn btn-outline w-full" style="margin-top:10px;" onclick="app.modals.checkin.close()">Close</button>
+        <button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk">Submit</button>
+        <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; min-height:20px;"></div>
+        <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
       </div>
     </div>
    
     <!-- QUICK PAY SEARCH MODAL -->
     <div id="modal-quick-pay" class="modal-backdrop">
       <div class="modal-content">
-        <h3 style="text-align:center; margin-top:0;" id="lbl-qp-title">💰 Quick Pay Search</h3>
+        <h3 style="text-align:center;" id="lbl-qp-title">💰 Quick Pay Search</h3>
         <input id="qp-search" type="text" placeholder="Search Name/ID..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onQuickPayInput(event)">
         <div id="qp-results" class="checkin-results"></div>
         <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.quickPay.close()">Close</button>
@@ -1312,25 +1308,25 @@ function renderDashboard(user: any) {
 
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="lbl-new-mem" style="margin-top:0;">New Member</h3>
+        <h3 id="lbl-new-mem">New Member</h3>
        
         <!-- TABS -->
         <div style="display:flex; border-bottom:1px solid #e5e7eb; margin-bottom:20px;">
-           <div id="tab-new" class="nav-item active" style="color:var(--primary); border-bottom:2px solid var(--primary); background:none; border-radius:0; margin:0; padding: 10px 16px;" onclick="app.switchAddTab('new')">New Admission</div>
-           <div id="tab-mig" class="nav-item" style="background:none; border-radius:0; margin:0; padding: 10px 16px;" onclick="app.switchAddTab('mig')">Migrating / Old</div>
+           <div id="tab-new" class="nav-item active" style="color:var(--primary); border-bottom:2px solid var(--primary); background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('new')">New Admission</div>
+           <div id="tab-mig" class="nav-item" style="background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('mig')">Migrating / Old</div>
         </div>
 
         <form onsubmit="app.addMember(event)">
           <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
          
-          <label>Full Name</label><input name="name" required placeholder="Full Name">
-          <label>Phone Number</label><input name="phone" required placeholder="017...">
+          <label>Full Name</label><input name="name" required>
+          <label>Phone Number</label><input name="phone" required>
          
           <div class="flex">
             <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
           </div>
          
-          <div style="background:#f3f4f6; padding:16px; border-radius:8px; margin-top:10px;">
+          <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
              
              <!-- SECTION: NEW MEMBER -->
              <div id="sec-new-fees">
@@ -1340,7 +1336,7 @@ function renderDashboard(user: any) {
                        <label>Admission Fee</label>
                        <input name="admissionFee" id="new-adm-fee" type="number" min="0">
                     </div>
-                    <div style="padding-top:26px;">
+                    <div style="padding-top:22px;">
                        <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
                           <input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto; margin:0;"> Paid Now?
                        </label>
@@ -1348,19 +1344,16 @@ function renderDashboard(user: any) {
                  </div>
                  <div class="w-full">
                     <label>Initial Payment (Required)</label>
-                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required placeholder="0">
-                    <p class="help-text">Payment for the first month/period.</p>
+                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required>
                  </div>
              </div>
 
              <!-- SECTION: MIGRATING MEMBER -->
              <div id="sec-mig-fees" style="display:none;">
                  <label style="margin-bottom:8px; font-weight:bold;">Migration Status</label>
-                 <p class="help-text" style="margin-bottom: 12px;">Use this for existing members when moving from paper/Excel to this system.</p>
                  <div class="w-full" style="margin-bottom:10px;">
                     <label>Months Due (Manual)</label>
                     <input name="legacyDues" id="mig-legacy-dues" type="number" min="0" value="0" required>
-                    <p class="help-text">How many months are they currently overdue?</p>
                  </div>
                  <div class="w-full">
                     <label>Payment Now (Optional)</label>
@@ -1370,9 +1363,9 @@ function renderDashboard(user: any) {
 
           </div>
 
-          <div class="flex" style="justify-content:flex-end; margin-top:20px;">
+          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create Member</button>
+            <button type="submit" class="btn btn-primary">Create</button>
           </div>
         </form>
       </div>
@@ -1380,9 +1373,9 @@ function renderDashboard(user: any) {
 
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="lbl-rec-pay" style="margin-top:0;">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px; font-weight: 500; font-size: 16px;"></p>
-        <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
+        <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
+        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
+        <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
        
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
@@ -1395,15 +1388,15 @@ function renderDashboard(user: any) {
           </div>
          
           <div id="pay-standard-label"><label>Amount Paid</label></div>
-          <input name="amount" id="pay-amount" type="number" required placeholder="Enter amount...">
+          <input name="amount" id="pay-amount" type="number" required>
          
-          <div style="font-size:13px; color:var(--text-muted); margin-top:10px; padding: 10px; background: #f9fafb; border-radius: 6px;">
-             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold; color: var(--text-main);">-</span><br>
-             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold; color: var(--text-main);">0</span>
+          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
+             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
+             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
           </div>
-          <div class="flex" style="justify-content:flex-end; margin-top:20px;">
+          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm Payment</button>
+            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
           </div>
         </form>
       </div>
@@ -1411,7 +1404,7 @@ function renderDashboard(user: any) {
 
     <div id="modal-user" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="user-modal-title" style="margin-top:0;">User</h3>
+        <h3 id="user-modal-title">User</h3>
         <form id="user-form" onsubmit="app.saveUser(event)">
           <input type="hidden" name="id" id="u-id">
           <label>Name</label><input name="name" id="u-name" required>
@@ -1449,11 +1442,13 @@ function renderDashboard(user: any) {
             <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
         </div>
        
-        <div class="hist-controls" style="margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; display: flex; gap: 10px;">
+        <div class="hist-controls">
            <div class="flex" style="align-items:center;">
-              <select id="hist-year" style="margin:0; min-width: 80px;" onchange="app.renderCalendar()"></select>
+              <label style="margin:0; white-space:nowrap;">Year:</label>
+              <select id="hist-year" style="margin:0;" onchange="app.renderCalendar()"></select>
            </div>
-           <div class="flex" style="align-items:center; flex-grow: 1;">
+           <div class="flex" style="align-items:center;">
+              <label style="margin:0; white-space:nowrap;">Month:</label>
               <select id="hist-month" style="margin:0;" onchange="app.renderCalendar()">
                  <option value="-1">Whole Year / পুরো বছর</option>
                  <option value="0">January</option><option value="1">February</option><option value="2">March</option>
@@ -1476,14 +1471,14 @@ function renderDashboard(user: any) {
             <button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
          </div>
         
-         <div class="hist-controls" style="margin-bottom: 20px;">
+         <div class="hist-controls">
             <div class="flex" style="align-items:center;">
                <input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()">
                <button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button>
             </div>
          </div>
         
-         <div class="table-container" style="max-height:400px; overflow-y:auto;">
+         <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
             <table style="width:100%;">
                <thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead>
                <tbody id="tbl-transaction-history"></tbody>
@@ -1493,6 +1488,7 @@ function renderDashboard(user: any) {
     </div>
 
     <script>
+      // Helper: Escape HTML in JS too if needed for manual insertions
       function escapeHtml(text) {
         if (!text) return "";
         return String(text)
@@ -1586,18 +1582,12 @@ function renderDashboard(user: any) {
          return 'Due (' + count + ' Mo' + (count > 1 ? 's' : '') + ')';
       }
 
-      function showToast(msg, type = 'success') {
-          const container = document.getElementById('toast-container');
-          const toast = document.createElement('div');
-          toast.className = 'toast ' + (type === 'success' ? 'toast-success' : 'toast-error');
-          toast.innerHTML = '<div class="toast-msg">' + msg + '</div>';
-          container.appendChild(toast);
-          
-          requestAnimationFrame(() => toast.classList.add('show'));
-          setTimeout(() => {
-              toast.classList.remove('show');
-              setTimeout(() => toast.remove(), 300);
-          }, 3000);
+      function describeMemberStatus(m) {
+         if (!m) return '-';
+         if (m.status === 'inactive') return '⛔ Inactive';
+         if (m.dueMonths > 0) return formatDueMonthsLabel(m);
+         if (m.dueMonths < 0) return Math.abs(m.dueMonths) + ' Mo Adv';
+         return 'Active';
       }
 
       const currentUser = { role: "${safeRoleRaw}", permissions: ${safePerms} };
@@ -1641,6 +1631,7 @@ function renderDashboard(user: any) {
           nav.innerHTML = html;
 
           document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+          // Simple active highlighting
           const navItems = document.querySelectorAll('.nav-item');
           navItems.forEach(el => { if(el.innerText === t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user')) el.classList.add('active'); });
 
@@ -1654,6 +1645,7 @@ function renderDashboard(user: any) {
         },
 
         updateLabels() {
+           // Update all ID-based labels
            document.getElementById('page-title').innerText = t('dash');
            document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
            document.getElementById('btn-quick-pay').innerText = t('quick_pay');
@@ -1730,19 +1722,13 @@ function renderDashboard(user: any) {
           }
           this.renderMembersTable();
          
-          // Render Today's Attendance Table (Desktop) & List (Mobile)
-          const todayData = (this.data.attendanceToday || []);
-          
-          document.getElementById('tbl-attendance-today').innerHTML = todayData.map(a => {
+          const todayRows = (this.data.attendanceToday || []).map(a => {
               let dueStr = '-';
               if (a.dueMonths > 0) dueStr = formatDueMonthsLabel(a);
               else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
               return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="4">No check-ins today.</td></tr>';
-
-          document.getElementById('list-attendance-mobile').innerHTML = todayData.map(a => {
-             return '<div class="mobile-card"><div class="mobile-card-header"><span class="mobile-card-title">' + escapeHtml(a.name) + '</span><span class="mobile-card-sub">' + formatTime(a.check_in_time).split(', ')[1] + '</span></div></div>';
-          }).join('') || '<div style="text-align:center;color:gray;padding:20px;">No check-ins today</div>';
+          }).join('') || '<tr><td colspan="4">No data.</td></tr>';
+          document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
           this.renderHistoryTable(null);
           this.renderPaymentsTable(); 
@@ -1774,68 +1760,42 @@ function renderDashboard(user: any) {
              return matchSearch && matchStatus;
            });
 
-            const renderRow = (m) => {
-                 let statusBadge = '<span class="badge bg-green">Active</span>';
-                 let dueTxt = '-';
-                 let dueColor = 'gray';
-                 if (m.dueMonths > 0) {
-                     const price = this.getPlanPrice(m.plan);
-                     const paid = m.balance || 0;
-                     const owed = (m.dueMonths * price);
-                     const remaining = Math.max(0, owed - paid);
+            document.getElementById('tbl-members').innerHTML = list.map(m => {
+             let statusBadge = '<span class="badge bg-green">Active</span>';
+             let dueTxt = '-';
+             let dueColor = 'gray';
+             if (m.dueMonths > 0) {
+                 const price = this.getPlanPrice(m.plan);
+                 const paid = m.balance || 0;
+                 const owed = (m.dueMonths * price);
+                 const remaining = Math.max(0, owed - paid);
 
-                     const dueLabel = formatDueMonthsLabel(m) || (m.dueMonths + ' Mo Due');
-                     dueTxt = (remaining) + ' (' + dueLabel + ')';
-                     if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
+                 const dueLabel = formatDueMonthsLabel(m) || (m.dueMonths + ' Mo Due');
+                 dueTxt = (remaining) + ' (' + dueLabel + ')';
+                 if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
 
-                     dueColor = 'red';
-                     statusBadge = '<span class="badge bg-amber">Due</span>';
-                     if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-                 } else if (m.dueMonths < 0) {
-                     dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
-                     dueColor = 'green';
-                     statusBadge = '<span class="badge bg-blue">Advance</span>';
-                 }
-                 return '<tr>' +
-                   '<td>#' + m.id + '</td><td><strong>' + escapeHtml(m.name) + '</strong></td>' +
-                   '<td>' + formatDate(m.joined_at) + '</td>' + 
-                   '<td>' + escapeHtml(m.phone) + '</td><td>' + escapeHtml(m.plan) + '</td>' +
-                   '<td>' + formatExpiryMonth(m.expiry_date) + '</td>' +
-                   '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
-                   '<td><div class="flex" style="gap:4px;">' +
-                     '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + escapeHtml(m.name) + '\\')">Attn</button> ' +
-                     '<button class="btn btn-outline" onclick="app.openPaymentHistory(' + m.id + ')" title="History">$</button> ' +
-                     '<button class="btn btn-primary" style="padding: 6px 10px;" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
-                     '<button class="btn btn-danger" style="padding: 6px 10px;" onclick="app.del(' + m.id + ')">X</button>' +
-                   '</div></td>' +
-                 '</tr>';
-            };
-
-            const renderCard = (m) => {
-                let statusBadge = '<span class="badge bg-green">Active</span>';
-                if (m.dueMonths > 0) {
-                    statusBadge = '<span class="badge bg-amber">Due</span>';
-                    if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-                } else if (m.dueMonths < 0) {
-                    statusBadge = '<span class="badge bg-blue">Advance</span>';
-                }
-                return '<div class="mobile-card">' +
-                   '<div class="mobile-card-header">' +
-                      '<div><span style="font-size:12px; color:#6b7280; margin-right:5px;">#' + m.id + '</span><span class="mobile-card-title">' + escapeHtml(m.name) + '</span></div>' +
-                      statusBadge +
-                   '</div>' +
-                   '<div class="mobile-card-row"><span>Phone</span><span>' + escapeHtml(m.phone) + '</span></div>' +
-                   '<div class="mobile-card-row"><span>Plan</span><span>' + escapeHtml(m.plan) + '</span></div>' +
-                   '<div class="mobile-card-row"><span>Expiry</span><span>' + formatExpiryMonth(m.expiry_date) + '</span></div>' +
-                   '<div class="mobile-card-actions">' +
-                      '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + escapeHtml(m.name) + '\\')">History</button>' +
-                      '<button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button>' +
-                   '</div>' +
-                '</div>';
-            };
-
-            document.getElementById('tbl-members').innerHTML = list.map(renderRow).join('') || '<tr><td colspan="8">No members found.</td></tr>';
-            document.getElementById('list-members-mobile').innerHTML = list.map(renderCard).join('') || '<div style="text-align:center; padding:20px; color:gray;">No members found</div>';
+                 dueColor = 'red';
+                 statusBadge = '<span class="badge bg-amber">Due</span>';
+                 if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
+             } else if (m.dueMonths < 0) {
+                 dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
+                 dueColor = 'green';
+                 statusBadge = '<span class="badge bg-blue">Advance</span>';
+             }
+             return '<tr>' +
+               '<td>#' + m.id + '</td><td><strong>' + escapeHtml(m.name) + '</strong></td>' +
+               '<td>' + formatDate(m.joined_at) + '</td>' + 
+               '<td>' + escapeHtml(m.phone) + '</td><td>' + escapeHtml(m.plan) + '</td>' +
+               '<td>' + formatExpiryMonth(m.expiry_date) + '</td>' +
+               '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
+               '<td><div class="flex" style="gap:4px;">' +
+                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + escapeHtml(m.name) + '\\')">Attn</button> ' +
+                 '<button class="btn btn-outline" onclick="app.openPaymentHistory(' + m.id + ')" title="Payment History">$</button> ' +
+                 '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
+                 '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
+               '</div></td>' +
+             '</tr>';
+            }).join('') || '<tr><td colspan="8">No members found.</td></tr>';
         },
 
         renderPaymentsTable() {
@@ -1846,7 +1806,7 @@ function renderDashboard(user: any) {
             else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
             else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
 
-            let totalOutstanding = 0; 
+            let totalOutstanding = 0; // Calculate Total Due
 
             list.sort((a, b) => {
                const getWeight = (m) => {
@@ -1860,7 +1820,7 @@ function renderDashboard(user: any) {
                return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
             });
 
-            const renderRow = (m) => {
+            document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
                const price = this.getPlanPrice(m.plan);
                let statusHtml = '<span class="badge bg-green">Running</span>';
                let infoTxt = '-';
@@ -1884,39 +1844,9 @@ function renderDashboard(user: any) {
                    amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
                }
                return '<tr><td>#' + m.id + '</td><td>' + escapeHtml(m.name) + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
-            };
+            }).join('') || '<tr><td colspan="6">No data.</td></tr>';
 
-            const renderCard = (m) => {
-                const price = this.getPlanPrice(m.plan);
-                let statusBadge = '<span class="badge bg-green">Running</span>';
-                let amountDisplay = '<span style="color:gray;">0</span>';
-
-                if (m.dueMonths > 0) {
-                    statusBadge = '<span class="badge bg-amber">Due (' + m.dueMonths + ')</span>';
-                    if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-                    
-                    const dueAmt = m.dueMonths * price;
-                    const paid = m.balance || 0;
-                    const remaining = Math.max(0, dueAmt - paid);
-                    amountDisplay = '<span style="color:#ef4444; font-weight:bold;">' + cur + ' ' + remaining + '</span>';
-                } else if (m.dueMonths < 0) {
-                    statusBadge = '<span class="badge bg-blue">Adv (' + Math.abs(m.dueMonths) + ')</span>';
-                }
-
-                return '<div class="mobile-card">' +
-                   '<div class="mobile-card-header">' +
-                      '<span class="mobile-card-title">#' + m.id + ' ' + escapeHtml(m.name) + '</span>' +
-                      statusBadge +
-                   '</div>' +
-                   '<div class="mobile-card-row"><span>Due Amount</span>' + amountDisplay + '</div>' +
-                   '<div class="mobile-card-actions">' +
-                      '<button class="btn btn-primary w-full" onclick="app.modals.pay.open(' + m.id + ')">Pay Now</button>' +
-                   '</div>' +
-                '</div>';
-            };
-
-            document.getElementById('tbl-payment-list').innerHTML = list.map(renderRow).join('') || '<tr><td colspan="6">No data.</td></tr>';
-            document.getElementById('list-payments-mobile').innerHTML = list.map(renderCard).join('') || '<div style="text-align:center; padding:20px; color:gray;">No members found</div>';
+            // Update Total Due Card
             document.getElementById('total-outstanding-amount').innerText = cur + ' ' + totalOutstanding;
         },
 
@@ -1925,7 +1855,6 @@ function renderDashboard(user: any) {
            this.currentHistoryMemberId = memberId;
            document.getElementById('trans-date').value = '';
            document.getElementById('modal-payment-history').style.display='flex';
-           requestAnimationFrame(() => document.getElementById('modal-payment-history').classList.add('show'));
            this.renderTransactionHistory();
         },
 
@@ -1943,6 +1872,7 @@ function renderDashboard(user: any) {
            });
            const data = await res.json();
            
+           // Update Title
            const titleEl = document.getElementById('ph-title');
            if (memberId && data.memberName) {
                titleEl.innerText = "History: " + data.memberName;
@@ -1971,7 +1901,6 @@ function renderDashboard(user: any) {
             const container = document.getElementById('calendar-container');
             container.innerHTML = '<div style="text-align:center;">Loading...</div>';
             document.getElementById('modal-member-history').style.display = 'flex';
-            requestAnimationFrame(() => document.getElementById('modal-member-history').classList.add('show'));
             
             const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
             const data = await res.json();
@@ -2000,8 +1929,9 @@ function renderDashboard(user: any) {
             const container = document.getElementById('calendar-container');
             const threshold = this.data.settings.attendanceThreshold || 3;
 
+            // Yearly Summary View
             if (monthVal === -1) {
-               let gridHtml = '<style>.year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; } .year-month-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; text-align: center; background: #fff; } .ym-badge { display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 50%; font-weight: bold; font-size: 12px; color: white; margin-bottom: 5px; } .ym-p { background: #22c55e; } .ym-a { background: #ef4444; }</style><div class="year-grid">';
+               let gridHtml = '<div class="year-grid">';
                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
                
                for(let m=0; m<12; m++) {
@@ -2016,9 +1946,9 @@ function renderDashboard(user: any) {
                    const badgeTxt = isP ? 'P' : 'A';
                    
                    gridHtml += '<div class="year-month-card">' +
-                      '<div style="font-weight:bold;font-size:12px;margin-bottom:4px;">' + monthNames[m] + '</div>' +
+                      '<div class="ym-name">' + monthNames[m] + '</div>' +
                       '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
-                      '<div style="font-size:10px;color:gray;">' + unique + ' Days</div>' +
+                      '<div class="ym-count">' + unique + ' Days</div>' +
                    '</div>';
                }
                gridHtml += '</div>';
@@ -2026,6 +1956,7 @@ function renderDashboard(user: any) {
                return;
             }
 
+            // Detailed Monthly View
             const monthName = new Date(year, monthVal).toLocaleString('default', { month: 'long' });
             const daysInMonth = new Date(year, monthVal + 1, 0).getDate();
             const presentDays = this.activeHistory.history.filter(h => {
@@ -2040,15 +1971,15 @@ function renderDashboard(user: any) {
             let gridHtml = '';
             for(let i=1; i<=daysInMonth; i++) {
                const isPresent = uniquePresent.includes(i);
-               const cls = isPresent ? 'background:#22c55e;color:white;font-weight:bold;' : 'background:#f3f4f6;color:#9ca3af;';
+               const cls = isPresent ? 'present' : 'absent';
                const mark = isPresent ? 'P' : i;
-               gridHtml += '<div style="aspect-ratio:1;display:flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;' + cls + '">' + mark + '</div>';
+               gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
             }
             
-            container.innerHTML = '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:20px;background:#fff;">' +
-               '<div style="text-align:center;font-weight:bold;margin-bottom:15px;text-transform:uppercase;">' + monthName + ' ' + year + '</div>' +
-               '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px;">' + gridHtml + '</div>' +
-               '<div style="margin-top:15px;border-top:1px solid #f3f4f6;padding-top:10px;display:flex;justify-content:space-between;font-size:13px;">' +
+            container.innerHTML = '<div class="calendar-month">' +
+               '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
+               '<div class="cal-grid">' + gridHtml + '</div>' +
+               '<div class="cal-stats">' +
                   '<span>Days: <strong>' + count + '</strong></span>' +
                   '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
                '</div>' +
@@ -2058,8 +1989,6 @@ function renderDashboard(user: any) {
         async applyHistoryFilter() {
             const date = document.getElementById('history-date').value;
             const tbody = document.getElementById('tbl-attendance-history');
-            const listMob = document.getElementById('list-history-mobile');
-            
             tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
             
             const res = await fetch('/api/history/list', { 
@@ -2076,7 +2005,10 @@ function renderDashboard(user: any) {
         },
         
         renderHistoryTable(filterDate, dataList = null) {
+          // If specific list provided (from API), use it. Otherwise fallback to local cache (bootstrap)
           let list = dataList || this.data.attendanceHistory || [];
+          
+          // If we are filtering locally on bootstrap data (old way, keep for safety)
           if(filterDate && !dataList) {
              list = list.filter(a => a.check_in_time.startsWith(filterDate));
           }
@@ -2084,16 +2016,11 @@ function renderDashboard(user: any) {
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
              '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
-
-          document.getElementById('list-history-mobile').innerHTML = list.length ? list.map(a => 
-             '<div class="mobile-card"><div class="mobile-card-header"><span class="mobile-card-title">' + escapeHtml(a.name) + '</span><span class="mobile-card-sub">' + formatTime(a.check_in_time) + '</span></div></div>'
-          ).join('') : '<div style="text-align:center;padding:20px;color:gray;">No history found</div>';
         },
 
         /* --- USER MGMT --- */
         openAddUser() {
             document.getElementById('modal-user').style.display='flex'; 
-            requestAnimationFrame(() => document.getElementById('modal-user').classList.add('show'));
             document.getElementById('user-modal-title').innerText="Add New User";
             document.getElementById('user-form').reset();
             document.getElementById('u-id').value = "";
@@ -2115,8 +2042,7 @@ function renderDashboard(user: any) {
             const perms = JSON.parse(u.permissions || '[]');
             document.querySelectorAll('input[name="permissions"]').forEach(cb => cb.checked = perms.includes(cb.value));
             this.togglePerms(u.role);
-            document.getElementById('modal-user').style.display='flex';
-            requestAnimationFrame(() => document.getElementById('modal-user').classList.add('show')); 
+            document.getElementById('modal-user').style.display='flex'; 
         },
 
         togglePerms(role) {
@@ -2146,7 +2072,7 @@ function renderDashboard(user: any) {
             data.permissions = perms;
             const url = data.id ? '/api/users/update' : '/api/users/add';
             const res = await fetch(url, { method: 'POST', body: JSON.stringify(data)});
-            if(res.ok) { document.getElementById('modal-user').style.display='none'; document.getElementById('modal-user').classList.remove('show'); this.loadUsers(); } 
+            if(res.ok) { document.getElementById('modal-user').style.display='none'; this.loadUsers(); } 
             else { alert((await res.json()).error); }
         },
         async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
@@ -2179,13 +2105,14 @@ function renderDashboard(user: any) {
             lblClock.innerText = 'Current system time (' + tz + '): ' + formatted + suffix;
           }
 
+          // Render Plan List
           const plansDiv = document.getElementById('plans-container');
           plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
             '<div class="plan-row" id="plan-' + i + '">' +
                '<input type="text" placeholder="Plan Name" value="' + escapeHtml(p.name) + '" class="plan-name">' +
                '<input type="number" placeholder="Price" value="' + p.price + '" class="plan-price">' +
                '<input type="number" placeholder="Adm Fee" value="' + (p.admissionFee || 0) + '" class="plan-adm">' +
-               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">Delete</button>' +
+               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
             '</div>'
           ).join('');
          
@@ -2198,7 +2125,7 @@ function renderDashboard(user: any) {
                '<input type="text" placeholder="Plan Name" class="plan-name">' +
                '<input type="number" placeholder="Price" value="0" class="plan-price">' +
                '<input type="number" placeholder="Adm Fee" value="0" class="plan-adm">' +
-               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">Delete</button>' +
+               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">X</button>' +
             '</div>';
             document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
         },
@@ -2207,6 +2134,7 @@ function renderDashboard(user: any) {
             e.preventDefault();
            
             const plans = [];
+            // FIX: Only select rows inside the container to exclude the header row
             document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row => {
                const nameInput = row.querySelector('.plan-name');
                const priceInput = row.querySelector('.plan-price');
@@ -2237,8 +2165,7 @@ function renderDashboard(user: any) {
                   simulatedTime: form.querySelector('input[name="simulatedTime"]').value
                })
             });
-            showToast("Settings Saved");
-            setTimeout(() => location.reload(), 1000);
+            location.reload();
         },
         
         async resetDB() {
@@ -2252,8 +2179,7 @@ function renderDashboard(user: any) {
             e.preventDefault(); 
             const endpoint = app.isRenewalMode ? '/api/members/renew' : '/api/payment';
             await fetch(endpoint, { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); 
-            showToast("Payment Successful");
-            setTimeout(() => location.reload(), 800);
+            location.reload(); 
         },
 
         /* --- ACTIONS --- */
@@ -2269,14 +2195,12 @@ function renderDashboard(user: any) {
           try {
               const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId:id}) });
               const json = await res.json();
-              if(json.status === 'success') {
-                  showToast("✅ Welcome " + json.name);
-                  setTimeout(()=>location.reload(), 800);
-              } else {
-                  showToast("⛔ " + (json.error || "Error"), "error");
-              }
+              const div = document.getElementById('checkin-res');
+              div.innerText = json.status==='success' ? ('✅ Welcome ' + json.name) : (json.error || '⛔ Error');
+              div.style.color = json.status==='success' ? 'var(--success)' : 'var(--danger)';
+              if(json.status==='success') setTimeout(()=>location.reload(), 800);
           } catch(e) {
-              showToast("Network Error", "error");
+              // handle network error
           } finally {
               this.isSubmitting = false;
               if(btn) btn.disabled = false;
@@ -2304,13 +2228,14 @@ function renderDashboard(user: any) {
                     statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
                 }
                 
+                 // Already checked in badge
                  let checkedInBadge = '';
                  if (m.checkedIn) {
                     checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
                  }
                 
                  return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';">' +
-                        '<div><strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> ' + statusStr + '</div>' + checkedInBadge +
+                        '<strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> ' + statusStr + checkedInBadge +
                         '</div>';
                }).join('');
             }, 200);
@@ -2335,8 +2260,10 @@ function renderDashboard(user: any) {
             }, 200);
         },
        
+        /* --- NEW: ADD MEMBER TABS & LOGIC --- */
         switchAddTab(tab) {
             const isMig = tab === 'mig';
+            // Toggle UI
             document.getElementById('tab-new').className = isMig ? 'nav-item' : 'nav-item active';
             document.getElementById('tab-new').style.borderBottom = isMig ? 'none' : '2px solid var(--primary)';
             document.getElementById('tab-new').style.color = isMig ? '#9ca3af' : 'var(--primary)';
@@ -2345,14 +2272,18 @@ function renderDashboard(user: any) {
             document.getElementById('tab-mig').style.borderBottom = isMig ? '2px solid var(--primary)' : 'none';
             document.getElementById('tab-mig').style.color = isMig ? 'var(--primary)' : '#9ca3af';
            
+            // Toggle Form Sections
             document.getElementById('sec-new-fees').style.display = isMig ? 'none' : 'block';
             document.getElementById('sec-mig-fees').style.display = isMig ? 'block' : 'none';
 
+            // Update hidden input
             document.getElementById('add-mig-mode').value = isMig ? 'true' : 'false';
 
+            // Set requirements
             document.getElementById('new-init-pay').required = !isMig;
             document.getElementById('mig-legacy-dues').required = isMig;
 
+            // Trigger update to refresh fees
             app.updateAddMemberFees();
         },
        
@@ -2362,20 +2293,8 @@ function renderDashboard(user: any) {
             document.getElementById('new-adm-fee').value = fee;
         },
        
-        async addMember(e) { 
-            e.preventDefault(); 
-            await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); 
-            showToast("Member Added Successfully");
-            setTimeout(() => location.reload(), 1000);
-        },
-        
-        async del(id) { 
-            if(confirm("Delete this member and all their records?")) {
-                await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); 
-                showToast("Member Deleted", "error");
-                setTimeout(() => location.reload(), 800);
-            }
-        },
+        async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
+        async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
        
         filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
         onPaymentSearchInput(e) {
@@ -2402,24 +2321,19 @@ function renderDashboard(user: any) {
         },
 
         modals: {
-          checkin: { 
-              open:()=>{ document.getElementById('modal-checkin').style.display='flex'; requestAnimationFrame(() => document.getElementById('modal-checkin').classList.add('show')); document.getElementById('checkin-id').focus(); }, 
-              close:()=>{ document.getElementById('modal-checkin').classList.remove('show'); setTimeout(()=>document.getElementById('modal-checkin').style.display='none', 200); }
-          },
-          quickPay: { 
-              open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; requestAnimationFrame(() => document.getElementById('modal-quick-pay').classList.add('show')); document.getElementById('qp-search').focus(); }, 
-              close:()=>{ document.getElementById('modal-quick-pay').classList.remove('show'); setTimeout(()=>document.getElementById('modal-quick-pay').style.display='none', 200); }
-          },
+          checkin: { open:()=>{ document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus(); }, close:()=>document.getElementById('modal-checkin').style.display='none' },
+          quickPay: { open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; document.getElementById('qp-search').focus(); }, close:()=>document.getElementById('modal-quick-pay').style.display='none' },
           add: { 
             open:()=>{
+               // Init defaults
                app.switchAddTab('new');
-               app.updateAddMemberFees(); 
+               app.updateAddMemberFees(); // Set default fee
                 document.getElementById('mig-legacy-dues').value = '0';
                 document.getElementById('mig-init-pay').value = '0';
+
                 document.getElementById('modal-add').style.display='flex';
-                requestAnimationFrame(() => document.getElementById('modal-add').classList.add('show'));
              },
-             close:()=>{ document.getElementById('modal-add').classList.remove('show'); setTimeout(()=>document.getElementById('modal-add').style.display='none', 200); } 
+             close:()=>document.getElementById('modal-add').style.display='none' 
           },
           pay: { 
              open:(id)=>{ 
@@ -2428,9 +2342,10 @@ function renderDashboard(user: any) {
                const price = app.getPlanPrice(m.plan);
                
                document.getElementById('pay-id').value=id; 
-               document.getElementById('pay-name').innerText = m ? ('#' + m.id + ' ' + m.name) : '';
+               document.getElementById('pay-name').innerText = m ? m.name : '';
                document.getElementById('pay-amount').value = '';
                
+               // Reset UI State
                document.getElementById('pay-status-warning').style.display = 'none';
                document.getElementById('pay-renewal-section').style.display = 'none';
                document.getElementById('pay-standard-label').style.display = 'block';
@@ -2438,11 +2353,12 @@ function renderDashboard(user: any) {
                document.getElementById('pay-amount').required = true;
                app.isRenewalMode = false;
 
+               // Inactive Logic
                if (m.status === 'inactive') {
                    app.isRenewalMode = true;
                    document.getElementById('pay-status-warning').style.display = 'block';
                    document.getElementById('pay-renewal-section').style.display = 'block';
-                   document.getElementById('pay-standard-label').style.display = 'none'; 
+                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
                    document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
                    document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
                }
@@ -2451,15 +2367,13 @@ function renderDashboard(user: any) {
                document.getElementById('pay-wallet-bal').innerText = m.balance || 0;
                
                document.getElementById('modal-pay').style.display='flex'; 
-               requestAnimationFrame(() => document.getElementById('modal-pay').classList.add('show'));
              }, 
-             close:()=>{ 
-                app.payingMemberId = null;
-                document.getElementById('modal-pay').classList.remove('show'); 
-                setTimeout(()=>document.getElementById('modal-pay').style.display='none', 200); 
+             close:()=>{
+               app.payingMemberId = null;
+               document.getElementById('modal-pay').style.display='none' 
              }
           },
-          user: { close:()=>{ document.getElementById('modal-user').classList.remove('show'); setTimeout(()=>document.getElementById('modal-user').style.display='none', 200); } }
+          user: { close:()=>document.getElementById('modal-user').style.display='none' }
         }
       };
       app.init();
