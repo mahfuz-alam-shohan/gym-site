@@ -15,8 +15,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// Helper to escape HTML to prevent XSS
+function escapeHtml(unsafe: any): string {
+  if (unsafe === null || unsafe === undefined) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function json(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: corsHeaders });
+}
+
+function errorResponse(message: string, status = 400): Response {
+  return json({ error: message }, status);
+}
+
+// Validation helper
+function validate(body: any, requiredFields: string[]): string | null {
+  for (const field of requiredFields) {
+    if (body[field] === undefined || body[field] === null || body[field] === "") {
+      return `Missing required field: ${field}`;
+    }
+  }
+  return null;
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -35,6 +60,7 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
 
 function monthEnd(date: Date): Date {
   const d = new Date(date);
+  if (isNaN(d.getTime())) return new Date(); // Fallback safety
   d.setMonth(d.getMonth() + 1, 0);
   d.setHours(23, 59, 59, 999);
   return d;
@@ -47,17 +73,24 @@ function nextMonthStart(date: Date): Date {
 }
 
 function zonedNow(timezone: string): Date {
-  // Ensure we always operate using the target timezone (GMT+6 by default)
-  return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
+  try {
+    return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
+  } catch (e) {
+    return new Date(); // Fallback to UTC if timezone is invalid
+  }
 }
 
 function formatDateOnly(date: Date, timezone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+  } catch (e) {
+    return date.toISOString().split("T")[0];
+  }
 }
 
 type SystemClock = {
@@ -173,26 +206,41 @@ function calcDueDetails(
 ): { count: number; months: Date[]; labels: string[] } {
   let dueMonths: Date[] = [];
 
+  // 1. Handle Manual Dues (Migration or Overrides)
   if (!expiry) {
     dueMonths = buildManualDueMonths(manualDue, today);
     return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
   }
 
   const paidThrough = monthEnd(new Date(expiry));
+  
+  // Safety: If paidThrough is invalid or way in the future beyond reason
   if (isNaN(paidThrough.getTime())) {
     dueMonths = buildManualDueMonths(manualDue, today);
     return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
   }
 
+  // 2. Calculate Dues based on Attendance vs Expiry
   const attMap = buildAttendanceMonthMap(attendance);
   const todayCopy = new Date(today);
-
+  
+  // Loop from month after expiry until today
+  // Guard against infinite loop if dates are broken (limit 36 months)
+  let loopCount = 0;
   for (let cursor = nextMonthStart(paidThrough); cursor <= todayCopy; cursor = nextMonthStart(cursor)) {
+    loopCount++;
+    if (loopCount > 36) break; // Hard stop for sanity
+
     const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
     const days = attMap[key]?.size || 0;
-    if (days >= threshold) dueMonths.push(new Date(cursor));
+    
+    // Only count as due if they attended enough days
+    if (days >= threshold) {
+      dueMonths.push(new Date(cursor));
+    }
   }
 
+  // 3. Prepend Manual Dues
   if (manualDue > 0) {
     let cursor = dueMonths[0] ? new Date(dueMonths[0].getFullYear(), dueMonths[0].getMonth(), 1) : nextMonthStart(paidThrough);
     for (let i = 0; i < manualDue; i++) {
@@ -202,16 +250,6 @@ function calcDueDetails(
   }
 
   return { count: dueMonths.length, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
-}
-
-function calcDueMonths(
-  expiry: string | null | undefined,
-  attendance: string[] | undefined,
-  threshold: number,
-  manualDue: number = 0,
-  today: Date = zonedNow(DEFAULT_TIMEZONE)
-): number {
-  return calcDueDetails(expiry, attendance, threshold, manualDue, today).count;
 }
 
 function addPaidMonths(paidThrough: Date, months: number): Date {
@@ -227,12 +265,13 @@ function addPaidMonths(paidThrough: Date, months: number): Date {
    ======================================================================== */
 
 function baseHead(title: string): string {
+  // Using escapeHtml for title just in case
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>` + title + `</title>
+  <title>${escapeHtml(title)}</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
@@ -368,15 +407,15 @@ async function initDB(env: Env) {
   ];
   for (const sql of q) await env.DB.prepare(sql).run();
 
-  // Migration: Add balance column if not exists
-  try {
-    await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run();
-  } catch (e) {}
-
-  // Migration: Track manual due months for migrated members
-  try {
-    await env.DB.prepare("ALTER TABLE members ADD COLUMN manual_due_months INTEGER DEFAULT 0").run();
-  } catch (e) {}
+  // Optimizations & Migrations
+  try { await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run(); } catch (e) {}
+  try { await env.DB.prepare("ALTER TABLE members ADD COLUMN manual_due_months INTEGER DEFAULT 0").run(); } catch (e) {}
+  
+  // Create Indexes for Efficiency
+  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_member_date ON attendance(member_id, check_in_time)").run(); } catch (e) {}
+  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(check_in_time)").run(); } catch (e) {}
+  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_members_phone ON members(phone)").run(); } catch (e) {}
+  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id)").run(); } catch (e) {}
 }
 
 async function factoryReset(env: Env) {
@@ -408,6 +447,9 @@ export default {
 
       if (url.pathname === "/api/setup" && req.method === "POST") {
         const body = await req.json() as any;
+        const err = validate(body, ['gymName', 'adminName', 'email', 'password']);
+        if(err) return errorResponse(err);
+
         const email = (body.email || "").trim().toLowerCase();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('gym_name', ?)").bind(body.gymName).run();
         const hash = await hashPassword(body.password);
@@ -435,6 +477,10 @@ export default {
       }
 
       if (url.pathname === "/api/nuke") {
+        // Protect nuke with session check inside if logic for safety, but here simple route
+        // Ideally should be authenticated. Adding rudimentary check
+        const user = await getSession(req, env);
+        if (!user || user.role !== 'admin') return errorResponse("Unauthorized", 401);
         await factoryReset(env);
         return new Response("Reset Complete", { status: 200 });
       }
@@ -457,7 +503,8 @@ export default {
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
         const gymName = (gymRow && gymRow.value) || "Gym OS";
         const attendanceThreshold = settings.attendanceThreshold;
-        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id").all<any>();
+        // Limit print to first 500 to avoid memory crash
+        const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id LIMIT 500").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         const attendanceByMember: Record<number, string[]> = {};
         for (const a of attendanceAll.results || []) {
@@ -474,12 +521,12 @@ export default {
           const label = (m.dueMonthLabels && m.dueMonthLabels.length)
             ? `Due of ${m.dueMonthLabels.join(', ')}`
             : `${m.dueMonths} Month(s)`;
-          return `<tr><td>#${m.id}</td><td>${m.name}</td><td>${m.phone}</td><td>${m.plan}</td><td>${label}</td></tr>`;
+          return `<tr><td>#${m.id}</td><td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.phone)}</td><td>${escapeHtml(m.plan)}</td><td>${escapeHtml(label)}</td></tr>`;
         }).join('');
         if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
-          <div class="header"><h1>${gymName}</h1><h3>Due Members Report</h3><p>Date: ${settings.clock.now.toLocaleDateString('en-GB', { timeZone: settings.clock.timezone })}</p></div>
+          <div class="header"><h1>${escapeHtml(gymName)}</h1><h3>Due Members Report</h3><p>Date: ${settings.clock.now.toLocaleDateString('en-GB', { timeZone: settings.clock.timezone })}</p></div>
           <button class="btn" onclick="window.print()" style="display:block;margin:0 auto 20px;padding:10px 20px;cursor:pointer;">Print PDF</button>
           <table><thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table>
           <script>window.onload=function(){window.print();}</script>
@@ -527,16 +574,14 @@ export default {
 
       if (url.pathname === "/api/bootstrap") {
         const settings = await loadSettings(env);
-        const attendanceThreshold = settings.attendanceThreshold;
-        const inactiveAfterMonths = settings.inactiveAfterMonths;
-        const renewalFee = settings.renewalFee;
-        const currency = settings.currency;
-        const lang = settings.lang;
-        const membershipPlans = settings.membershipPlans;
-        const clock = settings.clock;
+        const { attendanceThreshold, inactiveAfterMonths, renewalFee, currency, lang, membershipPlans, clock } = settings;
 
+        // Optimization: Don't load full attendance history for calculation, only load relevant recent attendance if possible
+        // For efficiency, we still fetch all, but we could LIMIT this if the gym grows > 5000 members.
+        // Currently assumes < 5000 members for single file worker memory limits.
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
+        
         const attendanceByMember: Record<number, string[]> = {};
         for (const a of attendanceAll.results || []) {
           if (!attendanceByMember[a.member_id]) attendanceByMember[a.member_id] = [];
@@ -584,7 +629,10 @@ export default {
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = ? ORDER BY a.id DESC").bind(clock.today).all<any>();
-        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 100").all<any>();
+        
+        // Limit history to 50 for bootstrap payload efficiency
+        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
+        
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = ?").bind(clock.today).first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
 
@@ -596,8 +644,7 @@ export default {
             return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
           }),
           attendanceHistory: (attendanceHistory.results || []).map((r:any) => {
-            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0, clock.now);
-            return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
+            return { ...r, dueMonths: 0 }; // History doesn't strictly need due calculation for display, optimizes load
           }),
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
           settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, time: { timezone: clock.timezone, simulated: clock.simulated, simulatedTime: clock.simulatedTime, now: clock.now.toISOString() } }
@@ -728,22 +775,24 @@ export default {
             manualDueMonths = legacyDues;
         }
 
-        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?)").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), manualDueMonths).run();
+        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?) RETURNING id").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), manualDueMonths).first<any>();
+        
+        const newMemberId = result.id;
 
         // Handle Admission Fee Payment
-        if (body.admissionFeePaid && result.meta.last_row_id) {
+        if (body.admissionFeePaid && newMemberId) {
             const fee = parseInt(body.admissionFee || "0");
             if (fee > 0) {
-                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, fee, settings.clock.now.toISOString()).run();
+                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, fee, settings.clock.now.toISOString()).run();
             }
         }
         
         // Handle Initial Plan Payment (if any)
         const initialAmt = parseInt(body.initialPayment || "0");
-        if (initialAmt > 0 && result.meta.last_row_id) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(result.meta.last_row_id, initialAmt, settings.clock.now.toISOString()).run();
+        if (initialAmt > 0 && newMemberId) {
+            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, initialAmt, settings.clock.now.toISOString()).run();
             // Process payment to update balance and expiry
-            const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(result.meta.last_row_id).first<any>();
+            const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(newMemberId).first<any>();
             const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
             const price = plan ? Number(plan.price) : 0;
             let currentBalance = (member.balance || 0) + initialAmt;
@@ -937,8 +986,9 @@ function renderSetup() {
         e.preventDefault();
         try {
           const res = await fetch('/api/setup', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+          const d = await res.json();
           if(res.ok) window.location.reload();
-          else throw new Error("Setup failed");
+          else throw new Error(d.error || "Setup failed");
         } catch(err) { document.getElementById('error').textContent = err.message; }
       }
     </script>
@@ -947,11 +997,13 @@ function renderSetup() {
 }
 
 function renderLogin(gymName: string) {
+  // Safe insertion
+  const safeName = escapeHtml(gymName);
   const html = `${baseHead("Login")}
   <body>
     <div class="center-screen">
       <div class="card" style="width: 100%; max-width: 380px;">
-        <h2 style="margin-bottom:5px;">${gymName}</h2>
+        <h2 style="margin-bottom:5px;">${safeName}</h2>
         <p style="color:var(--text-muted); margin-bottom:24px;">Staff Access Portal</p>
         <form id="form">
           <label>Email</label><input name="email" required>
@@ -978,9 +1030,11 @@ function renderLogin(gymName: string) {
 }
 
 function renderDashboard(user: any) {
-  const perms = user.permissions ? JSON.parse(user.permissions) : [];
-  const isAdmin = user.role === 'admin';
-  const can = (p: string) => isAdmin || perms.includes(p);
+  // Secure values before injecting into HTML string
+  const safeUserName = escapeHtml(user.name);
+  const safeRole = escapeHtml(user.role.toUpperCase());
+  const safePerms = user.permissions || '[]'; // JSON string is safe here
+  const safeRoleRaw = escapeHtml(user.role);
 
   const html = `${baseHead("Dashboard")}
   <body>
@@ -995,8 +1049,8 @@ function renderDashboard(user: any) {
         <div style="padding:24px; font-size:20px; font-weight:700; border-bottom:1px solid #1f2937;">💪 Gym OS</div>
         <div class="nav" id="nav-container"></div>
         <div style="padding:20px; border-top:1px solid #1f2937;">
-          <div style="font-weight:600;">${user.name}</div>
-          <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${user.role.toUpperCase()}</div>
+          <div style="font-weight:600;">${safeUserName}</div>
+          <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${safeRole}</div>
           <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;" id="txt-logout">Sign Out &rarr;</a>
         </div>
       </aside>
@@ -1434,6 +1488,17 @@ function renderDashboard(user: any) {
     </div>
 
     <script>
+      // Helper: Escape HTML in JS too if needed for manual insertions
+      function escapeHtml(text) {
+        if (!text) return "";
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
       const translations = {
         en: {
           dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
@@ -1525,12 +1590,16 @@ function renderDashboard(user: any) {
          return 'Active';
       }
 
-      const currentUser = { role: "${user.role}", permissions: ${user.permissions || '[]'} };
+      const currentUser = { role: "${safeRoleRaw}", permissions: ${safePerms} };
       const app = {
         data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
         
         async init() {
           const res = await fetch('/api/bootstrap');
+          if (!res.ok) {
+             if(res.status === 401) window.location.href = '/';
+             return;
+          }
           this.data = await res.json();
           setClientNow(this.data?.settings?.time?.now);
           this.render();
@@ -1657,7 +1726,7 @@ function renderDashboard(user: any) {
               let dueStr = '-';
               if (a.dueMonths > 0) dueStr = formatDueMonthsLabel(a);
               else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td><td>' + dueStr + '</td></tr>';
+              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td><td>' + dueStr + '</td></tr>';
           }).join('') || '<tr><td colspan="4">No data.</td></tr>';
           document.getElementById('tbl-attendance-today').innerHTML = todayRows;
 
@@ -1714,13 +1783,13 @@ function renderDashboard(user: any) {
                  statusBadge = '<span class="badge bg-blue">Advance</span>';
              }
              return '<tr>' +
-               '<td>#' + m.id + '</td><td><strong>' + m.name + '</strong></td>' +
-               '<td>' + formatDate(m.joined_at) + '</td>' + // Added Joined Date
-               '<td>' + m.phone + '</td><td>' + m.plan + '</td>' +
+               '<td>#' + m.id + '</td><td><strong>' + escapeHtml(m.name) + '</strong></td>' +
+               '<td>' + formatDate(m.joined_at) + '</td>' + 
+               '<td>' + escapeHtml(m.phone) + '</td><td>' + escapeHtml(m.plan) + '</td>' +
                '<td>' + formatExpiryMonth(m.expiry_date) + '</td>' +
                '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
                '<td><div class="flex" style="gap:4px;">' +
-                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + m.name + '\\')">Attn</button> ' +
+                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + escapeHtml(m.name) + '\\')">Attn</button> ' +
                  '<button class="btn btn-outline" onclick="app.openPaymentHistory(' + m.id + ')" title="Payment History">$</button> ' +
                  '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
                  '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
@@ -1774,7 +1843,7 @@ function renderDashboard(user: any) {
                    infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
                    amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
                }
-               return '<tr><td>#' + m.id + '</td><td>' + m.name + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
+               return '<tr><td>#' + m.id + '</td><td>' + escapeHtml(m.name) + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
             }).join('') || '<tr><td colspan="6">No data.</td></tr>';
 
             // Update Total Due Card
@@ -1821,7 +1890,7 @@ function renderDashboard(user: any) {
            tbody.innerHTML = list.map(p => 
                '<tr>' +
                   '<td>' + formatTime(p.date) + '</td>' +
-                  '<td>' + (p.name ? (p.name + ' (#' + p.member_id + ')') : '<span style="color:gray; font-style:italic;">Unknown/Deleted (#' + p.member_id + ')</span>') + '</td>' +
+                  '<td>' + (p.name ? (escapeHtml(p.name) + ' (#' + p.member_id + ')') : '<span style="color:gray; font-style:italic;">Unknown/Deleted (#' + p.member_id + ')</span>') + '</td>' +
                   '<td style="font-weight:bold; color:#10b981;">' + cur + ' ' + p.amount + '</td>' +
                '</tr>'
            ).join('');
@@ -1945,7 +2014,7 @@ function renderDashboard(user: any) {
           }
           
           document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + a.name + '</td></tr>'
+             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td></tr>'
           ).join('') : '<tr><td colspan="4">No data.</td></tr>';
         },
 
@@ -1988,7 +2057,7 @@ function renderDashboard(user: any) {
               const data = await res.json();
               this.userList = data.users;
               document.getElementById('tbl-users').innerHTML = this.userList.map(u => 
-                '<tr><td>#' + u.id + '</td><td>' + u.name + '</td><td>' + u.email + '</td><td>' + u.role + '</td>' +
+                '<tr><td>#' + u.id + '</td><td>' + escapeHtml(u.name) + '</td><td>' + escapeHtml(u.email) + '</td><td>' + escapeHtml(u.role) + '</td>' +
                 '<td style="font-size:11px; white-space:normal; max-width:150px;">' + (u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))) + '</td>' +
                 '<td><button class="btn btn-outline" onclick="app.editUser(' + u.id + ')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(' + u.id + ')">Del</button></td></tr>'
               ).join('');
@@ -2040,14 +2109,14 @@ function renderDashboard(user: any) {
           const plansDiv = document.getElementById('plans-container');
           plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
             '<div class="plan-row" id="plan-' + i + '">' +
-               '<input type="text" placeholder="Plan Name" value="' + p.name + '" class="plan-name">' +
+               '<input type="text" placeholder="Plan Name" value="' + escapeHtml(p.name) + '" class="plan-name">' +
                '<input type="number" placeholder="Price" value="' + p.price + '" class="plan-price">' +
                '<input type="number" placeholder="Adm Fee" value="' + (p.admissionFee || 0) + '" class="plan-adm">' +
                '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
             '</div>'
           ).join('');
          
-          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+p.name+'">'+p.name+'</option>').join('');
+          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+escapeHtml(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');
         },
 
         addPlanRow() {
@@ -2166,7 +2235,7 @@ function renderDashboard(user: any) {
                  }
                 
                  return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';">' +
-                        '<strong>#' + m.id + ' · ' + m.name + '</strong> ' + statusStr + checkedInBadge +
+                        '<strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> ' + statusStr + checkedInBadge +
                         '</div>';
                }).join('');
             }, 200);
@@ -2185,7 +2254,7 @@ function renderDashboard(user: any) {
                  else if (m.dueMonths > 0) dueStr = formatDueMonthsLabel(m);
                  else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
                  return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' +
-                        '<strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr +
+                        '<strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> - ' + dueStr +
                         '</div>';
                }).join('');
             }, 200);
@@ -2239,7 +2308,7 @@ function renderDashboard(user: any) {
                  if (m.status === 'inactive') dueStr = '⛔ Inactive';
                  else if (m.dueMonths > 0) dueStr = formatDueMonthsLabel(m);
                  else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + m.name + '</strong> - ' + dueStr + '</div>';
+                 return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> - ' + dueStr + '</div>';
                }).join('');
             }, 200);
         },
