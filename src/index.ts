@@ -1,5 +1,5 @@
 import { getSession } from "./auth";
-import { addPaidMonths, calcDueDetails } from "./attendance";
+import { calculateDues, processPayment } from "./attendance";
 import { initDB, factoryReset } from "./db";
 import { Env } from "./env";
 import { hashPassword, verifyPassword } from "./security";
@@ -11,9 +11,7 @@ import { corsHeaders, escapeHtml, errorResponse, json, validate } from "./utils"
    1. UI SYSTEM
    ======================================================================== */
 
-
 function baseHead(title: string): string {
-  // Using escapeHtml for title just in case
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -22,21 +20,12 @@ function baseHead(title: string): string {
   <title>${escapeHtml(title)}</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --primary: #6366f1; --primary-dark: #4f46e5;
-      --bg-body: #f3f4f6; --bg-nav: #111827; --bg-card: #ffffff;
-      --text-main: #111827; --text-muted: #6b7280;
-      --border: #e5e7eb;
-      --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
-      --radius: 8px;
-    }
+    :root { --primary: #6366f1; --primary-dark: #4f46e5; --bg-body: #f3f4f6; --bg-nav: #111827; --bg-card: #ffffff; --text-main: #111827; --text-muted: #6b7280; --border: #e5e7eb; --success: #10b981; --danger: #ef4444; --warning: #f59e0b; --radius: 8px; }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body { margin: 0; font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg-body); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-
     .app-layout { display: flex; height: 100%; }
     .sidebar { width: 260px; background: var(--bg-nav); color: white; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; transition: transform 0.3s; }
     .main-content { flex: 1; overflow-y: auto; display: flex; flex-direction: column; position: relative; }
-    
     .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--border); margin-bottom: 20px; }
     .btn { padding: 8px 14px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; }
     .btn-primary { background: var(--primary); color: white; }
@@ -44,51 +33,39 @@ function baseHead(title: string): string {
     .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
     .btn-danger { background: var(--danger); color: white; }
     .w-full { width: 100%; }
-    
     input, select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; outline: none; transition: border 0.2s; }
     input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
     label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
-
     .checkbox-group { margin-bottom: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; border: 1px solid var(--border); padding: 8px; border-radius: 6px; background: #fff; }
-    
     .table-responsive { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
     table { width: 100%; border-collapse: collapse; background: white; white-space: nowrap; }
     th { background: #f9fafb; padding: 12px 16px; text-align: left; font-size: 12px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
     td { padding: 12px 16px; border-bottom: 1px solid #f3f4f6; font-size: 13px; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
-    
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }
     .stat-card { background: white; padding: 20px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; }
     .stat-val { font-size: 24px; font-weight: 700; color: var(--text-main); margin-top: 4px; }
     .stat-label { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
-
     .hidden { display: none !important; }
     .flex { display: flex; align-items: center; gap: 12px; }
     .flex-between { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .center-screen { flex: 1; display: flex; align-items: center; justify-content: center; background: #f3f4f6; padding: 20px; }
-    
     .badge { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
     .bg-green { background: #dcfce7; color: #166534; }
     .bg-red { background: #fee2e2; color: #991b1b; }
     .bg-amber { background: #fef3c7; color: #92400e; }
     .bg-blue { background: #dbeafe; color: #1e40af; }
-    
     .nav { padding: 16px; flex: 1; }
     .nav-item { padding: 10px 16px; border-radius: 8px; color: #9ca3af; cursor: pointer; margin-bottom: 2px; font-weight: 500; font-size: 14px; display: flex; align-items: center; gap: 10px; }
     .nav-item:hover, .nav-item.active { background: #1f2937; color: white; }
-    
     .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
     .modal-content { background: white; width: 100%; max-width: 600px; padding: 24px; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); max-height: 90vh; overflow-y: auto; }
-
     .checkin-results { margin-top: 10px; max-height: 220px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--border); background: #f9fafb; }
     .checkin-item { padding: 8px 12px; font-size: 13px; cursor: pointer; border-bottom: 1px solid #e5e7eb; }
     .checkin-item:hover { background: #ffffff; }
-
     .plan-row { display: grid; grid-template-columns: 2fr 1fr 1fr 40px; gap: 10px; margin-bottom: 10px; }
     .plan-row input { margin-bottom: 0; }
-
-    /* Calendar Styles */
     .hist-controls { display: flex; gap: 10px; margin-bottom: 20px; background: #f9fafb; padding: 15px; border-radius: 12px; border: 1px solid #e5e7eb; flex-wrap: wrap; }
     .calendar-month { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
     .cal-header { text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 16px; text-transform: uppercase; letter-spacing: 1px; }
@@ -97,8 +74,6 @@ function baseHead(title: string): string {
     .cal-cell.present { background: #22c55e; color: white; font-weight: bold; box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3); }
     .cal-cell.absent { background: #fecaca; color: #ef4444; opacity: 0.5; }
     .cal-stats { margin-top: 15px; font-size: 13px; display: flex; justify-content: space-between; padding-top: 15px; border-top: 1px solid #f3f4f6; }
-   
-    /* Yearly Summary Grid */
     .year-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 15px; }
     .year-month-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; text-align: center; background: #fff; }
     .ym-name { font-weight: bold; font-size: 14px; margin-bottom: 5px; color: #374151; }
@@ -106,7 +81,6 @@ function baseHead(title: string): string {
     .ym-p { background: #22c55e; }
     .ym-a { background: #ef4444; }
     .ym-count { font-size: 11px; color: #6b7280; }
-
     .mobile-header { display: none; }
     @media (max-width: 768px) {
       body { overflow: auto; }
@@ -117,20 +91,15 @@ function baseHead(title: string): string {
       .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; display: none; }
       .overlay.open { display: block; }
       .checkbox-group { grid-template-columns: 1fr; }
-
-      /* Mobile Optimization */
       .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
       .stat-card { padding: 12px; border-radius: 8px; }
       .stat-val { font-size: 18px; margin-top: 2px; }
       .stat-label { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-     
       .card { padding: 16px; border-radius: 8px; }
       h2, h3 { font-size: 18px; }
-     
       .btn { padding: 6px 10px; font-size: 11px; }
       .flex-between { gap: 8px; }
       input, select { font-size: 13px; }
-     
       .plan-row { grid-template-columns: 1fr 1fr; }
       .plan-row input:nth-child(3) { grid-column: span 2; }
       .plan-row button { grid-column: span 2; }
@@ -193,8 +162,6 @@ export default {
       }
 
       if (url.pathname === "/api/nuke") {
-        // Protect nuke with session check inside if logic for safety, but here simple route
-        // Ideally should be authenticated. Adding rudimentary check
         const user = await getSession(req, env);
         if (!user || user.role !== 'admin') return errorResponse("Unauthorized", 401);
         await factoryReset(env);
@@ -215,11 +182,12 @@ export default {
       if (url.pathname === "/dashboard") return renderDashboard(user);
 
       if (url.pathname === "/dues/print") {
+        // Updated to use new calculateDues logic
         const settings = await loadSettings(env);
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
         const gymName = (gymRow && gymRow.value) || "Gym OS";
         const attendanceThreshold = settings.attendanceThreshold;
-        // Limit print to first 500 to avoid memory crash
+        
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id LIMIT 500").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         const attendanceByMember: Record<number, string[]> = {};
@@ -229,7 +197,7 @@ export default {
         }
 
         const members = (membersRaw.results || []).map((m: any) => {
-          const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
+          const dueInfo = calculateDues(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
           return { ...m, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
         }).filter((m:any) => m.dueMonths && m.dueMonths > 0);
 
@@ -242,7 +210,7 @@ export default {
         if(!rows) rows = '<tr><td colspan="5" style="text-align:center">No dues found.</td></tr>';
 
         const html = `<!DOCTYPE html><html><head><title>Due Report</title><style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;margin-top:20px;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#f3f4f6;} .header{text-align:center;margin-bottom:30px;} .btn{display:none;} @media print{.btn{display:none;}}</style></head><body>
-          <div class="header"><h1>${escapeHtml(gymName)}</h1><h3>Due Members Report</h3><p>Date: ${settings.clock.now.toLocaleDateString('en-GB', { timeZone: settings.clock.timezone })}</p></div>
+          <div class="header"><h1>${escapeHtml(gymName)}</h1><h3>Due Members Report</h3><p>Date: ${settings.clock.today}</p></div>
           <button class="btn" onclick="window.print()" style="display:block;margin:0 auto 20px;padding:10px 20px;cursor:pointer;">Print PDF</button>
           <table><thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Plan</th><th>Due</th></tr></thead><tbody>${rows}</tbody></table>
           <script>window.onload=function(){window.print();}</script>
@@ -250,6 +218,7 @@ export default {
         return new Response(html, { headers: {"Content-Type":"text/html"} });
       }
 
+      // ... [Standard User CRUD Routes omitted for brevity, they remain same] ...
       if (url.pathname === "/api/users/list") {
         if (user.role !== 'admin') return json({ error: 'Forbidden' }, 403);
         const users = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all();
@@ -266,7 +235,7 @@ export default {
         await env.DB.prepare("INSERT INTO users (email, password_hash, name, role, permissions) VALUES (?, ?, ?, ?, ?)").bind(body.email, hash, body.name, body.role, perms).run();
         return json({ success: true });
       }
-
+      
       if (url.pathname === "/api/users/update" && req.method === "POST") {
         if (user.role !== 'admin') return json({ error: 'Forbidden' }, 403);
         const body = await req.json() as any;
@@ -288,13 +257,12 @@ export default {
         return json({ success: true });
       }
 
+      /* --- NEW LOGIC ENDPOINTS --- */
+
       if (url.pathname === "/api/bootstrap") {
         const settings = await loadSettings(env);
-        const { attendanceThreshold, inactiveAfterMonths, renewalFee, currency, lang, membershipPlans, clock } = settings;
+        const { attendanceThreshold, inactiveAfterMonths, membershipPlans, clock } = settings;
 
-        // Optimization: Don't load full attendance history for calculation, only load relevant recent attendance if possible
-        // For efficiency, we still fetch all, but we could LIMIT this if the gym grows > 5000 members.
-        // Currently assumes < 5000 members for single file worker memory limits.
         const membersRaw = await env.DB.prepare("SELECT * FROM members ORDER BY id DESC").all<any>();
         const attendanceAll = await env.DB.prepare("SELECT member_id, check_in_time FROM attendance").all<any>();
         
@@ -309,45 +277,39 @@ export default {
         let totalOutstanding = 0;
 
         for (const m of membersRaw.results || []) {
-          const dueInfo = calcDueDetails(
+          // Use NEW calculateDues logic
+          const dueInfo = calculateDues(
             m.expiry_date,
             attendanceByMember[m.id],
             attendanceThreshold,
             m.manual_due_months || 0,
             clock.now
           );
-          const dueMonths = dueInfo.count;
-          const dueMonthLabels = dueInfo.labels;
-          let newStatus = m.status || "active";
           
-          if (dueMonths != null) {
-             if (dueMonths >= inactiveAfterMonths) { 
-               newStatus = "inactive"; 
-               inactiveMembersCount++; 
-             } else if (dueMonths > 0) { 
-               newStatus = "due"; 
-               dueMembersCount++; 
-             } else { 
-               newStatus = "active"; 
-               activeCount++; 
-             }
-             
-             // Calc Outstanding (considering balance)
-             if (dueMonths > 0) {
-                 const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
-                 const owed = (dueMonths * planPrice) - (m.balance || 0);
-                 totalOutstanding += Math.max(0, owed);
-             }
+          let newStatus = m.status || "active";
+          if (dueInfo.count >= inactiveAfterMonths) {
+             newStatus = "inactive"; 
+             inactiveMembersCount++; 
+          } else if (dueInfo.count > 0) {
+             newStatus = "due"; 
+             dueMembersCount++; 
+          } else { 
+             newStatus = "active"; 
+             activeCount++; 
+          }
+          
+          if (dueInfo.count > 0) {
+              const planPrice = membershipPlans.find((p:any) => p.name === m.plan)?.price || 0;
+              const owed = (dueInfo.count * planPrice) - (m.balance || 0);
+              totalOutstanding += Math.max(0, owed);
           }
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
-          membersProcessed.push({ ...m, status: newStatus, dueMonths, dueMonthLabels });
+          membersProcessed.push({ ...m, status: newStatus, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels });
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = ? ORDER BY a.id DESC").bind(clock.today).all<any>();
-        
-        // Limit history to 50 for bootstrap payload efficiency
-        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id, m.expiry_date, m.manual_due_months FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 50").all<any>();
+        const attendanceHistory = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id FROM attendance a JOIN members m ON a.member_id = m.id ORDER BY a.id DESC LIMIT 5").all<any>();
         
         const todayVisits = await env.DB.prepare("SELECT count(*) as c FROM attendance WHERE date(check_in_time) = ?").bind(clock.today).first<any>();
         const revenue = await env.DB.prepare("SELECT sum(amount) as t FROM payments").first<any>();
@@ -356,14 +318,12 @@ export default {
           user: { ...user, permissions: user.permissions ? JSON.parse(user.permissions) : [] },
           members: membersProcessed,
           attendanceToday: (attendanceToday.results || []).map((r:any) => {
-            const dueInfo = calcDueDetails(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0, clock.now);
+            const dueInfo = calculateDues(r.expiry_date, attendanceByMember[r.member_id], attendanceThreshold, r.manual_due_months || 0, clock.now);
             return { ...r, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels };
           }),
-          attendanceHistory: (attendanceHistory.results || []).map((r:any) => {
-            return { ...r, dueMonths: 0 }; // History doesn't strictly need due calculation for display, optimizes load
-          }),
+          attendanceHistory: attendanceHistory.results || [],
           stats: { active: activeCount, today: todayVisits?.c || 0, revenue: revenue?.t || 0, dueMembers: dueMembersCount, inactiveMembers: inactiveMembersCount, totalOutstanding },
-          settings: { attendanceThreshold, inactiveAfterMonths, membershipPlans, currency, lang, renewalFee, time: { timezone: clock.timezone, simulated: clock.simulated, simulatedTime: clock.simulatedTime, now: clock.now.toISOString() } }
+          settings: { ...settings, clock: { timezone: clock.timezone, simulated: clock.simulated, simulatedTime: clock.simulatedTime, now: clock.now.toISOString() } }
         });
       }
 
@@ -378,48 +338,23 @@ export default {
         const body = await req.json() as any;
         let query = "SELECT a.check_in_time, a.status, m.name, m.id AS member_id FROM attendance a JOIN members m ON a.member_id = m.id";
         const params = [];
-        
-        if (body.date) {
-            query += " WHERE date(a.check_in_time) = ?";
-            params.push(body.date);
-        }
-        
+        if (body.date) { query += " WHERE date(a.check_in_time) = ?"; params.push(body.date); }
         query += " ORDER BY a.id DESC";
-        
-        // If no date filter, limit to recent
-        if (!body.date) {
-            query += " LIMIT 100"; 
-        }
-        
+        if (!body.date) { query += " LIMIT 100"; }
         const history = await env.DB.prepare(query).bind(...params).all();
         return json({ history: history.results || [] });
       }
 
       if (url.pathname === "/api/payments/history" && req.method === "POST") {
         const body = await req.json() as any;
-        // Changed JOIN to LEFT JOIN to include deleted members (where name might be null)
         let query = "SELECT p.amount, p.date, m.name, p.member_id FROM payments p LEFT JOIN members m ON p.member_id = m.id WHERE 1=1";
         const params: any[] = [];
-        
-        if (body.memberId) {
-            query += " AND p.member_id = ?";
-            params.push(body.memberId);
-        }
-        
-        if (body.date) {
-            query += " AND date(p.date) = ?";
-            params.push(body.date);
-        }
-        
+        if (body.memberId) { query += " AND p.member_id = ?"; params.push(body.memberId); }
+        if (body.date) { query += " AND date(p.date) = ?"; params.push(body.date); }
         query += " ORDER BY p.date DESC LIMIT 50";
         const res = await env.DB.prepare(query).bind(...params).all<any>();
-        
         let memberName = null;
-        if(body.memberId) {
-           const m = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(body.memberId).first<any>();
-           memberName = m?.name;
-        }
-
+        if(body.memberId) { const m = await env.DB.prepare("SELECT name FROM members WHERE id = ?").bind(body.memberId).first<any>(); memberName = m?.name; }
         return json({ transactions: res.results || [], memberName });
       }
 
@@ -428,47 +363,25 @@ export default {
         const qRaw = (body.query || "").toString().trim();
         if (!qRaw) return json({ results: [] });
         
-        let res;
-        const isNumeric = /^\d+$/.test(qRaw);
-        
-        // Optimized query to check attendance status for today
         const settings = await loadSettings(env);
         const today = settings.clock.today;
         const baseQuery = "SELECT id, name, phone, plan, expiry_date, balance, status, manual_due_months, (SELECT count(*) FROM attendance WHERE member_id = members.id AND date(check_in_time) = ?) as today_visits FROM members";
         
-        if (isNumeric) {
-           if (qRaw.length < 6) {
-              res = await env.DB.prepare(baseQuery + " WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(today, `${qRaw}%`).all();
-           } else {
-              res = await env.DB.prepare(baseQuery + " WHERE phone LIKE ? LIMIT 10").bind(today, `%${qRaw}%`).all();
-           }
+        let res;
+        const isNumeric = /^\d+$/.test(qRaw);
+        if (isNumeric && qRaw.length < 6) {
+           res = await env.DB.prepare(baseQuery + " WHERE CAST(id AS TEXT) LIKE ? LIMIT 10").bind(today, `${qRaw}%`).all();
         } else {
-           res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? LIMIT 10").bind(today, `%${qRaw}%`).all();
+           res = await env.DB.prepare(baseQuery + " WHERE name LIKE ? OR phone LIKE ? LIMIT 10").bind(today, `%${qRaw}%`, `%${qRaw}%`).all();
         }
         
-        // Preload attendance for matched members to respect monthly billing threshold
-        const ids = (res.results || []).map((m:any)=>m.id);
-        let attendanceByMember: Record<number, string[]> = {};
-        if (ids.length) {
-          const placeholders = ids.map(()=>'?').join(',');
-          const attRes = await env.DB.prepare(`SELECT member_id, check_in_time FROM attendance WHERE member_id IN (${placeholders})`).bind(...ids).all<any>();
-          for (const a of attRes.results || []) {
-            if (!attendanceByMember[a.member_id]) attendanceByMember[a.member_id] = [];
-            attendanceByMember[a.member_id].push(a.check_in_time);
-          }
+        const results = [];
+        for (const m of res.results || []) {
+            const att = await env.DB.prepare("SELECT check_in_time FROM attendance WHERE member_id = ?").bind(m.id).all<any>();
+            const attTs = (att.results||[]).map((a:any)=>a.check_in_time);
+            const dueInfo = calculateDues(m.expiry_date, attTs, settings.attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
+            results.push({ ...m, dueMonths: dueInfo.count, dueMonthLabels: dueInfo.labels, checkedIn: m.today_visits > 0 });
         }
-
-        const attendanceThreshold = settings.attendanceThreshold;
-
-        const results = (res.results || []).map((m: any) => {
-            const dueInfo = calcDueDetails(m.expiry_date, attendanceByMember[m.id], attendanceThreshold, m.manual_due_months || 0, settings.clock.now);
-            return {
-                ...m,
-                dueMonths: dueInfo.count,
-                dueMonthLabels: dueInfo.labels,
-                checkedIn: m.today_visits > 0
-            };
-        });
         return json({ results });
       }
 
@@ -478,56 +391,40 @@ export default {
         const isMigration = body.migrationMode === true || body.migrationMode === "true";
         const legacyDues = Math.max(0, parseInt(body.legacyDues || "0", 10));
 
-        // Default paid-through month is the previous month end
-        const base = new Date(settings.clock.now);
+        // Initial Expiry: Previous Month End (so billing starts this month)
+        let base = new Date(settings.clock.now);
         base.setMonth(base.getMonth() - 1, 1);
         let paidThrough = monthEnd(base);
-        let manualDueMonths = 0;
 
-        if (isMigration) {
-            const anchor = new Date(settings.clock.now);
-            anchor.setMonth(anchor.getMonth() - legacyDues, 1);
-            paidThrough = monthEnd(anchor);
-            manualDueMonths = legacyDues;
+        if (isMigration && legacyDues > 0) {
+            // If migrating, we keep expiry at last month, and add debt manual
+            // We do NOT set expiry back X months, because calcDues iterates from expiry.
+            // Wait, calcDues scans from expiry. So if we set expiry 3 months back, it will scan those 3 months.
+            // But those 3 months have NO attendance in D1. So they will be counted as "Gaps" (skipped).
+            // So for migration, we MUST use manual_due_months column to represent old debt.
         }
 
-        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?) RETURNING id").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), manualDueMonths).first<any>();
-        
+        const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months) VALUES (?, ?, ?, ?, ?, ?) RETURNING id").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), isMigration ? legacyDues : 0).first<any>();
         const newMemberId = result.id;
 
-        // Handle Admission Fee Payment
         if (body.admissionFeePaid && newMemberId) {
             const fee = parseInt(body.admissionFee || "0");
-            if (fee > 0) {
-                await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, fee, settings.clock.now.toISOString()).run();
-            }
+            if (fee > 0) await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, fee, settings.clock.now.toISOString()).run();
         }
         
-        // Handle Initial Plan Payment (if any)
         const initialAmt = parseInt(body.initialPayment || "0");
         if (initialAmt > 0 && newMemberId) {
             await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(newMemberId, initialAmt, settings.clock.now.toISOString()).run();
-            // Process payment to update balance and expiry
-            const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(newMemberId).first<any>();
-            const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
-            const price = plan ? Number(plan.price) : 0;
-            let currentBalance = (member.balance || 0) + initialAmt;
-            let expiryUpdated = monthEnd(new Date(member.expiry_date));
-            let manualDue = member.manual_due_months || 0;
-
-            if (price > 0) {
-                while (manualDue > 0 && currentBalance >= price) {
-                    currentBalance -= price;
-                    manualDue -= 1;
-                    expiryUpdated = addPaidMonths(expiryUpdated, 1);
-                }
-                while (currentBalance >= price) {
-                    currentBalance -= price;
-                    expiryUpdated = addPaidMonths(expiryUpdated, 1);
-                }
-            }
-
-            await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, manual_due_months = ? WHERE id = ?").bind(expiryUpdated.toISOString(), currentBalance, manualDue, member.id).run();
+            // Process Advance Payment
+            const m = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(newMemberId).first<any>();
+            const plan = (settings.membershipPlans || []).find((p: any) => p.name === m.plan);
+            const res = processPayment(
+               m.expiry_date, [], 
+               initialAmt, plan ? Number(plan.price) : 0, 
+               0, m.manual_due_months || 0, 
+               settings.attendanceThreshold, settings.clock.now
+            );
+            await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, manual_due_months = ? WHERE id = ?").bind(res.newExpiry, res.newBalance, res.newManualDue, newMemberId).run();
         }
         return json({ success: true });
       }
@@ -538,104 +435,52 @@ export default {
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
         if (!member) return json({ error: "Member not found" }, 404);
 
-        // Strict Inactive Block
-        if (member.status === 'inactive') return json({ error: "Membership Inactive. Please Renew.", code: "INACTIVE" }, 400);
+        if (member.status === 'inactive') return json({ error: "Membership Inactive. Please Pay.", code: "INACTIVE" }, 400);
 
+        // Uses BD Date for Duplicate Check
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = ? LIMIT 1").bind(memberId, settings.clock.today).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
-        const isExpired = new Date(member.expiry_date) < settings.clock.now;
-        const status = isExpired ? 'expired' : 'success';
-        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, settings.clock.now.toISOString(), status).run();
-        return json({ success: true, status, name: member.name, isExpired });
-      }
-
-      // RE-ADMISSION / RENEWAL ENDPOINT
-      if (url.pathname === "/api/members/renew" && req.method === "POST") {
-        const settings = await loadSettings(env);
-        const { memberId, renewalFee, amount } = await req.json() as any;
-        const rFee = Number(renewalFee);
-        const planAmt = Number(amount);
-
-        // 1. Record Renewal Fee
-        if (rFee > 0) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, settings.clock.now.toISOString()).run();
-        }
-
-        // 2. Record Plan Payment
-        if (planAmt > 0) {
-            await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, planAmt, settings.clock.now.toISOString()).run();
-        }
-
-        // 3. Reset Member Status & Expiry
-        const member = await env.DB.prepare("SELECT plan FROM members WHERE id = ?").bind(memberId).first<any>();
-        const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
-        const price = plan ? Number(plan.price) : 0;
-
-        let newExpiry = monthEnd(new Date(settings.clock.now.getFullYear(), settings.clock.now.getMonth() - 1, 1));
-        let balance = 0;
-        let manualDue = member.manual_due_months || 0;
-
-        if (price > 0) {
-            let months = Math.floor(planAmt / price);
-            balance = planAmt % price; // Store remainder
-
-            while (manualDue > 0 && months > 0) {
-                months -= 1;
-                manualDue -= 1;
-                newExpiry = addPaidMonths(newExpiry, 1);
-            }
-
-            if (months > 0) {
-                newExpiry = addPaidMonths(newExpiry, months);
-            }
-        } else {
-            // Fallback if price is 0
-            newExpiry = addPaidMonths(newExpiry, 1);
-        }
-
-        await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, status = 'active', manual_due_months = ? WHERE id = ?").bind(newExpiry.toISOString(), balance, manualDue, memberId).run();
-        return json({ success: true });
-      }
-
-      if (url.pathname === "/api/payment" && req.method === "POST") {
-        const settings = await loadSettings(env);
-        const { memberId, amount } = await req.json() as any;
-        const amt = Number(amount);
-
-        // Record the transaction
-        await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, settings.clock.now.toISOString()).run();
         
-        // Update member balance and expiry logic
+        const isExpired = new Date(member.expiry_date) < settings.clock.now;
+        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, settings.clock.now.toISOString(), isExpired ? 'expired' : 'success').run();
+        return json({ success: true, status: isExpired ? 'expired' : 'success', name: member.name, isExpired });
+      }
+
+      // Unified Payment Processing
+      if ((url.pathname === "/api/payment" || url.pathname === "/api/members/renew") && req.method === "POST") {
+        const settings = await loadSettings(env);
+        const { memberId, amount, renewalFee } = await req.json() as any;
+        const amt = Number(amount || 0);
+        const rFee = Number(renewalFee || 0);
+
+        if (rFee > 0) await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, rFee, settings.clock.now.toISOString()).run();
+        if (amt > 0) await env.DB.prepare("INSERT INTO payments (member_id, amount, date) VALUES (?, ?, ?)").bind(memberId, amt, settings.clock.now.toISOString()).run();
+
         const member = await env.DB.prepare("SELECT * FROM members WHERE id = ?").bind(memberId).first<any>();
+        const att = await env.DB.prepare("SELECT check_in_time FROM attendance WHERE member_id = ?").bind(memberId).all<any>();
+        const attTs = (att.results||[]).map((a:any) => a.check_in_time);
+        
         const plan = (settings.membershipPlans || []).find((p: any) => p.name === member.plan);
         const price = plan ? Number(plan.price) : 0;
 
-        let currentBalance = (member.balance || 0) + amt;
-        let expiry = monthEnd(new Date(member.expiry_date));
-        let manualDue = member.manual_due_months || 0;
+        const res = processPayment(
+           member.expiry_date,
+           attTs,
+           amt,
+           price,
+           member.balance || 0,
+           member.manual_due_months || 0,
+           settings.attendanceThreshold,
+           settings.clock.now
+        );
 
-        // While balance allows, extend month
-        if (price > 0) {
-            while (manualDue > 0 && currentBalance >= price) {
-                currentBalance -= price;
-                manualDue -= 1;
-                expiry = addPaidMonths(expiry, 1);
-            }
-            while (currentBalance >= price) {
-                currentBalance -= price;
-                expiry = addPaidMonths(expiry, 1);
-            }
-        }
-
-        await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, status = 'active', manual_due_months = ? WHERE id = ?").bind(expiry.toISOString(), currentBalance, manualDue, memberId).run();
+        await env.DB.prepare("UPDATE members SET expiry_date = ?, balance = ?, manual_due_months = ?, status = 'active' WHERE id = ?").bind(res.newExpiry, res.newBalance, res.newManualDue, memberId).run();
         return json({ success: true });
       }
 
       if (url.pathname === "/api/members/delete" && req.method === "POST") {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
-        // NOT deleting payments to preserve revenue history
-        // await env.DB.prepare("DELETE FROM payments WHERE member_id = ?").bind(id).run(); 
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
         return json({ success: true });
       }
@@ -643,16 +488,15 @@ export default {
       if (url.pathname === "/api/settings" && req.method === "POST") {
         if (user.role !== 'admin') return json({ error: 'Unauthorized' }, 403);
         const body = await req.json() as any;
-        const simEnabled = body.timeSimulationEnabled === true || body.timeSimulationEnabled === 'true' || body.timeSimulationEnabled === 'on';
-        const simValue = simEnabled ? (body.simulatedTime || '') : '';
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_threshold_days', ?)").bind(String(body.attendanceThreshold)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('inactive_after_due_months', ?)").bind(String(body.inactiveAfterMonths)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('currency', ?)").bind(String(body.currency)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('lang', ?)").bind(String(body.lang)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('membership_plans', ?)").bind(JSON.stringify(body.membershipPlans)).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('renewal_fee', ?)").bind(String(body.renewalFee)).run();
+        const simEnabled = body.timeSimulationEnabled === true;
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('time_simulation_enabled', ?)").bind(simEnabled ? 'true' : 'false').run();
-        await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('time_simulation_value', ?)").bind(simEnabled && simValue ? String(simValue) : '').run();
+        if(simEnabled) await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('time_simulation_value', ?)").bind(body.simulatedTime).run();
         await env.DB.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('timezone', ?)").bind(String(body.timezone || DEFAULT_TIMEZONE)).run();
         return json({ success: true });
       }
@@ -663,1429 +507,67 @@ export default {
 };
 
 /* ========================================================================
-   3. FRONTEND
+   3. FRONTEND (UI)
    ======================================================================== */
 
 function renderSetup() {
-  const html = `${baseHead("Gym OS - Setup")}
-  <body>
-    <div class="center-screen">
-      <div class="card" style="width: 100%; max-width: 420px;">
-        <h2 style="color:var(--primary); margin-bottom:10px;">🚀 System Setup</h2>
-        <p style="color:var(--text-muted); margin-bottom:24px;">Initialize your gym management system.</p>
-        <form id="form">
-          <label>Gym Name</label><input name="gymName" required placeholder="e.g. Iron Paradise">
-          <label>Admin Name</label><input name="adminName" required placeholder="John Doe">
-          <label>Admin Email</label><input name="email" type="email" required placeholder="admin@gym.com">
-          <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:12px">Install System</button>
-        </form>
-        <div id="error" style="color:var(--danger); margin-top:10px; font-size:13px; text-align:center;"></div>
-        <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
-           <button onclick="nukeDB()" class="btn btn-danger" style="font-size:11px;">⚠ Factory Reset Database</button>
-        </div>
-      </div>
-    </div>
-    <script>
-      async function nukeDB() {
-        if(!confirm("Delete ALL data?")) return;
-        await fetch('/api/nuke'); location.reload();
-      }
-      document.getElementById('form').onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          const res = await fetch('/api/setup', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          const d = await res.json();
-          if(res.ok) window.location.reload();
-          else throw new Error(d.error || "Setup failed");
-        } catch(err) { document.getElementById('error').textContent = err.message; }
-      }
-    </script>
-  </body></html>`;
+  const html = `${baseHead("Gym OS - Setup")}<body><div class="center-screen"><div class="card" style="width:100%;max-width:420px;"><h2 style="color:var(--primary);margin-bottom:10px;">🚀 System Setup</h2><p style="color:var(--text-muted);margin-bottom:24px;">Initialize your gym system.</p><form id="form"><label>Gym Name</label><input name="gymName" required><label>Admin Name</label><input name="adminName" required><label>Admin Email</label><input name="email" type="email" required><label>Password</label><input name="password" type="password" required><button type="submit" class="btn btn-primary w-full" style="padding:12px">Install</button></form><div id="error" style="color:var(--danger);margin-top:10px;font-size:13px;text-align:center;"></div></div></div><script>document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();try{const res=await fetch('/api/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});const d=await res.json();if(res.ok)window.location.reload();else throw new Error(d.error||"Setup failed");}catch(err){document.getElementById('error').textContent=err.message;}}</script></body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
 
 function renderLogin(gymName: string) {
-  // Safe insertion
   const safeName = escapeHtml(gymName);
-  const html = `${baseHead("Login")}
-  <body>
-    <div class="center-screen">
-      <div class="card" style="width: 100%; max-width: 380px;">
-        <h2 style="margin-bottom:5px;">${safeName}</h2>
-        <p style="color:var(--text-muted); margin-bottom:24px;">Staff Access Portal</p>
-        <form id="form">
-          <label>Email</label><input name="email" required>
-          <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:12px;">Login</button>
-        </form>
-        <div id="error" style="color:var(--danger); margin-top:15px; font-size:13px; text-align:center;"></div>
-      </div>
-    </div>
-    <script>
-      document.getElementById('form').onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          const res = await fetch('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
-          if(res.ok) {
-            sessionStorage.removeItem('gym_view'); // Clear old session on login
-            window.location.href = '/dashboard';
-          } else { const d = await res.json(); throw new Error(d.error || "Login failed"); }
-        } catch(err) { document.getElementById('error').textContent = err.message; }
-      }
-    </script>
-  </body></html>`;
+  const html = `${baseHead("Login")}<body><div class="center-screen"><div class="card" style="width:100%;max-width:380px;"><h2 style="margin-bottom:5px;">${safeName}</h2><p style="color:var(--text-muted);margin-bottom:24px;">Staff Access Portal</p><form id="form"><label>Email</label><input name="email" required><label>Password</label><input name="password" type="password" required><button type="submit" class="btn btn-primary w-full" style="padding:12px;">Login</button></form><div id="error" style="color:var(--danger);margin-top:15px;font-size:13px;text-align:center;"></div></div></div><script>document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();try{const res=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(res.ok){sessionStorage.removeItem('gym_view');window.location.href='/dashboard';}else{const d=await res.json();throw new Error(d.error||"Login failed");}}catch(err){document.getElementById('error').textContent=err.message;}}</script></body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
 
 function renderDashboard(user: any) {
-  // Secure values before injecting into HTML string
   const safeUserName = escapeHtml(user.name);
   const safeRole = escapeHtml(user.role.toUpperCase());
-  const safePerms = user.permissions || '[]'; // JSON string is safe here
-  const safeRoleRaw = escapeHtml(user.role);
+  const safePerms = user.permissions || '[]'; 
 
   const html = `${baseHead("Dashboard")}
   <body>
     <div class="app-layout">
-      <div class="mobile-header">
-         <div style="font-weight:bold;">Gym OS</div>
-         <button class="btn btn-outline" onclick="toggleSidebar()">☰</button>
-      </div>
+      <div class="mobile-header"><div style="font-weight:bold;">Gym OS</div><button class="btn btn-outline" onclick="toggleSidebar()">☰</button></div>
       <div class="overlay" onclick="toggleSidebar()"></div>
-
-      <aside class="sidebar">
-        <div style="padding:24px; font-size:20px; font-weight:700; border-bottom:1px solid #1f2937;">💪 Gym OS</div>
-        <div class="nav" id="nav-container"></div>
-        <div style="padding:20px; border-top:1px solid #1f2937;">
-          <div style="font-weight:600;">${safeUserName}</div>
-          <div style="font-size:12px; opacity:0.7; margin-bottom:8px;">${safeRole}</div>
-          <a href="/api/logout" style="color:#fca5a5; font-size:12px; text-decoration:none;" id="txt-logout">Sign Out &rarr;</a>
-        </div>
-      </aside>
-
+      <aside class="sidebar"><div style="padding:24px;font-size:20px;font-weight:700;border-bottom:1px solid #1f2937;">💪 Gym OS</div><div class="nav" id="nav-container"></div><div style="padding:20px;border-top:1px solid #1f2937;"><div style="font-weight:600;">${safeUserName}</div><div style="font-size:12px;opacity:0.7;margin-bottom:8px;">${safeRole}</div><a href="/api/logout" style="color:#fca5a5;font-size:12px;text-decoration:none;" id="txt-logout">Sign Out &rarr;</a></div></aside>
       <main class="main-content">
-        <div class="flex-between" style="padding: 24px 24px 0 24px;">
-           <h2 id="page-title" style="margin:0;">Dashboard</h2>
-           <div class="flex">
-              <button class="btn btn-primary" onclick="app.modals.quickPay.open()" id="btn-quick-pay">💰 Quick Pay</button>
-              <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button>
-           </div>
-        </div>
-
-        <div style="padding: 24px;">
-          <!-- VIEW: HOME -->
+        <div class="flex-between" style="padding:24px 24px 0 24px;"><h2 id="page-title" style="margin:0;">Dashboard</h2><div class="flex"><button class="btn btn-primary" onclick="app.modals.quickPay.open()" id="btn-quick-pay">💰 Quick Pay</button><button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin">⚡ Quick Check-In</button></div></div>
+        <div style="padding:24px;">
           <div id="view-home" class="hidden">
-            <div class="stats-grid">
-              <div class="stat-card">
-                <span class="stat-label" id="lbl-active-mem">Active Members</span>
-                <span class="stat-val" id="stat-active">--</span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label" id="lbl-today-visits">Today's Visits</span>
-                <span class="stat-val" id="stat-today">--</span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label" id="lbl-tot-rev">Total Revenue</span>
-                <span class="stat-val" style="color:var(--success)"><span id="stat-rev">--</span></span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label" id="lbl-mem-due">Members With Due</span>
-                <span class="stat-val" id="stat-due">--</span>
-              </div>
-              <div class="stat-card">
-                <span class="stat-label" id="lbl-total-due-money">Total Due Amount</span>
-                <span class="stat-val" style="color:var(--danger)"><span id="stat-total-due">--</span></span>
-              </div>
-            </div>
-            <div class="card">
-              <h3 style="margin:0 0 15px 0;" id="lbl-due-overview">Dues Overview</h3>
-              <canvas id="chart-dues" height="100"></canvas>
-            </div>
+            <div class="stats-grid"><div class="stat-card"><span class="stat-label" id="lbl-active-mem">Active Members</span><span class="stat-val" id="stat-active">--</span></div><div class="stat-card"><span class="stat-label" id="lbl-today-visits">Today's Visits</span><span class="stat-val" id="stat-today">--</span></div><div class="stat-card"><span class="stat-label" id="lbl-tot-rev">Total Revenue</span><span class="stat-val" style="color:var(--success)"><span id="stat-rev">--</span></span></div><div class="stat-card"><span class="stat-label" id="lbl-mem-due">Members With Due</span><span class="stat-val" id="stat-due">--</span></div><div class="stat-card"><span class="stat-label" id="lbl-total-due-money">Total Due Amount</span><span class="stat-val" style="color:var(--danger)"><span id="stat-total-due">--</span></span></div></div>
+            <div class="card"><h3 style="margin:0 0 15px 0;" id="lbl-due-overview">Dues Overview</h3><canvas id="chart-dues" height="100"></canvas></div>
           </div>
-
-          <!-- VIEW: MEMBERS -->
-          <div id="view-members" class="hidden">
-            <div class="card">
-              <div class="flex-between" style="margin-bottom:20px; flex-wrap:wrap; gap:10px;">
-                <div class="flex">
-                  <input id="search" placeholder="Search ID, Name or Phone..." style="width:250px; margin:0;" onkeyup="app.renderMembersTable()">
-                  <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0; width:120px;">
-                     <option value="all">All Status</option>
-                     <option value="active">Active</option>
-                     <option value="due">Due</option>
-                     <option value="advanced">Advanced</option>
-                     <option value="inactive">Inactive</option>
-                  </select>
-                </div>
-                <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button>
-              </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-joined">Joined</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead>
-                  <tbody id="tbl-members"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- VIEW: ATTENDANCE (TODAY) -->
-          <div id="view-attendance" class="hidden">
-            <div class="card">
-              <h3 id="lbl-today-att">Today's Attendance</h3>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead>
-                  <tbody id="tbl-attendance-today"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- VIEW: HISTORY -->
-          <div id="view-history" class="hidden">
-            <div class="card">
-              <div class="flex-between" style="margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h3 style="margin:0;" id="lbl-act-log">Activity Log</h3>
-                <div class="flex" style="gap:8px;">
-                  <input type="date" id="history-date" style="margin-bottom:0; max-width:160px;">
-                  <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
-                  <button class="btn btn-outline" onclick="app.clearHistoryFilter()" id="btn-clear">Clear</button>
-                </div>
-              </div>
-              <div class="table-responsive">
-                <table>
-                  <thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead>
-                  <tbody id="tbl-attendance-history"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- VIEW: PAYMENTS -->
+          <div id="view-members" class="hidden"><div class="card"><div class="flex-between" style="margin-bottom:20px;flex-wrap:wrap;gap:10px;"><div class="flex"><input id="search" placeholder="Search ID, Name or Phone..." style="width:250px;margin:0;" onkeyup="app.renderMembersTable()"><select id="member-filter" onchange="app.renderMembersTable()" style="margin:0;width:120px;"><option value="all">All Status</option><option value="active">Active</option><option value="due">Due</option><option value="advanced">Advanced</option><option value="inactive">Inactive</option></select></div><button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">+ Add Member</button></div><div class="table-responsive"><table><thead><tr><th>ID</th><th id="th-name">Name</th><th id="th-joined">Joined</th><th id="th-phone">Phone</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Due / Adv</th><th id="th-act">Actions</th></tr></thead><tbody id="tbl-members"></tbody></table></div></div></div>
+          <div id="view-attendance" class="hidden"><div class="card"><h3 id="lbl-today-att">Today's Attendance</h3><div class="table-responsive"><table><thead><tr><th id="th-time">Time</th><th>Name</th><th>Due / Adv</th></tr></thead><tbody id="tbl-attendance-today"></tbody></table></div></div></div>
+          <div id="view-history" class="hidden"><div class="card"><div class="flex-between" style="margin-bottom:12px;flex-wrap:wrap;gap:10px;"><h3 style="margin:0;" id="lbl-act-log">Activity Log</h3><div class="flex" style="gap:8px;"><input type="date" id="history-date" style="margin-bottom:0;max-width:160px;"><button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button><button class="btn btn-outline" onclick="app.clearHistoryFilter()" id="btn-clear">Clear</button></div></div><div class="table-responsive"><table><thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead><tbody id="tbl-attendance-history"></tbody></table></div></div></div>
           <div id="view-payments" class="hidden">
-            <!-- Total Dues Card -->
-            <div class="card" style="border-left: 5px solid var(--danger);">
-               <div class="flex-between">
-                  <div>
-                    <div style="font-size:12px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Total Outstanding Dues</div>
-                    <div id="total-outstanding-amount" style="font-size:28px; font-weight:800; color:var(--danger); margin-top:5px;">0</div>
-                  </div>
-                  <div style="text-align:right" class="flex" style="gap:5px;">
-                    <button class="btn btn-outline" onclick="app.openPaymentHistory()" id="btn-history">📜 History</button>
-                    <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print PDF</button>
-                  </div>
-               </div>
-            </div>
-
-            <div class="card">
-              <h3 id="lbl-search-col">Search & Collect</h3>
-              <input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)">
-              <div id="pay-search-results" class="checkin-results"></div>
-            </div>
-           
-            <div class="card">
-               <div class="flex-between" style="margin-bottom:10px;">
-                  <h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3>
-                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0; min-width:120px;">
-                    <option value="all">All Members</option>
-                    <option value="due">Dues Only</option>
-                    <option value="running">Running</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
-               </div>
-               <div class="table-responsive">
-                 <table>
-                   <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead>
-                   <tbody id="tbl-payment-list"></tbody>
-                 </table>
-               </div>
-            </div>
+            <div class="card" style="border-left:5px solid var(--danger);"><div class="flex-between"><div><div style="font-size:12px;font-weight:bold;color:var(--text-muted);text-transform:uppercase;">Total Outstanding Dues</div><div id="total-outstanding-amount" style="font-size:28px;font-weight:800;color:var(--danger);margin-top:5px;">0</div></div><div style="text-align:right" class="flex"><button class="btn btn-outline" onclick="app.openPaymentHistory()" id="btn-history">📜 History</button><button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">Print PDF</button></div></div></div>
+            <div class="card"><h3 id="lbl-search-col">Search & Collect</h3><input id="pay-search" placeholder="Search by ID, name or phone..." style="margin-bottom:10px;" onkeyup="app.onPaymentSearchInput(event)"><div id="pay-search-results" class="checkin-results"></div></div>
+            <div class="card"><div class="flex-between" style="margin-bottom:10px;"><h3 style="margin:0;" id="lbl-pay-stat">Payment Status</h3><select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0;min-width:120px;"><option value="all">All Members</option><option value="due">Dues Only</option><option value="running">Running</option><option value="advanced">Advanced</option></select></div><div class="table-responsive"><table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th>Action</th></tr></thead><tbody id="tbl-payment-list"></tbody></table></div></div>
           </div>
-
-          <!-- VIEW: SETTINGS -->
-          <div id="view-settings" class="hidden">
-            <div class="card">
-              <h3 id="lbl-sys-set">System Settings</h3>
-              <form id="settings-form" onsubmit="app.saveSettings(event)">
-                <div class="flex">
-                   <div class="w-full">
-                      <label id="lbl-cur">Currency Symbol</label>
-                      <input name="currency" type="text" placeholder="BDT">
-                   </div>
-                   <div class="w-full">
-                      <label id="lbl-lang">Language / ভাষা</label>
-                      <select name="lang" style="margin-bottom:15px;">
-                         <option value="en">English</option>
-                         <option value="bn">Bangla</option>
-                      </select>
-                   </div>
-                </div>
-               
-                <div class="flex">
-                   <div class="w-full">
-                      <label id="lbl-att-th">Attendance Threshold (Days)</label>
-                      <input name="attendanceThreshold" type="number" min="1" max="31" required>
-                   </div>
-                   <div class="w-full">
-                      <label id="lbl-inact-th">Inactive after X absent months</label>
-                      <input name="inactiveAfterMonths" type="number" min="1" max="36" required>
-                   </div>
-                </div>
-
-                <div class="w-full">
-                  <label id="lbl-ren-fee">Renewal Fee (Global)</label>
-                  <input name="renewalFee" type="number" min="0" required>
-                </div>
-
-                <div class="flex">
-                  <div class="w-full">
-                    <label>Timezone (GMT+6)</label>
-                    <input name="timezone" type="text" placeholder="Asia/Dhaka">
-                  </div>
-                  <div class="w-full">
-                    <label>Simulated Date & Time</label>
-                    <input name="simulatedTime" type="datetime-local">
-                  </div>
-                </div>
-                <label class="checkbox-item" style="width:auto; margin-bottom:8px;">
-                  <input type="checkbox" name="timeSimulationEnabled"> Enable Time Simulation (Admin Testing)
-                </label>
-                <p id="lbl-current-time" style="font-size:12px; color:var(--text-muted); margin-top:-4px;"></p>
-
-                <label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label>
-                <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:15px;">
-                   <div class="plan-row" style="font-weight:bold; font-size:12px; text-transform:uppercase; color:#6b7280;">
-                      <span>Plan Name</span><span>Price</span><span>Adm. Fee</span><span></span>
-                   </div>
-                   <div id="plans-container"></div>
-                   <button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button>
-                </div>
-               
-                <div class="flex-between" style="margin-top:15px; gap:10px;">
-                  <button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button>
-                  <span id="settings-status" style="font-size:12px; color:var(--text-muted);"></span>
-                </div>
-              </form>
-              <div style="margin-top:30px; padding-top:20px; border-top:1px solid var(--border); text-align:center;">
-                <button onclick="app.resetDB()" class="btn btn-danger" id="btn-reset-db">⚠️ Factory Reset Database</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- VIEW: USER MANAGEMENT -->
-          <div id="view-users" class="hidden">
-            <div class="card">
-               <div class="flex-between" style="margin-bottom:20px;">
-                 <h3 style="margin:0;" id="lbl-user-acc">User Access</h3>
-                 <button class="btn btn-primary" onclick="app.openAddUser()" id="btn-add-user">+ Add User</button>
-               </div>
-               <div class="table-responsive">
-                 <table>
-                   <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Permissions</th><th>Actions</th></tr></thead>
-                   <tbody id="tbl-users"></tbody>
-                 </table>
-               </div>
-            </div>
-          </div>
+          <div id="view-settings" class="hidden"><div class="card"><h3 id="lbl-sys-set">System Settings</h3><form id="settings-form" onsubmit="app.saveSettings(event)"><div class="flex"><div class="w-full"><label id="lbl-cur">Currency Symbol</label><input name="currency" type="text" placeholder="BDT"></div><div class="w-full"><label id="lbl-lang">Language / ভাষা</label><select name="lang" style="margin-bottom:15px;"><option value="en">English</option><option value="bn">Bangla</option></select></div></div><div class="flex"><div class="w-full"><label id="lbl-att-th">Attendance Threshold (Days)</label><input name="attendanceThreshold" type="number" min="1" max="31" required></div><div class="w-full"><label id="lbl-inact-th">Inactive after X absent months</label><input name="inactiveAfterMonths" type="number" min="1" max="36" required></div></div><div class="w-full"><label id="lbl-ren-fee">Renewal Fee (Global)</label><input name="renewalFee" type="number" min="0" required></div><div class="flex"><div class="w-full"><label>Timezone (GMT+6)</label><input name="timezone" type="text" placeholder="Asia/Dhaka"></div><div class="w-full"><label>Simulated Date & Time</label><input name="simulatedTime" type="datetime-local"></div></div><label class="checkbox-item" style="width:auto;margin-bottom:8px;"><input type="checkbox" name="timeSimulationEnabled"> Enable Time Simulation (Admin Testing)</label><p id="lbl-current-time" style="font-size:12px;color:var(--text-muted);margin-top:-4px;"></p><label style="margin-top:20px;" id="lbl-mem-plans">Membership Plans & Prices</label><div style="background:#f9fafb;padding:15px;border-radius:8px;border:1px solid #e5e7eb;margin-bottom:15px;"><div class="plan-row" style="font-weight:bold;font-size:12px;text-transform:uppercase;color:#6b7280;"><span>Plan Name</span><span>Price</span><span>Adm. Fee</span><span></span></div><div id="plans-container"></div><button type="button" class="btn btn-outline" onclick="app.addPlanRow()" id="btn-add-plan">+ Add Plan</button></div><div class="flex-between" style="margin-top:15px;gap:10px;"><button type="submit" class="btn btn-primary" id="btn-save-set">Save Settings</button><span id="settings-status" style="font-size:12px;color:var(--text-muted);"></span></div></form><div style="margin-top:30px;padding-top:20px;border-top:1px solid var(--border);text-align:center;"><button onclick="app.resetDB()" class="btn btn-danger" id="btn-reset-db">⚠️ Factory Reset Database</button></div></div></div>
+          <div id="view-users" class="hidden"><div class="card"><div class="flex-between" style="margin-bottom:20px;"><h3 style="margin:0;" id="lbl-user-acc">User Access</h3><button class="btn btn-primary" onclick="app.openAddUser()" id="btn-add-user">+ Add User</button></div><div class="table-responsive"><table><thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Permissions</th><th>Actions</th></tr></thead><tbody id="tbl-users"></tbody></table></div></div></div>
         </div>
       </main>
     </div>
-
-    <!-- MODALS -->
-
-    <div id="modal-checkin" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 style="text-align:center;" id="lbl-chk-title">⚡ Check-In</h3>
-        <input id="checkin-id" type="text" placeholder="Search ID/Name..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onCheckinInput(event)">
-        <div id="checkin-suggestions" class="checkin-results"></div>
-        <button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk">Submit</button>
-        <div id="checkin-res" style="margin-top:20px; text-align:center; font-weight:bold; min-height:20px;"></div>
-        <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button>
-      </div>
-    </div>
-   
-    <!-- QUICK PAY SEARCH MODAL -->
-    <div id="modal-quick-pay" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 style="text-align:center;" id="lbl-qp-title">💰 Quick Pay Search</h3>
-        <input id="qp-search" type="text" placeholder="Search Name/ID..." style="font-size:18px; padding:15px; text-align:center;" autofocus onkeyup="app.onQuickPayInput(event)">
-        <div id="qp-results" class="checkin-results"></div>
-        <button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.quickPay.close()">Close</button>
-      </div>
-    </div>
-
-    <div id="modal-add" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 id="lbl-new-mem">New Member</h3>
-       
-        <!-- TABS -->
-        <div style="display:flex; border-bottom:1px solid #e5e7eb; margin-bottom:20px;">
-           <div id="tab-new" class="nav-item active" style="color:var(--primary); border-bottom:2px solid var(--primary); background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('new')">New Admission</div>
-           <div id="tab-mig" class="nav-item" style="background:none; border-radius:0; margin:0;" onclick="app.switchAddTab('mig')">Migrating / Old</div>
-        </div>
-
-        <form onsubmit="app.addMember(event)">
-          <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
-         
-          <label>Full Name</label><input name="name" required>
-          <label>Phone Number</label><input name="phone" required>
-         
-          <div class="flex">
-            <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
-          </div>
-         
-          <div style="background:#f3f4f6; padding:12px; border-radius:8px; margin-top:10px;">
-             
-             <!-- SECTION: NEW MEMBER -->
-             <div id="sec-new-fees">
-                 <label style="margin-bottom:8px; font-weight:bold;">Fees (New)</label>
-                 <div class="flex" style="margin-bottom:10px;">
-                    <div class="w-full">
-                       <label>Admission Fee</label>
-                       <input name="admissionFee" id="new-adm-fee" type="number" min="0">
-                    </div>
-                    <div style="padding-top:22px;">
-                       <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
-                          <input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto; margin:0;"> Paid Now?
-                       </label>
-                    </div>
-                 </div>
-                 <div class="w-full">
-                    <label>Initial Payment (Required)</label>
-                    <input name="initialPayment" id="new-init-pay" type="number" min="0" required>
-                 </div>
-             </div>
-
-             <!-- SECTION: MIGRATING MEMBER -->
-             <div id="sec-mig-fees" style="display:none;">
-                 <label style="margin-bottom:8px; font-weight:bold;">Migration Status</label>
-                 <div class="w-full" style="margin-bottom:10px;">
-                    <label>Months Due (Manual)</label>
-                    <input name="legacyDues" id="mig-legacy-dues" type="number" min="0" value="0" required>
-                 </div>
-                 <div class="w-full">
-                    <label>Payment Now (Optional)</label>
-                    <input name="initialPayment" id="mig-init-pay" type="number" min="0" value="0">
-                 </div>
-             </div>
-
-          </div>
-
-          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
-            <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div id="modal-pay" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 id="lbl-rec-pay">💰 Receive Payment</h3>
-        <p id="pay-name" style="color:var(--text-muted); margin-bottom:20px;"></p>
-        <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#991b1b; padding:10px; border-radius:6px; margin-bottom:15px; font-size:13px; font-weight:bold;">⚠ Member Inactive. Paying will Reset & Renew Membership.</div>
-       
-        <form onsubmit="app.pay(event)">
-          <input type="hidden" name="memberId" id="pay-id">
-         
-          <!-- Renewal Section -->
-          <div id="pay-renewal-section" style="display:none; background:#f3f4f6; padding:15px; border-radius:8px; margin-bottom:15px;">
-             <label>Renewal Fee</label>
-             <input name="renewalFee" id="pay-ren-fee" type="number" readonly>
-             <label>Initial Plan Payment (Optional - Extends Membership)</label>
-          </div>
-         
-          <div id="pay-standard-label"><label>Amount Paid</label></div>
-          <input name="amount" id="pay-amount" type="number" required>
-         
-          <div style="font-size:12px; color:var(--text-muted); margin-top:5px;">
-             Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>
-             Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span>
-          </div>
-          <div class="flex" style="justify-content:flex-end; margin-top:15px;">
-            <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div id="modal-user" class="modal-backdrop">
-      <div class="modal-content">
-        <h3 id="user-modal-title">User</h3>
-        <form id="user-form" onsubmit="app.saveUser(event)">
-          <input type="hidden" name="id" id="u-id">
-          <label>Name</label><input name="name" id="u-name" required>
-          <label>Email</label><input name="email" id="u-email" type="email" required>
-          <label>Password <span style="font-size:11px; color:gray;" id="u-pass-hint"></span></label>
-          <input name="password" id="u-password" type="password">
-          <label>Role</label>
-          <select name="role" id="u-role" onchange="app.togglePerms(this.value)">
-             <option value="staff">Staff</option><option value="admin">Admin</option>
-          </select>
-          <div id="u-perms-container">
-             <label style="margin-top:15px;">Access Permissions</label>
-             <div class="checkbox-group">
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="home"> Overview</label>
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="members"> Members</label>
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="attendance"> Attendance</label>
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="history"> History</label>
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="payments"> Payments</label>
-                <label class="checkbox-item"><input type="checkbox" name="permissions" value="settings"> Settings</label>
-             </div>
-          </div>
-          <div class="flex" style="justify-content:flex-end; margin-top:20px;">
-            <button type="button" class="btn btn-outline" onclick="app.modals.user.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save User</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- ATTENDANCE CALENDAR MODAL -->
-    <div id="modal-member-history" class="modal-backdrop">
-      <div class="modal-content" style="max-width:800px;">
-        <div class="flex-between" style="margin-bottom:20px;">
-            <h3 id="mh-title" style="margin:0;">Attendance History</h3>
-            <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
-        </div>
-       
-        <div class="hist-controls">
-           <div class="flex" style="align-items:center;">
-              <label style="margin:0; white-space:nowrap;">Year:</label>
-              <select id="hist-year" style="margin:0;" onchange="app.renderCalendar()"></select>
-           </div>
-           <div class="flex" style="align-items:center;">
-              <label style="margin:0; white-space:nowrap;">Month:</label>
-              <select id="hist-month" style="margin:0;" onchange="app.renderCalendar()">
-                 <option value="-1">Whole Year / পুরো বছর</option>
-                 <option value="0">January</option><option value="1">February</option><option value="2">March</option>
-                 <option value="3">April</option><option value="4">May</option><option value="5">June</option>
-                 <option value="6">July</option><option value="7">August</option><option value="8">September</option>
-                 <option value="9">October</option><option value="10">November</option><option value="11">December</option>
-              </select>
-           </div>
-        </div>
-
-        <div id="calendar-container" class="calendar-wrapper" style="display:block;"></div>
-      </div>
-    </div>
-   
-    <!-- TRANSACTION HISTORY MODAL -->
-    <div id="modal-payment-history" class="modal-backdrop">
-      <div class="modal-content" style="max-width:700px;">
-         <div class="flex-between" style="margin-bottom:20px;">
-            <h3 id="ph-title" style="margin:0;">Transaction History</h3>
-            <button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
-         </div>
-        
-         <div class="hist-controls">
-            <div class="flex" style="align-items:center;">
-               <input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()">
-               <button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button>
-            </div>
-         </div>
-        
-         <div class="table-responsive" style="max-height:400px; overflow-y:auto;">
-            <table style="width:100%;">
-               <thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead>
-               <tbody id="tbl-transaction-history"></tbody>
-            </table>
-         </div>
-      </div>
-    </div>
+    <div id="modal-checkin" class="modal-backdrop"><div class="modal-content"><h3 style="text-align:center;" id="lbl-chk-title">⚡ Check-In</h3><input id="checkin-id" type="text" placeholder="Search ID/Name..." style="font-size:18px;padding:15px;text-align:center;" autofocus onkeyup="app.onCheckinInput(event)"><div id="checkin-suggestions" class="checkin-results"></div><button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk">Submit</button><div id="checkin-res" style="margin-top:20px;text-align:center;font-weight:bold;min-height:20px;"></div><button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.checkin.close()">Close</button></div></div>
+    <div id="modal-quick-pay" class="modal-backdrop"><div class="modal-content"><h3 style="text-align:center;" id="lbl-qp-title">💰 Quick Pay Search</h3><input id="qp-search" type="text" placeholder="Search Name/ID..." style="font-size:18px;padding:15px;text-align:center;" autofocus onkeyup="app.onQuickPayInput(event)"><div id="qp-results" class="checkin-results"></div><button class="btn btn-outline w-full" style="margin-top:15px;" onclick="app.modals.quickPay.close()">Close</button></div></div>
+    <div id="modal-add" class="modal-backdrop"><div class="modal-content"><h3 id="lbl-new-mem">New Member</h3><div style="display:flex;border-bottom:1px solid #e5e7eb;margin-bottom:20px;"><div id="tab-new" class="nav-item active" style="color:var(--primary);border-bottom:2px solid var(--primary);background:none;border-radius:0;margin:0;" onclick="app.switchAddTab('new')">New Admission</div><div id="tab-mig" class="nav-item" style="background:none;border-radius:0;margin:0;" onclick="app.switchAddTab('mig')">Migrating / Old</div></div><form onsubmit="app.addMember(event)"><input type="hidden" name="migrationMode" id="add-mig-mode" value="false"><label>Full Name</label><input name="name" required><label>Phone Number</label><input name="phone" required><div class="flex"><div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div></div><div style="background:#f3f4f6;padding:12px;border-radius:8px;margin-top:10px;"><div id="sec-new-fees"><label style="margin-bottom:8px;font-weight:bold;">Fees (New)</label><div class="flex" style="margin-bottom:10px;"><div class="w-full"><label>Admission Fee</label><input name="admissionFee" id="new-adm-fee" type="number" min="0"></div><div style="padding-top:22px;"><label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"><input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto;margin:0;"> Paid Now?</label></div></div><div class="w-full"><label>Initial Payment (Required)</label><input name="initialPayment" id="new-init-pay" type="number" min="0" required></div></div><div id="sec-mig-fees" style="display:none;"><label style="margin-bottom:8px;font-weight:bold;">Migration Status</label><div class="w-full" style="margin-bottom:10px;"><label>Months Due (Manual)</label><input name="legacyDues" id="mig-legacy-dues" type="number" min="0" value="0" required></div><div class="w-full"><label>Payment Now (Optional)</label><input name="initialPayment" id="mig-init-pay" type="number" min="0" value="0"></div></div></div><div class="flex" style="justify-content:flex-end;margin-top:15px;"><button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button><button type="submit" class="btn btn-primary">Create</button></div></form></div></div>
+    <div id="modal-pay" class="modal-backdrop"><div class="modal-content"><h3 id="lbl-rec-pay">💰 Receive Payment</h3><p id="pay-name" style="color:var(--text-muted);margin-bottom:20px;"></p><div id="pay-status-warning" style="display:none;background:#fee2e2;color:#991b1b;padding:10px;border-radius:6px;margin-bottom:15px;font-size:13px;font-weight:bold;">⚠ Member Inactive.</div><form onsubmit="app.pay(event)"><input type="hidden" name="memberId" id="pay-id"><div id="pay-renewal-section" style="display:none;background:#f3f4f6;padding:15px;border-radius:8px;margin-bottom:15px;"><label>Renewal Fee</label><input name="renewalFee" id="pay-ren-fee" type="number" readonly><label>Initial Plan Payment (Optional)</label></div><div id="pay-standard-label"><label>Amount Paid</label></div><input name="amount" id="pay-amount" type="number" required><div style="font-size:12px;color:var(--text-muted);margin-top:5px;">Current Plan Price: <span id="pay-plan-price" style="font-weight:bold;">-</span><br>Wallet Balance: <span id="pay-wallet-bal" style="font-weight:bold;">0</span></div><div class="flex" style="justify-content:flex-end;margin-top:15px;"><button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button><button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button></div></form></div></div>
+    <div id="modal-user" class="modal-backdrop"><div class="modal-content"><h3 id="user-modal-title">User</h3><form id="user-form" onsubmit="app.saveUser(event)"><input type="hidden" name="id" id="u-id"><label>Name</label><input name="name" id="u-name" required><label>Email</label><input name="email" id="u-email" type="email" required><label>Password <span style="font-size:11px;color:gray;" id="u-pass-hint"></span></label><input name="password" id="u-password" type="password"><label>Role</label><select name="role" id="u-role" onchange="app.togglePerms(this.value)"><option value="staff">Staff</option><option value="admin">Admin</option></select><div id="u-perms-container"><label style="margin-top:15px;">Access Permissions</label><div class="checkbox-group"><label class="checkbox-item"><input type="checkbox" name="permissions" value="home"> Overview</label><label class="checkbox-item"><input type="checkbox" name="permissions" value="members"> Members</label><label class="checkbox-item"><input type="checkbox" name="permissions" value="attendance"> Attendance</label><label class="checkbox-item"><input type="checkbox" name="permissions" value="history"> History</label><label class="checkbox-item"><input type="checkbox" name="permissions" value="payments"> Payments</label><label class="checkbox-item"><input type="checkbox" name="permissions" value="settings"> Settings</label></div></div><div class="flex" style="justify-content:flex-end;margin-top:20px;"><button type="button" class="btn btn-outline" onclick="app.modals.user.close()">Cancel</button><button type="submit" class="btn btn-primary">Save User</button></div></form></div></div>
+    <div id="modal-member-history" class="modal-backdrop"><div class="modal-content" style="max-width:800px;"><div class="flex-between" style="margin-bottom:20px;"><h3 id="mh-title" style="margin:0;">Attendance History</h3><button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button></div><div class="hist-controls"><div class="flex" style="align-items:center;"><label style="margin:0;white-space:nowrap;">Year:</label><select id="hist-year" style="margin:0;" onchange="app.renderCalendar()"></select></div><div class="flex" style="align-items:center;"><label style="margin:0;white-space:nowrap;">Month:</label><select id="hist-month" style="margin:0;" onchange="app.renderCalendar()"><option value="-1">Whole Year / পুরো বছর</option><option value="0">January</option><option value="1">February</option><option value="2">March</option><option value="3">April</option><option value="4">May</option><option value="5">June</option><option value="6">July</option><option value="7">August</option><option value="8">September</option><option value="9">October</option><option value="10">November</option><option value="11">December</option></select></div></div><div id="calendar-container" class="calendar-wrapper" style="display:block;"></div></div></div>
+    <div id="modal-payment-history" class="modal-backdrop"><div class="modal-content" style="max-width:700px;"><div class="flex-between" style="margin-bottom:20px;"><h3 id="ph-title" style="margin:0;">Transaction History</h3><button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button></div><div class="hist-controls"><div class="flex" style="align-items:center;"><input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()"><button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button></div></div><div class="table-responsive" style="max-height:400px;overflow-y:auto;"><table style="width:100%;"><thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead><tbody id="tbl-transaction-history"></tbody></table></div></div></div>
 
     <script>
-      // Helper: Escape HTML in JS too if needed for manual insertions
-      function escapeHtml(text) {
-        if (!text) return "";
-        return String(text)
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
-      }
-
-      const translations = {
-        en: {
-          dash: "Dashboard", over: "Overview", mem: "Members", att: "Attendance", hist: "History", pay: "Payments", set: "Settings", user: "User Access",
-          act_mem: "Active Members", tod_vis: "Today's Visits", tot_rev: "Total Revenue", mem_due: "Members With Due", total_due_amt: "Total Due Amount",
-          due_ov: "Dues Overview", quick_chk: "⚡ Quick Check-In", quick_pay: "💰 Quick Pay", quick_pay_search: "💰 Quick Pay Search",
-          search_ph: "Search ID, Name or Phone...", add_mem: "+ Add Member",
-          nm: "Name", joined: "Joined", ph: "Phone", pl: "Plan", exp: "Expiry", due: "Due", act: "Actions",
-          tod_att: "Today's Attendance", time: "Time", res: "Result",
-          act_log: "Activity Log", filter: "Filter", clear: "Clear",
-          search_col: "Search & Collect", pay_stat: "Payment Status", print: "Print List (PDF)",
-          sys_set: "System Settings", cur: "Currency Symbol", lang: "Language / ভাষা",
-          att_th: "Attendance Threshold (Days)", inact_th: "Inactive after X absent months", adm_fee: "Admission Fee", ren_fee: "Renewal Fee",
-          mem_plans: "Membership Plans & Prices", add_plan: "+ Add Plan", save_set: "Save Settings",
-          user_acc: "User Access", add_user: "+ Add User",
-          chk_title: "⚡ Check-In", submit: "Submit", close: "Close",
-          new_mem: "New Member", create: "Create",
-          rec_pay: "💰 Receive Payment", confirm: "Confirm",
-          trans_hist: "📜 History"
-        },
-        bn: {
-          dash: "ড্যাশবোর্ড", over: "সারসংক্ষেপ", mem: "সদস্যবৃন্দ", att: "উপস্থিতি", hist: "ইতিহাস", pay: "পেমেন্ট", set: "সেটিংস", user: "ব্যবহারকারী",
-          act_mem: "সক্রিয় সদস্য", tod_vis: "আজকের উপস্থিতি", tot_rev: "মোট আয়", mem_due: "বকেয়া সদস্য", total_due_amt: "মোট বকেয়া পরিমাণ",
-          due_ov: "বকেয়া ওভারভিউ", quick_chk: "⚡ চেক-ইন", quick_pay: "💰 দ্রুত পেমেন্ট", quick_pay_search: "💰 দ্রুত পেমেন্ট সার্চ",
-          search_ph: "আইডি, নাম বা ফোন খুঁজুন...", add_mem: "+ সদস্য যোগ",
-          nm: "নাম", joined: "ভর্তি", ph: "ফোন", pl: "প্ল্যান", exp: "মেয়াদ", due: "বকেয়া", act: "অ্যাকশন",
-          tod_att: "আজকের উপস্থিতি", time: "সময়", res: "ফলাফল",
-          act_log: "অ্যাক্টিভিটি লগ", filter: "ফিল্টার", clear: "মুছুন",
-          search_col: "খুঁজুন ও পেমেন্ট নিন", pay_stat: "পেমেন্ট স্ট্যাটাস", print: "প্রিন্ট (PDF)",
-          sys_set: "সিস্টেম সেটিংস", cur: "মুদ্রার প্রতীক", lang: "ভাষা / Language",
-          att_th: "উপস্থিতির সীমা (দিন)", inact_th: "কত মাস অনুপস্থিত হলে নিষ্ক্রিয়", adm_fee: "ভর্তি ফি", ren_fee: "রিনিউয়াল ফি",
-          mem_plans: "মেম্বারশিপ প্ল্যান ও মূল্য", add_plan: "+ প্ল্যান যোগ", save_set: "সেভ করুন",
-          user_acc: "ব্যবহারকারী এক্সেস", add_user: "+ ব্যবহারকারী যোগ",
-          chk_title: "⚡ চেক-ইন", submit: "সাবমিট", close: "বন্ধ",
-          new_mem: "নতুন সদস্য", create: "তৈরি করুন",
-          rec_pay: "💰 পেমেন্ট গ্রহণ", confirm: "নিশ্চিত করুন",
-          trans_hist: "📜 ইতিহাস"
-        }
-      };
-
-      let clientClock = { now: null };
-      function setClientNow(iso) { clientClock.now = iso || null; }
-      function getClientNow() { return clientClock.now ? new Date(clientClock.now) : new Date(); }
-
-      function t(key) {
-         const lang = app.data?.settings?.lang || 'en';
-         return translations[lang][key] || key;
-      }
-
-      function toggleSidebar() { 
-        document.querySelector('.sidebar').classList.toggle('open');
-        document.querySelector('.overlay').classList.toggle('open');
-      }
-
-      function formatTime(iso) {
-         if(!iso) return '-';
-         return new Date(iso).toLocaleString('en-US', {
-            timeZone: 'Asia/Dhaka',
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit', hour12: true
-         });
-      }
-     
-      function formatDate(iso) {
-         if(!iso) return '-';
-         return new Date(iso).toLocaleDateString('en-GB'); // DD/MM/YYYY
-      }
-
-      function formatExpiryMonth(iso) {
-         if(!iso) return '-';
-         const d = new Date(iso);
-         if(isNaN(d.getTime())) return '-';
-         const monthName = d.toLocaleString('en-US', { month: 'short' });
-         return d.getFullYear() === getClientNow().getFullYear() ? monthName : monthName + ' ' + d.getFullYear();
-      }
-
-      function formatDueMonthsLabel(obj) {
-         if(!obj || !obj.dueMonths || obj.dueMonths <= 0) return '';
-         const labels = obj.dueMonthLabels || [];
-         if(labels.length) return 'Due of ' + labels.join(', ');
-         const count = obj.dueMonths;
-         return 'Due (' + count + ' Mo' + (count > 1 ? 's' : '') + ')';
-      }
-
-      function describeMemberStatus(m) {
-         if (!m) return '-';
-         if (m.status === 'inactive') return '⛔ Inactive';
-         if (m.dueMonths > 0) return formatDueMonthsLabel(m);
-         if (m.dueMonths < 0) return Math.abs(m.dueMonths) + ' Mo Adv';
-         return 'Active';
-      }
-
-      const currentUser = { role: "${safeRoleRaw}", permissions: ${safePerms} };
-      const app = {
-        data: null, userList: [], searchTimeout: null, payingMemberId: null, activeHistory: null, isSubmitting: false, currentHistoryMemberId: null, isRenewalMode: false,
-        
-        async init() {
-          const res = await fetch('/api/bootstrap');
-          if (!res.ok) {
-             if(res.status === 401) window.location.href = '/';
-             return;
-          }
-          this.data = await res.json();
-          setClientNow(this.data?.settings?.time?.now);
-          this.render();
-          this.applySettingsUI();
-          if(currentUser.role === 'admin') this.loadUsers();
-          
-          const last = sessionStorage.getItem('gym_view');
-          if (last && this.can(last)) this.nav(last);
-          else this.nav(this.can('attendance') ? 'attendance' : 'home');
-        },
-        
-        can(perm) { return currentUser.role === 'admin' || currentUser.permissions.includes(perm); },
-
-        nav(v) {
-          if (v === 'users' && currentUser.role !== 'admin') return;
-          if (v !== 'users' && !this.can(v)) return alert('Access Denied');
-          sessionStorage.setItem('gym_view', v);
-          
-          const lang = this.data?.settings?.lang || 'en';
-          const nav = document.getElementById('nav-container');
-          let html = '';
-          if(this.can('home')) html += '<div class="nav-item" onclick="app.nav(\\'home\\')">'+t('over')+'</div>';
-          if(this.can('members')) html += '<div class="nav-item" onclick="app.nav(\\'members\\')">'+t('mem')+'</div>';
-          if(this.can('attendance')) html += '<div class="nav-item" onclick="app.nav(\\'attendance\\')">'+t('att')+'</div>';
-          if(this.can('history')) html += '<div class="nav-item" onclick="app.nav(\\'history\\')">'+t('hist')+'</div>';
-          if(this.can('payments')) html += '<div class="nav-item" onclick="app.nav(\\'payments\\')">'+t('pay')+'</div>';
-          if(this.can('settings')) html += '<div class="nav-item" onclick="app.nav(\\'settings\\')">'+t('set')+'</div>';
-          if(currentUser.role==='admin') html += '<div class="nav-item" onclick="app.nav(\\'users\\')">'+t('user')+'</div>';
-          nav.innerHTML = html;
-
-          document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
-          // Simple active highlighting
-          const navItems = document.querySelectorAll('.nav-item');
-          navItems.forEach(el => { if(el.innerText === t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user')) el.classList.add('active'); });
-
-          ['home', 'members', 'attendance', 'history', 'payments', 'settings', 'users'].forEach(id => {
-            const el = document.getElementById('view-'+id); if(el) el.classList.add('hidden');
-          });
-          document.getElementById('view-'+v).classList.remove('hidden');
-          document.querySelector('.sidebar').classList.remove('open');
-          document.querySelector('.overlay').classList.remove('open');
-          this.updateLabels();
-        },
-
-        updateLabels() {
-           // Update all ID-based labels
-           document.getElementById('page-title').innerText = t('dash');
-           document.getElementById('btn-quick-checkin').innerText = t('quick_chk');
-           document.getElementById('btn-quick-pay').innerText = t('quick_pay');
-           document.getElementById('lbl-active-mem').innerText = t('act_mem');
-           document.getElementById('lbl-today-visits').innerText = t('tod_vis');
-           document.getElementById('lbl-tot-rev').innerText = t('tot_rev');
-           document.getElementById('lbl-mem-due').innerText = t('mem_due');
-           document.getElementById('lbl-total-due-money').innerText = t('total_due_amt');
-           document.getElementById('lbl-due-overview').innerText = t('due_ov');
-          
-           document.getElementById('search').placeholder = t('search_ph');
-           document.getElementById('btn-add-mem').innerText = t('add_mem');
-           document.getElementById('th-name').innerText = t('nm');
-           document.getElementById('th-joined').innerText = t('joined');
-           document.getElementById('th-phone').innerText = t('ph');
-           document.getElementById('th-plan').innerText = t('pl');
-           document.getElementById('th-exp').innerText = t('exp');
-           document.getElementById('th-due').innerText = t('due');
-           document.getElementById('th-act').innerText = t('act');
-          
-           document.getElementById('lbl-today-att').innerText = t('tod_att');
-           document.getElementById('th-time').innerText = t('time');
-          
-           document.getElementById('lbl-act-log').innerText = t('act_log');
-           document.getElementById('btn-filter').innerText = t('filter');
-           document.getElementById('btn-clear').innerText = t('clear');
-          
-           document.getElementById('lbl-search-col').innerText = t('search_col');
-           document.getElementById('lbl-pay-stat').innerText = t('pay_stat');
-           document.getElementById('btn-print').innerText = t('print');
-           document.getElementById('btn-history').innerText = t('trans_hist');
-          
-           document.getElementById('lbl-sys-set').innerText = t('sys_set');
-           document.getElementById('lbl-cur').innerText = t('cur');
-           document.getElementById('lbl-lang').innerText = t('lang');
-           document.getElementById('lbl-att-th').innerText = t('att_th');
-           document.getElementById('lbl-inact-th').innerText = t('inact_th');
-           document.getElementById('lbl-ren-fee').innerText = t('ren_fee');
-           document.getElementById('lbl-mem-plans').innerText = t('mem_plans');
-           document.getElementById('btn-add-plan').innerText = t('add_plan');
-           document.getElementById('btn-save-set').innerText = t('save_set');
-          
-           document.getElementById('lbl-user-acc').innerText = t('user_acc');
-           document.getElementById('btn-add-user').innerText = t('add_user');
-          
-           document.getElementById('lbl-chk-title').innerText = t('chk_title');
-           document.getElementById('lbl-qp-title').innerText = t('quick_pay_search');
-           document.getElementById('btn-sub-chk').innerText = t('submit');
-           document.getElementById('lbl-new-mem').innerText = t('new_mem');
-           document.getElementById('lbl-rec-pay').innerText = t('rec_pay');
-           document.getElementById('txt-logout').innerText = t('Sign Out') + " →";
-        },
-
-        getPlanPrice(planName) {
-            const plans = this.data.settings.membershipPlans || [];
-            const found = plans.find(p => p.name === planName);
-            return found ? Number(found.price) : 0;
-        },
-       
-        getPlanAdmFee(planName) {
-            const plans = this.data.settings.membershipPlans || [];
-            const found = plans.find(p => p.name === planName);
-            return found ? Number(found.admissionFee || 0) : 0;
-        },
-
-        render() {
-          const cur = this.data.settings.currency || 'BDT';
-          if(document.getElementById('stat-active')) {
-            document.getElementById('stat-active').innerText = this.data.stats.active;
-            document.getElementById('stat-today').innerText = this.data.stats.today;
-            document.getElementById('stat-rev').innerText = cur + ' ' + this.data.stats.revenue;
-            document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
-            document.getElementById('stat-total-due').innerText = cur + ' ' + this.data.stats.totalOutstanding;
-          }
-          this.renderMembersTable();
-         
-          const todayRows = (this.data.attendanceToday || []).map(a => {
-              let dueStr = '-';
-              if (a.dueMonths > 0) dueStr = formatDueMonthsLabel(a);
-              else if (a.dueMonths < 0) dueStr = Math.abs(a.dueMonths) + ' Mo Adv';
-              return '<tr><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td><td>' + dueStr + '</td></tr>';
-          }).join('') || '<tr><td colspan="4">No data.</td></tr>';
-          document.getElementById('tbl-attendance-today').innerHTML = todayRows;
-
-          this.renderHistoryTable(null);
-          this.renderPaymentsTable(); 
-          this.renderCharts();
-          this.updateLabels();
-        },
-
-        renderMembersTable() {
-            const q = document.getElementById('search').value.trim().toLowerCase();
-            const filter = document.getElementById('member-filter').value;
-            const isNumeric = /^\d+$/.test(q);
-            const isIdSearch = isNumeric && q.length > 0 && q.length < 6;
-            const isPhoneSearch = isNumeric && q.length >= 6;
-
-            let list = (this.data.members || []).filter(m => {
-              let matchSearch = true;
-              if (q) {
-                  if (isIdSearch) matchSearch = m.id.toString().startsWith(q);
-                  else if (isPhoneSearch) matchSearch = m.phone.includes(q);
-                  else matchSearch = m.name.toLowerCase().includes(q);
-              }
-             let matchStatus = true;
-             if (filter !== 'all') {
-                 if (filter === 'active') matchStatus = (!m.dueMonths || m.dueMonths === 0) && m.status !== 'inactive';
-                  else if (filter === 'due') matchStatus = m.dueMonths > 0;
-                  else if (filter === 'advanced') matchStatus = m.dueMonths < 0;
-                  else if (filter === 'inactive') matchStatus = m.status === 'inactive';
-              }
-             return matchSearch && matchStatus;
-           });
-
-            document.getElementById('tbl-members').innerHTML = list.map(m => {
-             let statusBadge = '<span class="badge bg-green">Active</span>';
-             let dueTxt = '-';
-             let dueColor = 'gray';
-             if (m.dueMonths > 0) {
-                 const price = this.getPlanPrice(m.plan);
-                 const paid = m.balance || 0;
-                 const owed = (m.dueMonths * price);
-                 const remaining = Math.max(0, owed - paid);
-
-                 const dueLabel = formatDueMonthsLabel(m) || (m.dueMonths + ' Mo Due');
-                 dueTxt = (remaining) + ' (' + dueLabel + ')';
-                 if(paid > 0) dueTxt += ' [Bal:' + paid + ']';
-
-                 dueColor = 'red';
-                 statusBadge = '<span class="badge bg-amber">Due</span>';
-                 if (m.status === 'inactive') statusBadge = '<span class="badge bg-red">Inactive</span>';
-             } else if (m.dueMonths < 0) {
-                 dueTxt = '+' + Math.abs(m.dueMonths) + ' Mo Adv';
-                 dueColor = 'green';
-                 statusBadge = '<span class="badge bg-blue">Advance</span>';
-             }
-             return '<tr>' +
-               '<td>#' + m.id + '</td><td><strong>' + escapeHtml(m.name) + '</strong></td>' +
-               '<td>' + formatDate(m.joined_at) + '</td>' + 
-               '<td>' + escapeHtml(m.phone) + '</td><td>' + escapeHtml(m.plan) + '</td>' +
-               '<td>' + formatExpiryMonth(m.expiry_date) + '</td>' +
-               '<td>' + statusBadge + '<div style="font-size:11px; font-weight:bold; color:' + dueColor + '">' + dueTxt + '</div></td>' +
-               '<td><div class="flex" style="gap:4px;">' +
-                 '<button class="btn btn-outline" onclick="app.showHistory(' + m.id + ', \\'' + escapeHtml(m.name) + '\\')">Attn</button> ' +
-                 '<button class="btn btn-outline" onclick="app.openPaymentHistory(' + m.id + ')" title="Payment History">$</button> ' +
-                 '<button class="btn btn-outline" onclick="app.modals.pay.open(' + m.id + ')">Pay</button> ' +
-                 '<button class="btn btn-danger" onclick="app.del(' + m.id + ')">Del</button>' +
-               '</div></td>' +
-             '</tr>';
-            }).join('') || '<tr><td colspan="8">No members found.</td></tr>';
-        },
-
-        renderPaymentsTable() {
-            const filter = document.getElementById('pay-filter').value;
-            const cur = this.data.settings.currency || 'BDT';
-            let list = (this.data.members || []).slice(); 
-            if (filter === 'due') list = list.filter(m => m.dueMonths > 0);
-            else if (filter === 'running') list = list.filter(m => !m.dueMonths || m.dueMonths === 0);
-            else if (filter === 'advanced') list = list.filter(m => m.dueMonths < 0);
-
-            let totalOutstanding = 0; // Calculate Total Due
-
-            list.sort((a, b) => {
-               const getWeight = (m) => {
-                  if (m.dueMonths > 0) return 3; 
-                  if (!m.dueMonths || m.dueMonths === 0) return 2; 
-                  return 1; 
-               };
-               const wA = getWeight(a);
-               const wB = getWeight(b);
-               if (wA !== wB) return wB - wA; 
-               return Math.abs(b.dueMonths || 0) - Math.abs(a.dueMonths || 0);
-            });
-
-            document.getElementById('tbl-payment-list').innerHTML = list.map(m => {
-               const price = this.getPlanPrice(m.plan);
-               let statusHtml = '<span class="badge bg-green">Running</span>';
-               let infoTxt = '-';
-               let amtTxt = '0';
-               
-               if (m.dueMonths > 0) {
-                   statusHtml = '<span class="badge bg-amber">Due</span>';
-                   if (m.status === 'inactive') statusHtml = '<span class="badge bg-red">Inactive</span>';
-                   infoTxt = formatDueMonthsLabel(m) || (m.dueMonths + ' Mo Due');
-
-                   const dueAmt = m.dueMonths * price;
-                   const paid = m.balance || 0;
-                   const remaining = Math.max(0, dueAmt - paid);
-                   totalOutstanding += remaining;
-                 
-                   amtTxt = '<span style="color:red; font-weight:bold">' + cur + ' ' + remaining + '</span>';
-                   if (paid > 0) amtTxt += '<br><span style="font-size:10px; color:gray;">(Paid: ' + paid + ')</span>';
-               } else if (m.dueMonths < 0) {
-                   statusHtml = '<span class="badge bg-blue">Advanced</span>';
-                   infoTxt = Math.abs(m.dueMonths) + ' Mo Adv';
-                   amtTxt = '<span style="color:green">+' + cur + ' ' + Math.abs(m.dueMonths * price) + '</span>'; 
-               }
-               return '<tr><td>#' + m.id + '</td><td>' + escapeHtml(m.name) + '</td><td>' + statusHtml + '</td><td>' + infoTxt + '</td><td>' + amtTxt + '</td><td><button class="btn btn-primary" onclick="app.modals.pay.open(' + m.id + ')">Pay</button></td></tr>';
-            }).join('') || '<tr><td colspan="6">No data.</td></tr>';
-
-            // Update Total Due Card
-            document.getElementById('total-outstanding-amount').innerText = cur + ' ' + totalOutstanding;
-        },
-
-        /* --- TRANSACTION HISTORY --- */
-        async openPaymentHistory(memberId = null) {
-           this.currentHistoryMemberId = memberId;
-           document.getElementById('trans-date').value = '';
-           document.getElementById('modal-payment-history').style.display='flex';
-           this.renderTransactionHistory();
-        },
-
-        async renderTransactionHistory() {
-           const date = document.getElementById('trans-date').value;
-           const memberId = this.currentHistoryMemberId;
-           const tbody = document.getElementById('tbl-transaction-history');
-           const cur = this.data.settings.currency || 'BDT';
-           
-           tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>';
-           
-           const res = await fetch('/api/payments/history', { 
-               method:'POST', 
-               body:JSON.stringify({ memberId, date }) 
-           });
-           const data = await res.json();
-           
-           // Update Title
-           const titleEl = document.getElementById('ph-title');
-           if (memberId && data.memberName) {
-               titleEl.innerText = "History: " + data.memberName;
-           } else {
-               titleEl.innerText = "Transaction History";
-           }
-           
-           const list = data.transactions || [];
-           
-           if(list.length === 0) {
-              tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">No records found.</td></tr>';
-              return;
-           }
-           
-           tbody.innerHTML = list.map(p => 
-               '<tr>' +
-                  '<td>' + formatTime(p.date) + '</td>' +
-                  '<td>' + (p.name ? (escapeHtml(p.name) + ' (#' + p.member_id + ')') : '<span style="color:gray; font-style:italic;">Unknown/Deleted (#' + p.member_id + ')</span>') + '</td>' +
-                  '<td style="font-weight:bold; color:#10b981;">' + cur + ' ' + p.amount + '</td>' +
-               '</tr>'
-           ).join('');
-        },
-
-        async showHistory(id, name) {
-            document.getElementById('mh-title').innerText = '#' + id + ' · ' + name;
-            const container = document.getElementById('calendar-container');
-            container.innerHTML = '<div style="text-align:center;">Loading...</div>';
-            document.getElementById('modal-member-history').style.display = 'flex';
-            
-            const res = await fetch('/api/members/history', { method:'POST', body:JSON.stringify({memberId:id}) });
-            const data = await res.json();
-            this.activeHistory = { history: data.history || [], joinedAt: new Date(data.joinedAt || getClientNow()) };
-
-            const yearSelect = document.getElementById('hist-year');
-            yearSelect.innerHTML = '';
-            const startYear = this.activeHistory.joinedAt.getFullYear();
-            const endYear = getClientNow().getFullYear();
-            for(let y = endYear; y >= startYear; y--) {
-               const opt = document.createElement('option');
-               opt.value = y;
-               opt.innerText = y;
-               yearSelect.appendChild(opt);
-            }
-            const now = getClientNow();
-            yearSelect.value = now.getFullYear();
-            document.getElementById('hist-month').value = now.getMonth();
-            this.renderCalendar();
-        },
-
-        renderCalendar() {
-            if (!this.activeHistory) return;
-            const year = parseInt(document.getElementById('hist-year').value);
-            const monthVal = parseInt(document.getElementById('hist-month').value);
-            const container = document.getElementById('calendar-container');
-            const threshold = this.data.settings.attendanceThreshold || 3;
-
-            // Yearly Summary View
-            if (monthVal === -1) {
-               let gridHtml = '<div class="year-grid">';
-               const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-               
-               for(let m=0; m<12; m++) {
-                   const presentDays = this.activeHistory.history.filter(h => {
-                      const d = new Date(h.check_in_time);
-                      return d.getFullYear() === year && d.getMonth() === m;
-                   }).map(h => new Date(h.check_in_time).getDate());
-                   
-                   const unique = new Set(presentDays).size;
-                   const isP = unique >= threshold;
-                   const badgeCls = isP ? 'ym-p' : 'ym-a';
-                   const badgeTxt = isP ? 'P' : 'A';
-                   
-                   gridHtml += '<div class="year-month-card">' +
-                      '<div class="ym-name">' + monthNames[m] + '</div>' +
-                      '<div class="ym-badge ' + badgeCls + '">' + badgeTxt + '</div>' +
-                      '<div class="ym-count">' + unique + ' Days</div>' +
-                   '</div>';
-               }
-               gridHtml += '</div>';
-               container.innerHTML = gridHtml;
-               return;
-            }
-
-            // Detailed Monthly View
-            const monthName = new Date(year, monthVal).toLocaleString('default', { month: 'long' });
-            const daysInMonth = new Date(year, monthVal + 1, 0).getDate();
-            const presentDays = this.activeHistory.history.filter(h => {
-               const d = new Date(h.check_in_time);
-               return d.getFullYear() === year && d.getMonth() === monthVal;
-            }).map(h => new Date(h.check_in_time).getDate());
-            
-            const uniquePresent = [...new Set(presentDays)];
-            const count = uniquePresent.length;
-            const isBillable = count >= threshold;
-            
-            let gridHtml = '';
-            for(let i=1; i<=daysInMonth; i++) {
-               const isPresent = uniquePresent.includes(i);
-               const cls = isPresent ? 'present' : 'absent';
-               const mark = isPresent ? 'P' : i;
-               gridHtml += '<div class="cal-cell ' + cls + '">' + mark + '</div>';
-            }
-            
-            container.innerHTML = '<div class="calendar-month">' +
-               '<div class="cal-header">' + monthName + ' ' + year + '</div>' +
-               '<div class="cal-grid">' + gridHtml + '</div>' +
-               '<div class="cal-stats">' +
-                  '<span>Days: <strong>' + count + '</strong></span>' +
-                  '<span style="color:' + (isBillable ? 'green' : 'red') + '">' + (isBillable ? 'Active' : 'Inactive') + '</span>' +
-               '</div>' +
-            '</div>';
-        },
-
-        async applyHistoryFilter() {
-            const date = document.getElementById('history-date').value;
-            const tbody = document.getElementById('tbl-attendance-history');
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';
-            
-            const res = await fetch('/api/history/list', { 
-               method:'POST', 
-               body:JSON.stringify({ date }) 
-            });
-            const data = await res.json();
-            this.renderHistoryTable(null, data.history);
-        },
-        
-        clearHistoryFilter() {
-            document.getElementById('history-date').value='';
-            this.applyHistoryFilter(); 
-        },
-        
-        renderHistoryTable(filterDate, dataList = null) {
-          // If specific list provided (from API), use it. Otherwise fallback to local cache (bootstrap)
-          let list = dataList || this.data.attendanceHistory || [];
-          
-          // If we are filtering locally on bootstrap data (old way, keep for safety)
-          if(filterDate && !dataList) {
-             list = list.filter(a => a.check_in_time.startsWith(filterDate));
-          }
-          
-          document.getElementById('tbl-attendance-history').innerHTML = list.length ? list.map(a => 
-             '<tr><td>' + formatTime(a.check_in_time).split(', ')[0] + '</td><td>' + formatTime(a.check_in_time).split(', ')[1] + '</td><td>' + escapeHtml(a.name) + '</td></tr>'
-          ).join('') : '<tr><td colspan="4">No data.</td></tr>';
-        },
-
-        /* --- USER MGMT --- */
-        openAddUser() {
-            document.getElementById('modal-user').style.display='flex'; 
-            document.getElementById('user-modal-title').innerText="Add New User";
-            document.getElementById('user-form').reset();
-            document.getElementById('u-id').value = "";
-            document.getElementById('u-password').required = true;
-            document.getElementById('u-pass-hint').innerText = "";
-            this.togglePerms('staff'); 
-        },
-
-        editUser(id) {
-            const u = this.userList.find(x => x.id === id);
-            if(!u) return;
-            document.getElementById('user-modal-title').innerText = "Edit User";
-            document.getElementById('u-id').value = u.id;
-            document.getElementById('u-name').value = u.name;
-            document.getElementById('u-email').value = u.email;
-            document.getElementById('u-password').required = false;
-            document.getElementById('u-pass-hint').innerText = "(Leave blank to keep)";
-            document.getElementById('u-role').value = u.role;
-            const perms = JSON.parse(u.permissions || '[]');
-            document.querySelectorAll('input[name="permissions"]').forEach(cb => cb.checked = perms.includes(cb.value));
-            this.togglePerms(u.role);
-            document.getElementById('modal-user').style.display='flex'; 
-        },
-
-        togglePerms(role) {
-            const container = document.getElementById('u-perms-container');
-            if(role === 'admin') container.classList.add('hidden');
-            else container.classList.remove('hidden');
-        },
-        
-        async loadUsers() {
-            const res = await fetch('/api/users/list');
-            if(res.ok) {
-              const data = await res.json();
-              this.userList = data.users;
-              document.getElementById('tbl-users').innerHTML = this.userList.map(u => 
-                '<tr><td>#' + u.id + '</td><td>' + escapeHtml(u.name) + '</td><td>' + escapeHtml(u.email) + '</td><td>' + escapeHtml(u.role) + '</td>' +
-                '<td style="font-size:11px; white-space:normal; max-width:150px;">' + (u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))) + '</td>' +
-                '<td><button class="btn btn-outline" onclick="app.editUser(' + u.id + ')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser(' + u.id + ')">Del</button></td></tr>'
-              ).join('');
-            }
-        },
-        
-        async saveUser(e) {
-            e.preventDefault();
-            const data = Object.fromEntries(new FormData(e.target));
-            const perms = [];
-            document.querySelectorAll('input[name="permissions"]:checked').forEach(cb => perms.push(cb.value));
-            data.permissions = perms;
-            const url = data.id ? '/api/users/update' : '/api/users/add';
-            const res = await fetch(url, { method: 'POST', body: JSON.stringify(data)});
-            if(res.ok) { document.getElementById('modal-user').style.display='none'; this.loadUsers(); } 
-            else { alert((await res.json()).error); }
-        },
-        async deleteUser(id) { if(confirm("Delete?")) { await fetch('/api/users/delete', { method:'POST', body:JSON.stringify({id})}); this.loadUsers(); } },
-
-        /* --- SETTINGS --- */
-        applySettingsUI() {
-          const s = this.data.settings;
-          const form = document.getElementById('settings-form');
-          form.querySelector('input[name="currency"]').value = s.currency || 'BDT';
-          form.querySelector('select[name="lang"]').value = s.lang || 'en';
-          form.querySelector('input[name="attendanceThreshold"]').value = s.attendanceThreshold;
-          form.querySelector('input[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
-          form.querySelector('input[name="renewalFee"]').value = s.renewalFee;
-          form.querySelector('input[name="timezone"]').value = (s.time && s.time.timezone) || 'Asia/Dhaka';
-          setClientNow(s.time?.now);
-
-          const simInput = form.querySelector('input[name="simulatedTime"]');
-          if (simInput) {
-             const iso = s.time?.simulatedTime || s.time?.now || '';
-             simInput.value = iso ? new Date(iso).toISOString().slice(0,16) : '';
-          }
-          const simToggle = form.querySelector('input[name="timeSimulationEnabled"]');
-          if (simToggle) simToggle.checked = !!s.time?.simulated;
-          const lblClock = document.getElementById('lbl-current-time');
-          if (lblClock) {
-            const tz = s.time?.timezone || 'Asia/Dhaka';
-            const now = s.time?.now ? new Date(s.time.now) : getClientNow();
-            const formatted = now.toLocaleString('en-GB', { timeZone: tz });
-            const suffix = s.time?.simulated ? ' (simulation active)' : '';
-            lblClock.innerText = 'Current system time (' + tz + '): ' + formatted + suffix;
-          }
-
-          // Render Plan List
-          const plansDiv = document.getElementById('plans-container');
-          plansDiv.innerHTML = s.membershipPlans.map((p, i) => 
-            '<div class="plan-row" id="plan-' + i + '">' +
-               '<input type="text" placeholder="Plan Name" value="' + escapeHtml(p.name) + '" class="plan-name">' +
-               '<input type="number" placeholder="Price" value="' + p.price + '" class="plan-price">' +
-               '<input type="number" placeholder="Adm Fee" value="' + (p.admissionFee || 0) + '" class="plan-adm">' +
-               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-' + i + '\\').remove()">X</button>' +
-            '</div>'
-          ).join('');
-         
-          document.getElementById('plan-select').innerHTML = s.membershipPlans.map(p => '<option value="'+escapeHtml(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');
-        },
-
-        addPlanRow() {
-            const id = 'new-' + Date.now();
-            const html = '<div class="plan-row" id="' + id + '">' +
-               '<input type="text" placeholder="Plan Name" class="plan-name">' +
-               '<input type="number" placeholder="Price" value="0" class="plan-price">' +
-               '<input type="number" placeholder="Adm Fee" value="0" class="plan-adm">' +
-               '<button type="button" class="btn btn-danger" onclick="document.getElementById(\\'' + id + '\\').remove()">X</button>' +
-            '</div>';
-            document.getElementById('plans-container').insertAdjacentHTML('beforeend', html);
-        },
-
-        async saveSettings(e) {
-            e.preventDefault();
-           
-            const plans = [];
-            // FIX: Only select rows inside the container to exclude the header row
-            document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row => {
-               const nameInput = row.querySelector('.plan-name');
-               const priceInput = row.querySelector('.plan-price');
-               const admInput = row.querySelector('.plan-adm');
-               
-               if (nameInput && priceInput) {
-                   const name = nameInput.value.trim();
-                   const price = priceInput.value.trim();
-                   const admissionFee = admInput ? admInput.value.trim() : 0;
-                   if(name) plans.push({ name, price: Number(price), admissionFee: Number(admissionFee) });
-               }
-            });
-
-            const form = e.target;
-            document.getElementById('settings-status').innerText = 'Saving...';
-            
-            await fetch('/api/settings', { 
-               method:'POST', 
-               body:JSON.stringify({
-                  currency: form.querySelector('input[name="currency"]').value,
-                  lang: form.querySelector('select[name="lang"]').value,
-                  attendanceThreshold: form.querySelector('input[name="attendanceThreshold"]').value,
-                  inactiveAfterMonths: form.querySelector('input[name="inactiveAfterMonths"]').value,
-                  renewalFee: form.querySelector('input[name="renewalFee"]').value,
-                  membershipPlans: plans,
-                  timezone: form.querySelector('input[name="timezone"]').value,
-                  timeSimulationEnabled: form.querySelector('input[name="timeSimulationEnabled"]').checked,
-                  simulatedTime: form.querySelector('input[name="simulatedTime"]').value
-               })
-            });
-            location.reload();
-        },
-        
-        async resetDB() {
-          if(!confirm("Delete ALL data and reset system? This is irreversible!")) return;
-          await fetch('/api/nuke');
-          location.reload();
-        },
-        
-        /* --- PAYMENTS & RENEWAL --- */
-        async pay(e) { 
-            e.preventDefault(); 
-            const endpoint = app.isRenewalMode ? '/api/members/renew' : '/api/payment';
-            await fetch(endpoint, { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); 
-            location.reload(); 
-        },
-
-        /* --- ACTIONS --- */
-        async checkIn() {
-          if(this.isSubmitting) return;
-          this.isSubmitting = true;
-          
-          const btn = document.getElementById('btn-sub-chk');
-          if(btn) btn.disabled = true;
-          
-          const id = document.getElementById('checkin-id').value;
-          
-          try {
-              const res = await fetch('/api/checkin', { method:'POST', body:JSON.stringify({memberId:id}) });
-              const json = await res.json();
-              const div = document.getElementById('checkin-res');
-              div.innerText = json.status==='success' ? ('✅ Welcome ' + json.name) : (json.error || '⛔ Error');
-              div.style.color = json.status==='success' ? 'var(--success)' : 'var(--danger)';
-              if(json.status==='success') setTimeout(()=>location.reload(), 800);
-          } catch(e) {
-              // handle network error
-          } finally {
-              this.isSubmitting = false;
-              if(btn) btn.disabled = false;
-          }
-        },
-        onCheckinInput(e) {
-            if (e.key === 'Enter') {
-               this.checkIn();
-               return;
-            }
-            
-            const val = e.target.value;
-            if(this.searchTimeout) clearTimeout(this.searchTimeout);
-            this.searchTimeout = setTimeout(async ()=>{
-               if(!val.trim()) { document.getElementById('checkin-suggestions').innerHTML=''; return; }
-               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-               document.getElementById('checkin-suggestions').innerHTML = data.results.map(m=> {
-                let statusStr = '<span style="color:gray; font-size:11px;">Running</span>';
-                if (m.status === 'inactive') {
-                    statusStr = '<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';
-                } else if (m.dueMonths > 0) {
-                    statusStr = '<span style="color:red; font-weight:bold; font-size:11px;">' + formatDueMonthsLabel(m) + '</span>';
-                } else if (m.dueMonths < 0) {
-                    statusStr = '<span style="color:green; font-weight:bold; font-size:11px;">' + Math.abs(m.dueMonths) + ' Mo Adv</span>';
-                }
-                
-                 // Already checked in badge
-                 let checkedInBadge = '';
-                 if (m.checkedIn) {
-                    checkedInBadge = '<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';
-                 }
-                
-                 return '<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value=' + m.id + '; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';">' +
-                        '<strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> ' + statusStr + checkedInBadge +
-                        '</div>';
-               }).join('');
-            }, 200);
-        },
-       
-        onQuickPayInput(e) {
-            const val = e.target.value;
-            if(this.searchTimeout) clearTimeout(this.searchTimeout);
-            this.searchTimeout = setTimeout(async ()=>{
-               if(!val.trim()) { document.getElementById('qp-results').innerHTML=''; return; }
-               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-                document.getElementById('qp-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
-                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = formatDueMonthsLabel(m);
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(' + m.id + ')">' +
-                        '<strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> - ' + dueStr +
-                        '</div>';
-               }).join('');
-            }, 200);
-        },
-       
-        /* --- NEW: ADD MEMBER TABS & LOGIC --- */
-        switchAddTab(tab) {
-            const isMig = tab === 'mig';
-            // Toggle UI
-            document.getElementById('tab-new').className = isMig ? 'nav-item' : 'nav-item active';
-            document.getElementById('tab-new').style.borderBottom = isMig ? 'none' : '2px solid var(--primary)';
-            document.getElementById('tab-new').style.color = isMig ? '#9ca3af' : 'var(--primary)';
-           
-            document.getElementById('tab-mig').className = isMig ? 'nav-item active' : 'nav-item';
-            document.getElementById('tab-mig').style.borderBottom = isMig ? '2px solid var(--primary)' : 'none';
-            document.getElementById('tab-mig').style.color = isMig ? 'var(--primary)' : '#9ca3af';
-           
-            // Toggle Form Sections
-            document.getElementById('sec-new-fees').style.display = isMig ? 'none' : 'block';
-            document.getElementById('sec-mig-fees').style.display = isMig ? 'block' : 'none';
-
-            // Update hidden input
-            document.getElementById('add-mig-mode').value = isMig ? 'true' : 'false';
-
-            // Set requirements
-            document.getElementById('new-init-pay').required = !isMig;
-            document.getElementById('mig-legacy-dues').required = isMig;
-
-            // Trigger update to refresh fees
-            app.updateAddMemberFees();
-        },
-       
-        updateAddMemberFees() {
-            const planName = document.getElementById('plan-select').value;
-            const fee = app.getPlanAdmFee(planName);
-            document.getElementById('new-adm-fee').value = fee;
-        },
-       
-        async addMember(e) { e.preventDefault(); await fetch('/api/members/add', { method:'POST', body:JSON.stringify(Object.fromEntries(new FormData(e.target))) }); location.reload(); },
-        async del(id) { if(confirm("Delete?")) await fetch('/api/members/delete', { method:'POST', body:JSON.stringify({id}) }); location.reload(); },
-       
-        filter() { const q = document.getElementById('search').value.toLowerCase(); document.querySelectorAll('#tbl-members tr').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q) ? '' : 'none'); },
-        onPaymentSearchInput(e) {
-            const val = e.target.value;
-            setTimeout(async ()=>{
-               if(!val.trim()) { document.getElementById('pay-search-results').innerHTML=''; return; }
-               const res = await fetch('/api/members/search', { method:'POST', body:JSON.stringify({query:val})});
-               const data = await res.json();
-               document.getElementById('pay-search-results').innerHTML = data.results.map(m => {
-                 let dueStr = 'Active';
-                 if (m.status === 'inactive') dueStr = '⛔ Inactive';
-                 else if (m.dueMonths > 0) dueStr = formatDueMonthsLabel(m);
-                 else if (m.dueMonths < 0) dueStr = Math.abs(m.dueMonths) + ' Mo Adv';
-                 return '<div class="checkin-item" onclick="app.modals.pay.open(' + m.id + ')"><strong>#' + m.id + ' · ' + escapeHtml(m.name) + '</strong> - ' + dueStr + '</div>';
-               }).join('');
-            }, 200);
-        },
-       
-        renderCharts() {
-            if(typeof Chart === 'undefined') return;
-            const members = this.data.members || [];
-            const ctx1 = document.getElementById('chart-dues');
-            if(ctx1) new Chart(ctx1.getContext('2d'), { type: 'bar', data: { labels: ['No Due', '1 Mo', '2+ Mo', 'Inactive'], datasets: [{ data: [ members.filter(m=>!m.dueMonths||m.dueMonths<=0).length, members.filter(m=>m.dueMonths===1).length, members.filter(m=>m.dueMonths>=2 && m.status!=='inactive').length, members.filter(m=>m.status==='inactive').length ], backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#6b7280'] }] }, options: {plugins:{legend:{display:false}}} });
-        },
-
-        modals: {
-          checkin: { open:()=>{ document.getElementById('modal-checkin').style.display='flex'; document.getElementById('checkin-id').focus(); }, close:()=>document.getElementById('modal-checkin').style.display='none' },
-          quickPay: { open:()=>{ document.getElementById('modal-quick-pay').style.display='flex'; document.getElementById('qp-search').focus(); }, close:()=>document.getElementById('modal-quick-pay').style.display='none' },
-          add: { 
-            open:()=>{
-               // Init defaults
-               app.switchAddTab('new');
-               app.updateAddMemberFees(); // Set default fee
-                document.getElementById('mig-legacy-dues').value = '0';
-                document.getElementById('mig-init-pay').value = '0';
-
-                document.getElementById('modal-add').style.display='flex';
-             },
-             close:()=>document.getElementById('modal-add').style.display='none' 
-          },
-          pay: { 
-             open:(id)=>{ 
-               app.payingMemberId = id;
-               const m = app.data.members.find(x=>x.id===id); 
-               const price = app.getPlanPrice(m.plan);
-               
-               document.getElementById('pay-id').value=id; 
-               document.getElementById('pay-name').innerText = m ? m.name : '';
-               document.getElementById('pay-amount').value = '';
-               
-               // Reset UI State
-               document.getElementById('pay-status-warning').style.display = 'none';
-               document.getElementById('pay-renewal-section').style.display = 'none';
-               document.getElementById('pay-standard-label').style.display = 'block';
-               document.getElementById('pay-submit-btn').innerText = 'Confirm';
-               document.getElementById('pay-amount').required = true;
-               app.isRenewalMode = false;
-
-               // Inactive Logic
-               if (m.status === 'inactive') {
-                   app.isRenewalMode = true;
-                   document.getElementById('pay-status-warning').style.display = 'block';
-                   document.getElementById('pay-renewal-section').style.display = 'block';
-                   document.getElementById('pay-standard-label').style.display = 'none'; // Hide standard label
-                   document.getElementById('pay-ren-fee').value = app.data.settings.renewalFee || 0;
-                   document.getElementById('pay-submit-btn').innerText = 'Re-admit & Pay';
-               }
-               
-               document.getElementById('pay-plan-price').innerText = price;
-               document.getElementById('pay-wallet-bal').innerText = m.balance || 0;
-               
-               document.getElementById('modal-pay').style.display='flex'; 
-             }, 
-             close:()=>{
-               app.payingMemberId = null;
-               document.getElementById('modal-pay').style.display='none' 
-             }
-          },
-          user: { close:()=>document.getElementById('modal-user').style.display='none' }
-        }
-      };
-      app.init();
+      function escapeHtml(text){if(!text)return"";return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
+      const translations={en:{dash:"Dashboard",over:"Overview",mem:"Members",att:"Attendance",hist:"History",pay:"Payments",set:"Settings",user:"User Access",act_mem:"Active Members",tod_vis:"Today's Visits",tot_rev:"Total Revenue",mem_due:"Members With Due",total_due_amt:"Total Due Amount",due_ov:"Dues Overview",quick_chk:"⚡ Quick Check-In",quick_pay:"💰 Quick Pay",quick_pay_search:"💰 Quick Pay Search",search_ph:"Search ID, Name or Phone...",add_mem:"+ Add Member",nm:"Name",joined:"Joined",ph:"Phone",pl:"Plan",exp:"Expiry",due:"Due",act:"Actions",tod_att:"Today's Attendance",time:"Time",res:"Result",act_log:"Activity Log",filter:"Filter",clear:"Clear",search_col:"Search & Collect",pay_stat:"Payment Status",print:"Print List (PDF)",sys_set:"System Settings",cur:"Currency Symbol",lang:"Language / ভাষা",att_th:"Attendance Threshold (Days)",inact_th:"Inactive after X absent months",adm_fee:"Admission Fee",ren_fee:"Renewal Fee",mem_plans:"Membership Plans & Prices",add_plan:"+ Add Plan",save_set:"Save Settings",user_acc:"User Access",add_user:"+ Add User",chk_title:"⚡ Check-In",submit:"Submit",close:"Close",new_mem:"New Member",create:"Create",rec_pay:"💰 Receive Payment",confirm:"Confirm",trans_hist:"📜 History"},bn:{dash:"ড্যাশবোর্ড",over:"সারসংক্ষেপ",mem:"সদস্যবৃন্দ",att:"উপস্থিতি",hist:"ইতিহাস",pay:"পেমেন্ট",set:"সেটিংস",user:"ব্যবহারকারী",act_mem:"সক্রিয় সদস্য",tod_vis:"আজকের উপস্থিতি",tot_rev:"মোট আয়",mem_due:"বকেয়া সদস্য",total_due_amt:"মোট বকেয়া পরিমাণ",due_ov:"বকেয়া ওভারভিউ",quick_chk:"⚡ চেক-ইন",quick_pay:"💰 দ্রুত পেমেন্ট",quick_pay_search:"💰 দ্রুত পেমেন্ট সার্চ",search_ph:"আইডি, নাম বা ফোন খুঁজুন...",add_mem:"+ সদস্য যোগ",nm:"নাম",joined:"ভর্তি",ph:"ফোন",pl:"প্ল্যান",exp:"মেয়াদ",due:"বকেয়া",act:"অ্যাকশন",tod_att:"আজকের উপস্থিতি",time:"সময়",res:"ফলাফল",act_log:"অ্যাক্টিভিটি লগ",filter:"ফিল্টার",clear:"মুছুন",search_col:"খুঁজুন ও পেমেন্ট নিন",pay_stat:"পেমেন্ট স্ট্যাটাস",print:"প্রিন্ট (PDF)",sys_set:"সিস্টেম সেটিংস",cur:"মুদ্রার প্রতীক",lang:"ভাষা / Language",att_th:"উপস্থিতির সীমা (দিন)",inact_th:"কত মাস অনুপস্থিত হলে নিষ্ক্রিয়",adm_fee:"ভর্তি ফি",ren_fee:"রিনিউয়াল ফি",mem_plans:"মেম্বারশিপ প্ল্যান ও মূল্য",add_plan:"+ প্ল্যান যোগ",save_set:"সেভ করুন",user_acc:"ব্যবহারকারী এক্সেস",add_user:"+ ব্যবহারকারী যোগ",chk_title:"⚡ চেক-ইন",submit:"সাবমিট",close:"বন্ধ",new_mem:"নতুন সদস্য",create:"তৈরি করুন",rec_pay:"💰 পেমেন্ট গ্রহণ",confirm:"নিশ্চিত করুন",trans_hist:"📜 ইতিহাস"}};
+      let clientClock={now:null};function setClientNow(iso){clientClock.now=iso||null;}function getClientNow(){return clientClock.now?new Date(clientClock.now):new Date();}function t(key){const lang=app.data?.settings?.lang||'en';return translations[lang][key]||key;}function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.overlay').classList.toggle('open');}function formatTime(iso){if(!iso)return'-';return new Date(iso).toLocaleString('en-US',{timeZone:'Asia/Dhaka',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});}function formatDate(iso){if(!iso)return'-';return new Date(iso).toLocaleDateString('en-GB');}function formatExpiryMonth(iso){if(!iso)return'-';const d=new Date(iso);if(isNaN(d.getTime()))return'-';const monthName=d.toLocaleString('en-US',{month:'short'});return d.getFullYear()===getClientNow().getFullYear()?monthName:monthName+' '+d.getFullYear();}function formatDueMonthsLabel(obj){if(!obj||!obj.dueMonths||obj.dueMonths<=0)return'';const labels=obj.dueMonthLabels||[];if(labels.length)return'Due of '+labels.join(', ');const count=obj.dueMonths;return'Due ('+count+' Mo'+(count>1?'s':'')+')';}
+      const currentUser={role:"${safeRole}",permissions:${safePerms}};
+      const app={data:null,userList:[],searchTimeout:null,payingMemberId:null,activeHistory:null,isSubmitting:false,currentHistoryMemberId:null,isRenewalMode:false,async init(){const res=await fetch('/api/bootstrap');if(!res.ok){if(res.status===401)window.location.href='/';return;}this.data=await res.json();setClientNow(this.data?.settings?.clock?.now);this.render();this.applySettingsUI();if(currentUser.role==='admin')this.loadUsers();const last=sessionStorage.getItem('gym_view');if(last&&this.can(last))this.nav(last);else this.nav(this.can('attendance')?'attendance':'home');},can(perm){return currentUser.role==='admin'||currentUser.permissions.includes(perm);},nav(v){if(v==='users'&&currentUser.role!=='admin')return;if(v!=='users'&&!this.can(v))return alert('Access Denied');sessionStorage.setItem('gym_view',v);const lang=this.data?.settings?.lang||'en';const nav=document.getElementById('nav-container');let html='';if(this.can('home'))html+='<div class="nav-item" onclick="app.nav(\\'home\\')">'+t('over')+'</div>';if(this.can('members'))html+='<div class="nav-item" onclick="app.nav(\\'members\\')">'+t('mem')+'</div>';if(this.can('attendance'))html+='<div class="nav-item" onclick="app.nav(\\'attendance\\')">'+t('att')+'</div>';if(this.can('history'))html+='<div class="nav-item" onclick="app.nav(\\'history\\')">'+t('hist')+'</div>';if(this.can('payments'))html+='<div class="nav-item" onclick="app.nav(\\'payments\\')">'+t('pay')+'</div>';if(this.can('settings'))html+='<div class="nav-item" onclick="app.nav(\\'settings\\')">'+t('set')+'</div>';if(currentUser.role==='admin')html+='<div class="nav-item" onclick="app.nav(\\'users\\')">'+t('user')+'</div>';nav.innerHTML=html;document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));const navItems=document.querySelectorAll('.nav-item');navItems.forEach(el=>{if(el.innerText===t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user'))el.classList.add('active');});['home','members','attendance','history','payments','settings','users'].forEach(id=>{const el=document.getElementById('view-'+id);if(el)el.classList.add('hidden');});document.getElementById('view-'+v).classList.remove('hidden');document.querySelector('.sidebar').classList.remove('open');document.querySelector('.overlay').classList.remove('open');this.updateLabels();},updateLabels(){document.getElementById('page-title').innerText=t('dash');document.getElementById('btn-quick-checkin').innerText=t('quick_chk');document.getElementById('btn-quick-pay').innerText=t('quick_pay');document.getElementById('lbl-active-mem').innerText=t('act_mem');document.getElementById('lbl-today-visits').innerText=t('tod_vis');document.getElementById('lbl-tot-rev').innerText=t('tot_rev');document.getElementById('lbl-mem-due').innerText=t('mem_due');document.getElementById('lbl-total-due-money').innerText=t('total_due_amt');document.getElementById('lbl-due-overview').innerText=t('due_ov');document.getElementById('search').placeholder=t('search_ph');document.getElementById('btn-add-mem').innerText=t('add_mem');document.getElementById('th-name').innerText=t('nm');document.getElementById('th-joined').innerText=t('joined');document.getElementById('th-phone').innerText=t('ph');document.getElementById('th-plan').innerText=t('pl');document.getElementById('th-exp').innerText=t('exp');document.getElementById('th-due').innerText=t('due');document.getElementById('th-act').innerText=t('act');document.getElementById('lbl-today-att').innerText=t('tod_att');document.getElementById('th-time').innerText=t('time');document.getElementById('lbl-act-log').innerText=t('act_log');document.getElementById('btn-filter').innerText=t('filter');document.getElementById('btn-clear').innerText=t('clear');document.getElementById('lbl-search-col').innerText=t('search_col');document.getElementById('lbl-pay-stat').innerText=t('pay_stat');document.getElementById('btn-print').innerText=t('print');document.getElementById('btn-history').innerText=t('trans_hist');document.getElementById('lbl-sys-set').innerText=t('sys_set');document.getElementById('lbl-cur').innerText=t('cur');document.getElementById('lbl-lang').innerText=t('lang');document.getElementById('lbl-att-th').innerText=t('att_th');document.getElementById('lbl-inact-th').innerText=t('inact_th');document.getElementById('lbl-ren-fee').innerText=t('ren_fee');document.getElementById('lbl-mem-plans').innerText=t('mem_plans');document.getElementById('btn-add-plan').innerText=t('add_plan');document.getElementById('btn-save-set').innerText=t('save_set');document.getElementById('lbl-user-acc').innerText=t('user_acc');document.getElementById('btn-add-user').innerText=t('add_user');document.getElementById('lbl-chk-title').innerText=t('chk_title');document.getElementById('lbl-qp-title').innerText=t('quick_pay_search');document.getElementById('btn-sub-chk').innerText=t('submit');document.getElementById('lbl-new-mem').innerText=t('new_mem');document.getElementById('lbl-rec-pay').innerText=t('rec_pay');document.getElementById('txt-logout').innerText=t('Sign Out')+" →";},getPlanPrice(planName){const plans=this.data.settings.membershipPlans||[];const found=plans.find(p=>p.name===planName);return found?Number(found.price):0;},getPlanAdmFee(planName){const plans=this.data.settings.membershipPlans||[];const found=plans.find(p=>p.name===planName);return found?Number(found.admissionFee||0):0;},render(){const cur=this.data.settings.currency||'BDT';if(document.getElementById('stat-active')){document.getElementById('stat-active').innerText=this.data.stats.active;document.getElementById('stat-today').innerText=this.data.stats.today;document.getElementById('stat-rev').innerText=cur+' '+this.data.stats.revenue;document.getElementById('stat-due').innerText=this.data.stats.dueMembers;document.getElementById('stat-total-due').innerText=cur+' '+this.data.stats.totalOutstanding;}this.renderMembersTable();const todayRows=(this.data.attendanceToday||[]).map(a=>{let dueStr='-';if(a.dueMonths>0)dueStr=formatDueMonthsLabel(a);else if(a.dueMonths<0)dueStr=Math.abs(a.dueMonths)+' Mo Adv';return'<tr><td>'+formatTime(a.check_in_time).split(', ')[1]+'</td><td>'+escapeHtml(a.name)+'</td><td>'+dueStr+'</td></tr>';}).join('')||'<tr><td colspan="4">No data.</td></tr>';document.getElementById('tbl-attendance-today').innerHTML=todayRows;this.renderHistoryTable(null);this.renderPaymentsTable();this.renderCharts();this.updateLabels();},renderMembersTable(){const q=document.getElementById('search').value.trim().toLowerCase();const filter=document.getElementById('member-filter').value;const isNumeric=/^\d+$/.test(q);const isIdSearch=isNumeric&&q.length>0&&q.length<6;const isPhoneSearch=isNumeric&&q.length>=6;let list=(this.data.members||[]).filter(m=>{let matchSearch=true;if(q){if(isIdSearch)matchSearch=m.id.toString().startsWith(q);else if(isPhoneSearch)matchSearch=m.phone.includes(q);else matchSearch=m.name.toLowerCase().includes(q);}let matchStatus=true;if(filter!=='all'){if(filter==='active')matchStatus=(!m.dueMonths||m.dueMonths===0)&&m.status!=='inactive';else if(filter==='due')matchStatus=m.dueMonths>0;else if(filter==='advanced')matchStatus=m.dueMonths<0;else if(filter==='inactive')matchStatus=m.status==='inactive';}return matchSearch&&matchStatus;});document.getElementById('tbl-members').innerHTML=list.map(m=>{let statusBadge='<span class="badge bg-green">Active</span>';let dueTxt='-';let dueColor='gray';if(m.dueMonths>0){const price=this.getPlanPrice(m.plan);const paid=m.balance||0;const owed=(m.dueMonths*price);const remaining=Math.max(0,owed-paid);const dueLabel=formatDueMonthsLabel(m)||(m.dueMonths+' Mo Due');dueTxt=(remaining)+' ('+dueLabel+')';if(paid>0)dueTxt+=' [Bal:'+paid+']';dueColor='red';statusBadge='<span class="badge bg-amber">Due</span>';if(m.status==='inactive')statusBadge='<span class="badge bg-red">Inactive</span>';}else if(m.dueMonths<0){dueTxt='+'+Math.abs(m.dueMonths)+' Mo Adv';dueColor='green';statusBadge='<span class="badge bg-blue">Advance</span>';}return'<tr><td>#'+m.id+'</td><td><strong>'+escapeHtml(m.name)+'</strong></td><td>'+formatDate(m.joined_at)+'</td><td>'+escapeHtml(m.phone)+'</td><td>'+escapeHtml(m.plan)+'</td><td>'+formatExpiryMonth(m.expiry_date)+'</td><td>'+statusBadge+'<div style="font-size:11px;font-weight:bold;color:'+dueColor+'">'+dueTxt+'</div></td><td><div class="flex" style="gap:4px;"><button class="btn btn-outline" onclick="app.showHistory('+m.id+', \\''+escapeHtml(m.name)+'\\')">Attn</button> <button class="btn btn-outline" onclick="app.openPaymentHistory('+m.id+')" title="Payment History">$</button> <button class="btn btn-outline" onclick="app.modals.pay.open('+m.id+')">Pay</button> <button class="btn btn-danger" onclick="app.del('+m.id+')">Del</button></div></td></tr>';}).join('')||'<tr><td colspan="8">No members found.</td></tr>';},renderPaymentsTable(){const filter=document.getElementById('pay-filter').value;const cur=this.data.settings.currency||'BDT';let list=(this.data.members||[]).slice();if(filter==='due')list=list.filter(m=>m.dueMonths>0);else if(filter==='running')list=list.filter(m=>!m.dueMonths||m.dueMonths===0);else if(filter==='advanced')list=list.filter(m=>m.dueMonths<0);let totalOutstanding=0;list.sort((a,b)=>{const getWeight=(m)=>{if(m.dueMonths>0)return 3;if(!m.dueMonths||m.dueMonths===0)return 2;return 1;};const wA=getWeight(a);const wB=getWeight(b);if(wA!==wB)return wB-wA;return Math.abs(b.dueMonths||0)-Math.abs(a.dueMonths||0);});document.getElementById('tbl-payment-list').innerHTML=list.map(m=>{const price=this.getPlanPrice(m.plan);let statusHtml='<span class="badge bg-green">Running</span>';let infoTxt='-';let amtTxt='0';if(m.dueMonths>0){statusHtml='<span class="badge bg-amber">Due</span>';if(m.status==='inactive')statusHtml='<span class="badge bg-red">Inactive</span>';infoTxt=formatDueMonthsLabel(m)||(m.dueMonths+' Mo Due');const dueAmt=m.dueMonths*price;const paid=m.balance||0;const remaining=Math.max(0,dueAmt-paid);totalOutstanding+=remaining;amtTxt='<span style="color:red;font-weight:bold">'+cur+' '+remaining+'</span>';if(paid>0)amtTxt+='<br><span style="font-size:10px;color:gray;">(Paid: '+paid+')</span>';}else if(m.dueMonths<0){statusHtml='<span class="badge bg-blue">Advanced</span>';infoTxt=Math.abs(m.dueMonths)+' Mo Adv';amtTxt='<span style="color:green">+'+cur+' '+Math.abs(m.dueMonths*price)+'</span>';}return'<tr><td>#'+m.id+'</td><td>'+escapeHtml(m.name)+'</td><td>'+statusHtml+'</td><td>'+infoTxt+'</td><td>'+amtTxt+'</td><td><button class="btn btn-primary" onclick="app.modals.pay.open('+m.id+')">Pay</button></td></tr>';}).join('')||'<tr><td colspan="6">No data.</td></tr>';document.getElementById('total-outstanding-amount').innerText=cur+' '+totalOutstanding;},
+      async openPaymentHistory(memberId=null){this.currentHistoryMemberId=memberId;document.getElementById('trans-date').value='';document.getElementById('modal-payment-history').style.display='flex';this.renderTransactionHistory();},async renderTransactionHistory(){const date=document.getElementById('trans-date').value;const memberId=this.currentHistoryMemberId;const tbody=document.getElementById('tbl-transaction-history');const cur=this.data.settings.currency||'BDT';tbody.innerHTML='<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>';const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({memberId,date})});const data=await res.json();const titleEl=document.getElementById('ph-title');if(memberId&&data.memberName){titleEl.innerText="History: "+data.memberName;}else{titleEl.innerText="Transaction History";}const list=data.transactions||[];if(list.length===0){tbody.innerHTML='<tr><td colspan="3" style="text-align:center;">No records found.</td></tr>';return;}tbody.innerHTML=list.map(p=>'<tr><td>'+formatTime(p.date)+'</td><td>'+(p.name?(escapeHtml(p.name)+' (#'+p.member_id+')'):'<span style="color:gray;font-style:italic;">Unknown/Deleted (#'+p.member_id+')</span>')+'</td><td style="font-weight:bold;color:#10b981;">'+cur+' '+p.amount+'</td></tr>').join('');},async showHistory(id,name){document.getElementById('mh-title').innerText='#'+id+' · '+name;const container=document.getElementById('calendar-container');container.innerHTML='<div style="text-align:center;">Loading...</div>';document.getElementById('modal-member-history').style.display='flex';const res=await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});const data=await res.json();this.activeHistory={history:data.history||[],joinedAt:new Date(data.joinedAt||getClientNow())};const yearSelect=document.getElementById('hist-year');yearSelect.innerHTML='';const startYear=this.activeHistory.joinedAt.getFullYear();const endYear=getClientNow().getFullYear();for(let y=endYear;y>=startYear;y--){const opt=document.createElement('option');opt.value=y;opt.innerText=y;yearSelect.appendChild(opt);}const now=getClientNow();yearSelect.value=now.getFullYear();document.getElementById('hist-month').value=now.getMonth();this.renderCalendar();},renderCalendar(){if(!this.activeHistory)return;const year=parseInt(document.getElementById('hist-year').value);const monthVal=parseInt(document.getElementById('hist-month').value);const container=document.getElementById('calendar-container');const threshold=this.data.settings.attendanceThreshold||3;if(monthVal===-1){let gridHtml='<div class="year-grid">';const monthNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];for(let m=0;m<12;m++){const presentDays=this.activeHistory.history.filter(h=>{const d=new Date(h.check_in_time);return d.getFullYear()===year&&d.getMonth()===m;}).map(h=>new Date(h.check_in_time).getDate());const unique=new Set(presentDays).size;const isP=unique>=threshold;const badgeCls=isP?'ym-p':'ym-a';const badgeTxt=isP?'P':'A';gridHtml+='<div class="year-month-card"><div class="ym-name">'+monthNames[m]+'</div><div class="ym-badge '+badgeCls+'">'+badgeTxt+'</div><div class="ym-count">'+unique+' Days</div></div>';}gridHtml+='</div>';container.innerHTML=gridHtml;return;}const monthName=new Date(year,monthVal).toLocaleString('default',{month:'long'});const daysInMonth=new Date(year,monthVal+1,0).getDate();const presentDays=this.activeHistory.history.filter(h=>{const d=new Date(h.check_in_time);return d.getFullYear()===year&&d.getMonth()===monthVal;}).map(h=>new Date(h.check_in_time).getDate());const uniquePresent=[...new Set(presentDays)];const count=uniquePresent.length;const isBillable=count>=threshold;let gridHtml='';for(let i=1;i<=daysInMonth;i++){const isPresent=uniquePresent.includes(i);const cls=isPresent?'present':'absent';const mark=isPresent?'P':i;gridHtml+='<div class="cal-cell '+cls+'">'+mark+'</div>';}container.innerHTML='<div class="calendar-month"><div class="cal-header">'+monthName+' '+year+'</div><div class="cal-grid">'+gridHtml+'</div><div class="cal-stats"><span>Days: <strong>'+count+'</strong></span><span style="color:'+(isBillable?'green':'red')+'">'+(isBillable?'Active':'Inactive')+'</span></div></div>';},
+      async applyHistoryFilter(){const date=document.getElementById('history-date').value;const tbody=document.getElementById('tbl-attendance-history');tbody.innerHTML='<tr><td colspan="4" style="text-align:center;">Loading...</td></tr>';const res=await fetch('/api/history/list',{method:'POST',body:JSON.stringify({date})});const data=await res.json();this.renderHistoryTable(null,data.history);},clearHistoryFilter(){document.getElementById('history-date').value='';this.applyHistoryFilter();},renderHistoryTable(filterDate,dataList=null){let list=dataList||this.data.attendanceHistory||[];if(filterDate&&!dataList){list=list.filter(a=>a.check_in_time.startsWith(filterDate));}document.getElementById('tbl-attendance-history').innerHTML=list.length?list.map(a=>'<tr><td>'+formatTime(a.check_in_time).split(', ')[0]+'</td><td>'+formatTime(a.check_in_time).split(', ')[1]+'</td><td>'+escapeHtml(a.name)+'</td></tr>').join(''):'<tr><td colspan="4">No data.</td></tr>';},openAddUser(){document.getElementById('modal-user').style.display='flex';document.getElementById('user-modal-title').innerText="Add New User";document.getElementById('user-form').reset();document.getElementById('u-id').value="";document.getElementById('u-password').required=true;document.getElementById('u-pass-hint').innerText="";this.togglePerms('staff');},editUser(id){const u=this.userList.find(x=>x.id===id);if(!u)return;document.getElementById('user-modal-title').innerText="Edit User";document.getElementById('u-id').value=u.id;document.getElementById('u-name').value=u.name;document.getElementById('u-email').value=u.email;document.getElementById('u-password').required=false;document.getElementById('u-pass-hint').innerText="(Leave blank to keep)";document.getElementById('u-role').value=u.role;const perms=JSON.parse(u.permissions||'[]');document.querySelectorAll('input[name="permissions"]').forEach(cb=>cb.checked=perms.includes(cb.value));this.togglePerms(u.role);document.getElementById('modal-user').style.display='flex';},togglePerms(role){const container=document.getElementById('u-perms-container');if(role==='admin')container.classList.add('hidden');else container.classList.remove('hidden');},async loadUsers(){const res=await fetch('/api/users/list');if(res.ok){const data=await res.json();this.userList=data.users;document.getElementById('tbl-users').innerHTML=this.userList.map(u=>'<tr><td>#'+u.id+'</td><td>'+escapeHtml(u.name)+'</td><td>'+escapeHtml(u.email)+'</td><td>'+escapeHtml(u.role)+'</td><td style="font-size:11px;white-space:normal;max-width:150px;">'+(u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', ')))+'</td><td><button class="btn btn-outline" onclick="app.editUser('+u.id+')">Edit</button> <button class="btn btn-danger" onclick="app.deleteUser('+u.id+')">Del</button></td></tr>').join('');}},async saveUser(e){e.preventDefault();const data=Object.fromEntries(new FormData(e.target));const perms=[];document.querySelectorAll('input[name="permissions"]:checked').forEach(cb=>perms.push(cb.value));data.permissions=perms;const url=data.id?'/api/users/update':'/api/users/add';const res=await fetch(url,{method:'POST',body:JSON.stringify(data)});if(res.ok){document.getElementById('modal-user').style.display='none';this.loadUsers();}else{alert((await res.json()).error);}},async deleteUser(id){if(confirm("Delete?")){await fetch('/api/users/delete',{method:'POST',body:JSON.stringify({id})});this.loadUsers();}},applySettingsUI(){const s=this.data.settings;const form=document.getElementById('settings-form');form.querySelector('input[name="currency"]').value=s.currency||'BDT';form.querySelector('select[name="lang"]').value=s.lang||'en';form.querySelector('input[name="attendanceThreshold"]').value=s.attendanceThreshold;form.querySelector('input[name="inactiveAfterMonths"]').value=s.inactiveAfterMonths;form.querySelector('input[name="renewalFee"]').value=s.renewalFee;form.querySelector('input[name="timezone"]').value=(s.time&&s.time.timezone)||'Asia/Dhaka';setClientNow(s.time?.now);const simInput=form.querySelector('input[name="simulatedTime"]');if(simInput){const iso=s.time?.simulatedTime||s.time?.now||'';simInput.value=iso?new Date(iso).toISOString().slice(0,16):'';}const simToggle=form.querySelector('input[name="timeSimulationEnabled"]');if(simToggle)simToggle.checked=!!s.time?.simulated;const lblClock=document.getElementById('lbl-current-time');if(lblClock){const tz=s.time?.timezone||'Asia/Dhaka';const now=s.time?.now?new Date(s.time.now):getClientNow();const formatted=now.toLocaleString('en-GB',{timeZone:tz});const suffix=s.time?.simulated?' (simulation active)':'';lblClock.innerText='Current system time ('+tz+'): '+formatted+suffix;}const plansDiv=document.getElementById('plans-container');plansDiv.innerHTML=s.membershipPlans.map((p,i)=>'<div class="plan-row" id="plan-'+i+'"><input type="text" placeholder="Plan Name" value="'+escapeHtml(p.name)+'" class="plan-name"><input type="number" placeholder="Price" value="'+p.price+'" class="plan-price"><input type="number" placeholder="Adm Fee" value="'+(p.admissionFee||0)+'" class="plan-adm"><button type="button" class="btn btn-danger" onclick="document.getElementById(\\'plan-'+i+'\\').remove()">X</button></div>').join('');document.getElementById('plan-select').innerHTML=s.membershipPlans.map(p=>'<option value="'+escapeHtml(p.name)+'">'+escapeHtml(p.name)+'</option>').join('');},addPlanRow(){const id='new-'+Date.now();const html='<div class="plan-row" id="'+id+'"><input type="text" placeholder="Plan Name" class="plan-name"><input type="number" placeholder="Price" value="0" class="plan-price"><input type="number" placeholder="Adm Fee" value="0" class="plan-adm"><button type="button" class="btn btn-danger" onclick="document.getElementById(\\''+id+'\\').remove()">X</button></div>';document.getElementById('plans-container').insertAdjacentHTML('beforeend',html);},async saveSettings(e){e.preventDefault();const plans=[];document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row=>{const nameInput=row.querySelector('.plan-name');const priceInput=row.querySelector('.plan-price');const admInput=row.querySelector('.plan-adm');if(nameInput&&priceInput){const name=nameInput.value.trim();const price=priceInput.value.trim();const admissionFee=admInput?admInput.value.trim():0;if(name)plans.push({name,price:Number(price),admissionFee:Number(admissionFee)});}});const form=e.target;document.getElementById('settings-status').innerText='Saving...';await fetch('/api/settings',{method:'POST',body:JSON.stringify({currency:form.querySelector('input[name="currency"]').value,lang:form.querySelector('select[name="lang"]').value,attendanceThreshold:form.querySelector('input[name="attendanceThreshold"]').value,inactiveAfterMonths:form.querySelector('input[name="inactiveAfterMonths"]').value,renewalFee:form.querySelector('input[name="renewalFee"]').value,membershipPlans:plans,timezone:form.querySelector('input[name="timezone"]').value,timeSimulationEnabled:form.querySelector('input[name="timeSimulationEnabled"]').checked,simulatedTime:form.querySelector('input[name="simulatedTime"]').value})});location.reload();},async resetDB(){if(!confirm("Delete ALL data and reset system? This is irreversible!"))return;await fetch('/api/nuke');location.reload();},async pay(e){e.preventDefault();const endpoint=app.isRenewalMode?'/api/members/renew':'/api/payment';await fetch(endpoint,{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});location.reload();},async checkIn(){if(this.isSubmitting)return;this.isSubmitting=true;const btn=document.getElementById('btn-sub-chk');if(btn)btn.disabled=true;const id=document.getElementById('checkin-id').value;try{const res=await fetch('/api/checkin',{method:'POST',body:JSON.stringify({memberId:id})});const json=await res.json();const div=document.getElementById('checkin-res');div.innerText=json.status==='success'?('✅ Welcome '+json.name):(json.error||'⛔ Error');div.style.color=json.status==='success'?'var(--success)':'var(--danger)';if(json.status==='success')setTimeout(()=>location.reload(),800);}catch(e){}finally{this.isSubmitting=false;if(btn)btn.disabled=false;}},onCheckinInput(e){if(e.key==='Enter'){this.checkIn();return;}const val=e.target.value;if(this.searchTimeout)clearTimeout(this.searchTimeout);this.searchTimeout=setTimeout(async()=>{if(!val.trim()){document.getElementById('checkin-suggestions').innerHTML='';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();document.getElementById('checkin-suggestions').innerHTML=data.results.map(m=>{let statusStr='<span style="color:gray; font-size:11px;">Running</span>';if(m.status==='inactive'){statusStr='<span style="color:red; font-weight:bold; font-size:11px; background:#fee2e2; padding:2px 4px; border-radius:4px;">⛔ INACTIVE</span>';}else if(m.dueMonths>0){statusStr='<span style="color:red; font-weight:bold; font-size:11px;">'+formatDueMonthsLabel(m)+'</span>';}else if(m.dueMonths<0){statusStr='<span style="color:green; font-weight:bold; font-size:11px;">'+Math.abs(m.dueMonths)+' Mo Adv</span>';}let checkedInBadge='';if(m.checkedIn){checkedInBadge='<span style="margin-left:5px; font-size:10px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:4px; font-weight:bold;">✅ Checked In</span>';}return'<div class="checkin-item" onclick="document.getElementById(\\'checkin-id\\').value='+m.id+'; document.getElementById(\\'checkin-suggestions\\').innerHTML=\\'\\';"><strong>#'+m.id+' · '+escapeHtml(m.name)+'</strong> '+statusStr+checkedInBadge+'</div>';}).join('');},200);},onQuickPayInput(e){const val=e.target.value;if(this.searchTimeout)clearTimeout(this.searchTimeout);this.searchTimeout=setTimeout(async()=>{if(!val.trim()){document.getElementById('qp-results').innerHTML='';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();document.getElementById('qp-results').innerHTML=data.results.map(m=>{let dueStr='Active';if(m.status==='inactive')dueStr='⛔ Inactive';else if(m.dueMonths>0)dueStr=formatDueMonthsLabel(m);else if(m.dueMonths<0)dueStr=Math.abs(m.dueMonths)+' Mo Adv';return'<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open('+m.id+')"><strong>#'+m.id+' · '+escapeHtml(m.name)+'</strong> - '+dueStr+'</div>';}).join('');},200);},switchAddTab(tab){const isMig=tab==='mig';document.getElementById('tab-new').className=isMig?'nav-item':'nav-item active';document.getElementById('tab-new').style.borderBottom=isMig?'none':'2px solid var(--primary)';document.getElementById('tab-new').style.color=isMig?'#9ca3af':'var(--primary)';document.getElementById('tab-mig').className=isMig?'nav-item active':'nav-item';document.getElementById('tab-mig').style.borderBottom=isMig?'2px solid var(--primary)':'none';document.getElementById('tab-mig').style.color=isMig?'var(--primary)':'#9ca3af';document.getElementById('sec-new-fees').style.display=isMig?'none':'block';document.getElementById('sec-mig-fees').style.display=isMig?'block':'none';document.getElementById('add-mig-mode').value=isMig?'true':'false';document.getElementById('new-init-pay').required=!isMig;document.getElementById('mig-legacy-dues').required=isMig;app.updateAddMemberFees();},updateAddMemberFees(){const planName=document.getElementById('plan-select').value;const fee=app.getPlanAdmFee(planName);document.getElementById('new-adm-fee').value=fee;},async addMember(e){e.preventDefault();await fetch('/api/members/add',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});location.reload();},async del(id){if(confirm("Delete?"))await fetch('/api/members/delete',{method:'POST',body:JSON.stringify({id})});location.reload();},filter(){const q=document.getElementById('search').value.toLowerCase();document.querySelectorAll('#tbl-members tr').forEach(r=>r.style.display=r.innerText.toLowerCase().includes(q)?'':'none');},onPaymentSearchInput(e){const val=e.target.value;setTimeout(async()=>{if(!val.trim()){document.getElementById('pay-search-results').innerHTML='';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();document.getElementById('pay-search-results').innerHTML=data.results.map(m=>{let dueStr='Active';if(m.status==='inactive')dueStr='⛔ Inactive';else if(m.dueMonths>0)dueStr=formatDueMonthsLabel(m);else if(m.dueMonths<0)dueStr=Math.abs(m.dueMonths)+' Mo Adv';return'<div class="checkin-item" onclick="app.modals.pay.open('+m.id+')"><strong>#'+m.id+' · '+escapeHtml(m.name)+'</strong> - '+dueStr+'</div>';}).join('');},200);},renderCharts(){if(typeof Chart==='undefined')return;const members=this.data.members||[];const ctx1=document.getElementById('chart-dues');if(ctx1)new Chart(ctx1.getContext('2d'),{type:'bar',data:{labels:['No Due','1 Mo','2+ Mo','Inactive'],datasets:[{data:[members.filter(m=>!m.dueMonths||m.dueMonths<=0).length,members.filter(m=>m.dueMonths===1).length,members.filter(m=>m.dueMonths>=2&&m.status!=='inactive').length,members.filter(m=>m.status==='inactive').length],backgroundColor:['#10b981','#f59e0b','#ef4444','#6b7280']}]},options:{plugins:{legend:{display:false}}}});},modals:{checkin:{open:()=>{document.getElementById('modal-checkin').style.display='flex';document.getElementById('checkin-id').focus();},close:()=>document.getElementById('modal-checkin').style.display='none'},quickPay:{open:()=>{document.getElementById('modal-quick-pay').style.display='flex';document.getElementById('qp-search').focus();},close:()=>document.getElementById('modal-quick-pay').style.display='none'},add:{open:()=>{app.switchAddTab('new');app.updateAddMemberFees();document.getElementById('mig-legacy-dues').value='0';document.getElementById('mig-init-pay').value='0';document.getElementById('modal-add').style.display='flex';},close:()=>document.getElementById('modal-add').style.display='none'},pay:{open:(id)=>{app.payingMemberId=id;const m=app.data.members.find(x=>x.id===id);const price=app.getPlanPrice(m.plan);document.getElementById('pay-id').value=id;document.getElementById('pay-name').innerText=m?m.name:'';document.getElementById('pay-amount').value='';document.getElementById('pay-status-warning').style.display='none';document.getElementById('pay-renewal-section').style.display='none';document.getElementById('pay-standard-label').style.display='block';document.getElementById('pay-submit-btn').innerText='Confirm';document.getElementById('pay-amount').required=true;app.isRenewalMode=false;if(m.status==='inactive'){app.isRenewalMode=true;document.getElementById('pay-status-warning').style.display='block';document.getElementById('pay-renewal-section').style.display='block';document.getElementById('pay-standard-label').style.display='none';document.getElementById('pay-ren-fee').value=app.data.settings.renewalFee||0;document.getElementById('pay-submit-btn').innerText='Re-admit & Pay';}document.getElementById('pay-plan-price').innerText=price;document.getElementById('pay-wallet-bal').innerText=m.balance||0;document.getElementById('modal-pay').style.display='flex';},close:()=>{app.payingMemberId=null;document.getElementById('modal-pay').style.display='none'}},user:{close:()=>document.getElementById('modal-user').style.display='none'}}};app.init();
     </script>
   </body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
