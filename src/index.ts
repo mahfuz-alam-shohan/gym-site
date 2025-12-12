@@ -1,268 +1,16 @@
-import { D1Database } from "@cloudflare/workers-types";
-
-export interface Env {
-  DB: D1Database;
-}
-
-/* ========================================================================
-   1. UTILITIES & SECURITY
-   ======================================================================== */
-
-const corsHeaders = {
-  "Content-Type": "application/json",
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, GET, OPTIONS, DELETE, PUT",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-// Helper to escape HTML to prevent XSS
-function escapeHtml(unsafe: any): string {
-  if (unsafe === null || unsafe === undefined) return "";
-  return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function json(data: any, status = 200): Response {
-  return new Response(JSON.stringify(data), { status, headers: corsHeaders });
-}
-
-function errorResponse(message: string, status = 400): Response {
-  return json({ error: message }, status);
-}
-
-// Validation helper
-function validate(body: any, requiredFields: string[]): string | null {
-  for (const field of requiredFields) {
-    if (body[field] === undefined || body[field] === null || body[field] === "") {
-      return `Missing required field: ${field}`;
-    }
-  }
-  return null;
-}
-
-async function hashPassword(password: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const hashed = await hashPassword(password);
-  return hashed === hash;
-}
-
-function monthEnd(date: Date): Date {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return new Date(); // Fallback safety
-  d.setMonth(d.getMonth() + 1, 0);
-  d.setHours(23, 59, 59, 999);
-  return d;
-}
-
-function nextMonthStart(date: Date): Date {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function zonedNow(timezone: string): Date {
-  try {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
-  } catch (e) {
-    return new Date(); // Fallback to UTC if timezone is invalid
-  }
-}
-
-function formatDateOnly(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(date);
-  } catch (e) {
-    return date.toISOString().split("T")[0];
-  }
-}
-
-type SystemClock = {
-  timezone: string;
-  simulated: boolean;
-  simulatedTime: string | null;
-  now: Date;
-  today: string;
-};
-
-const DEFAULT_TIMEZONE = "Asia/Dhaka"; // GMT+6
-
-async function loadSettings(env: Env): Promise<{
-  configMap: Record<string, string>;
-  attendanceThreshold: number;
-  inactiveAfterMonths: number;
-  renewalFee: number;
-  currency: string;
-  lang: string;
-  membershipPlans: any[];
-  clock: SystemClock;
-}> {
-  const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
-  const configMap: Record<string, string> = {};
-  for (const row of configRows.results || []) configMap[row.key] = row.value;
-
-  const timezone = configMap["timezone"] || DEFAULT_TIMEZONE;
-  const attendanceThreshold = parseInt(configMap["attendance_threshold_days"] || "3", 10);
-  const inactiveAfterMonths = parseInt(configMap["inactive_after_due_months"] || "3", 10);
-  const renewalFee = parseInt(configMap["renewal_fee"] || "0", 10);
-  const currency = configMap["currency"] || "BDT";
-  const lang = configMap["lang"] || "en";
-
-  const simEnabled = configMap["time_simulation_enabled"] === "true";
-  const simValue = configMap["time_simulation_value"] || null;
-  let clockNow = zonedNow(timezone);
-  let simulated = false;
-
-  if (simEnabled && simValue) {
-    const parsed = new Date(simValue);
-    if (!isNaN(parsed.getTime())) {
-      clockNow = parsed;
-      simulated = true;
-    }
-  }
-
-  const clock: SystemClock = {
-    timezone,
-    simulated,
-    simulatedTime: simulated ? clockNow.toISOString() : null,
-    now: clockNow,
-    today: formatDateOnly(clockNow, timezone),
-  };
-
-  let membershipPlans: any[] = [];
-  try {
-    const raw = JSON.parse(configMap["membership_plans"] || "[]");
-    if (Array.isArray(raw)) {
-      membershipPlans = raw.map((p) => (typeof p === "string" ? { name: p, price: 0, admissionFee: 0 } : p));
-    }
-  } catch {
-    membershipPlans = [{ name: "Standard", price: 0, admissionFee: 0 }];
-  }
-
-  return {
-    configMap,
-    attendanceThreshold,
-    inactiveAfterMonths,
-    renewalFee,
-    currency,
-    lang,
-    membershipPlans,
-    clock,
-  };
-}
-
-function buildAttendanceMonthMap(attendance?: string[]): Record<string, Set<number>> {
-  const map: Record<string, Set<number>> = {};
-  for (const ts of attendance || []) {
-    const d = new Date(ts);
-    if (isNaN(d.getTime())) continue;
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    if (!map[key]) map[key] = new Set();
-    map[key].add(d.getDate());
-  }
-  return map;
-}
-
-function formatMonthLabel(date: Date, today: Date = zonedNow(DEFAULT_TIMEZONE)): string {
-  const monthName = date.toLocaleString("en-US", { month: "short" });
-  const currentYear = today.getFullYear();
-  return date.getFullYear() === currentYear ? monthName : `${monthName} ${date.getFullYear()}`;
-}
-
-function buildManualDueMonths(manualDue: number, today: Date = zonedNow(DEFAULT_TIMEZONE)): Date[] {
-  if (!manualDue || manualDue <= 0) return [];
-  const months: Date[] = [];
-  const anchor = new Date(today);
-  anchor.setDate(1);
-
-  for (let i = manualDue - 1; i >= 0; i--) {
-    months.push(new Date(anchor.getFullYear(), anchor.getMonth() - i, 1));
-  }
-  return months;
-}
-
-function calcDueDetails(
-  expiry: string | null | undefined,
-  attendance: string[] | undefined,
-  threshold: number,
-  manualDue: number = 0,
-  today: Date = zonedNow(DEFAULT_TIMEZONE)
-): { count: number; months: Date[]; labels: string[] } {
-  let dueMonths: Date[] = [];
-
-  // 1. Handle Manual Dues (Migration or Overrides)
-  if (!expiry) {
-    dueMonths = buildManualDueMonths(manualDue, today);
-    return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
-  }
-
-  const paidThrough = monthEnd(new Date(expiry));
-  
-  // Safety: If paidThrough is invalid or way in the future beyond reason
-  if (isNaN(paidThrough.getTime())) {
-    dueMonths = buildManualDueMonths(manualDue, today);
-    return { count: manualDue, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
-  }
-
-  // 2. Calculate Dues based on Attendance vs Expiry
-  const attMap = buildAttendanceMonthMap(attendance);
-  const todayCopy = new Date(today);
-  
-  // Loop from month after expiry until today
-  // Guard against infinite loop if dates are broken (limit 36 months)
-  let loopCount = 0;
-  for (let cursor = nextMonthStart(paidThrough); cursor <= todayCopy; cursor = nextMonthStart(cursor)) {
-    loopCount++;
-    if (loopCount > 36) break; // Hard stop for sanity
-
-    const key = `${cursor.getFullYear()}-${cursor.getMonth()}`;
-    const days = attMap[key]?.size || 0;
-    
-    // Only count as due if they attended enough days
-    if (days >= threshold) {
-      dueMonths.push(new Date(cursor));
-    }
-  }
-
-  // 3. Prepend Manual Dues
-  if (manualDue > 0) {
-    let cursor = dueMonths[0] ? new Date(dueMonths[0].getFullYear(), dueMonths[0].getMonth(), 1) : nextMonthStart(paidThrough);
-    for (let i = 0; i < manualDue; i++) {
-      cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
-      dueMonths.unshift(new Date(cursor));
-    }
-  }
-
-  return { count: dueMonths.length, months: dueMonths, labels: dueMonths.map((d) => formatMonthLabel(d, today)) };
-}
-
-function addPaidMonths(paidThrough: Date, months: number): Date {
-  let updated = monthEnd(paidThrough);
-  for (let i = 0; i < months; i++) {
-    updated = monthEnd(new Date(updated.getFullYear(), updated.getMonth() + 1, 1));
-  }
-  return updated;
-}
+import { getSession } from "./auth";
+import { addPaidMonths, calcDueDetails } from "./attendance";
+import { initDB, factoryReset } from "./db";
+import { Env } from "./env";
+import { hashPassword, verifyPassword } from "./security";
+import { DEFAULT_TIMEZONE, monthEnd } from "./time";
+import { loadSettings } from "./settings";
+import { corsHeaders, escapeHtml, errorResponse, json, validate } from "./utils";
 
 /* ========================================================================
-   2. UI SYSTEM
+   1. UI SYSTEM
    ======================================================================== */
+
 
 function baseHead(title: string): string {
   // Using escapeHtml for title just in case
@@ -393,39 +141,7 @@ function baseHead(title: string): string {
 }
 
 /* ========================================================================
-   3. DATABASE SETUP
-   ======================================================================== */
-
-async function initDB(env: Env) {
-  const q = [
-    `CREATE TABLE IF NOT EXISTS config (key TEXT PRIMARY KEY, value TEXT)`,
-    `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE, password_hash TEXT, name TEXT, role TEXT, permissions TEXT DEFAULT '[]')`,
-    `CREATE TABLE IF NOT EXISTS members (id INTEGER PRIMARY KEY, name TEXT, phone TEXT, plan TEXT, joined_at TEXT, expiry_date TEXT, status TEXT DEFAULT 'active')`,
-    `CREATE TABLE IF NOT EXISTS attendance (id INTEGER PRIMARY KEY, member_id INTEGER, check_in_time TEXT, status TEXT)`,
-    `CREATE TABLE IF NOT EXISTS payments (id INTEGER PRIMARY KEY, member_id INTEGER, amount INTEGER, date TEXT)`,
-    `CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id INTEGER, expires_at TEXT)`
-  ];
-  for (const sql of q) await env.DB.prepare(sql).run();
-
-  // Optimizations & Migrations
-  try { await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run(); } catch (e) {}
-  try { await env.DB.prepare("ALTER TABLE members ADD COLUMN manual_due_months INTEGER DEFAULT 0").run(); } catch (e) {}
-  
-  // Create Indexes for Efficiency
-  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_member_date ON attendance(member_id, check_in_time)").run(); } catch (e) {}
-  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(check_in_time)").run(); } catch (e) {}
-  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_members_phone ON members(phone)").run(); } catch (e) {}
-  try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id)").run(); } catch (e) {}
-}
-
-async function factoryReset(env: Env) {
-  const drops = ["config", "users", "members", "attendance", "payments", "sessions"];
-  for (const table of drops) await env.DB.prepare(`DROP TABLE IF EXISTS ${table}`).run();
-  await initDB(env);
-}
-
-/* ========================================================================
-   4. WORKER LOGIC
+   2. WORKER LOGIC
    ======================================================================== */
 
 export default {
@@ -946,15 +662,8 @@ export default {
   }
 };
 
-async function getSession(req: Request, env: Env) {
-  const cookie = req.headers.get("Cookie");
-  const token = cookie?.match(/gym_auth=([^;]+)/)?.[1];
-  if (!token) return null;
-  return await env.DB.prepare("SELECT u.* FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.token = ?").bind(token).first();
-}
-
 /* ========================================================================
-   5. FRONTEND
+   3. FRONTEND
    ======================================================================== */
 
 function renderSetup() {
