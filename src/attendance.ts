@@ -1,4 +1,4 @@
-import { formatMonthKey, getBdDate, monthEnd, nextMonthStart, zonedNow } from "./time";
+import { formatMonthKey, getBdDate, monthEnd, nextMonthStart } from "./time";
 
 // --- HELPERS ---
 
@@ -121,9 +121,9 @@ export function processPayment(
   if (planPrice > 0) {
     balance = balance % planPrice;
   } else {
-    // If plan is free (0), we essentially add 1 month per call usually
-    // But let's assume price > 0 for standard gym logic
-    if(amountPaid > 0) monthsToPay = 99; // Arbitrary high number if free plan but paid?
+    // If plan is free (0), we usually treat any payment as significant or ignore it
+    // Logic: if price is 0, they effectively have infinite months, but let's just guard
+    if(amountPaid > 0) monthsToPay = 99; 
   }
 
   let expiry = new Date(currentExpiryStr);
@@ -141,9 +141,7 @@ export function processPayment(
   let cursor = nextMonthStart(expiry);
   
   // We scan at least until TODAY to "Resolve" any gaps in the past
-  // even if user has no money, we should theoretically advance over gaps, 
-  // BUT usually systems wait for a payment trigger to update expiry. 
-  // Here we assume this runs ON payment.
+  // even if user has no money, we should theoretically advance over gaps.
   
   let loop = 0;
   
