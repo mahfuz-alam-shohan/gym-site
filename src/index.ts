@@ -79,7 +79,12 @@ export default {
         return Response.redirect(url.origin + "/", 302);
       }
 
-      if (url.pathname === "/dashboard") return renderDashboard(user);
+      if (url.pathname === "/dashboard") {
+        // Fetch gym name here to pass to the render function
+        const gymConfig = await env.DB.prepare("SELECT value FROM config WHERE key = 'gym_name'").first<any>();
+        const gymName = gymConfig?.value || "Gym OS";
+        return renderDashboard(user, gymName);
+      }
 
       if (url.pathname === "/dues/print") {
         const settings = await loadSettings(env);
