@@ -10,15 +10,13 @@ export type SystemClock = {
 export const DEFAULT_TIMEZONE = "Asia/Dhaka";
 export const BD_OFFSET_HOURS = 6;
 
-// Get current time in BD as a Date object (technically UTC-shifted)
-// Use this to EXTRACT year/month/date. Do not use this to save timestamps.
+// Get current time in BD as a Date object
 export function getBdDate(date: Date = new Date()): Date {
   const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
   return new Date(utc + (3600000 * BD_OFFSET_HOURS));
 }
 
 export function zonedNow(timezone: string = DEFAULT_TIMEZONE): Date {
-  // Returns a standard Date object representing "Now"
   return new Date();
 }
 
