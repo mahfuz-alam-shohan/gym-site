@@ -1,19 +1,29 @@
 import { Env } from "./env";
 import { DEFAULT_TIMEZONE, zonedNow, formatDateOnly } from "./time";
 
-export async function loadSettings(env: Env): Promise<{
+export interface AppSettings {
   configMap: Record<string, string>;
   attendanceThreshold: number;
   inactiveAfterMonths: number;
   renewalFee: number;
   currency: string;
   lang: string;
-  membershipPlans: any[];
-  clock: any;
-}> {
+  membershipPlans: { name: string; price: number; admissionFee: number }[];
+  clock: {
+    timezone: string;
+    simulated: boolean;
+    simulatedTime: string | null;
+    now: Date;
+    today: string;
+  };
+}
+
+export async function loadSettings(env: Env): Promise<AppSettings> {
   const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
   const configMap: Record<string, string> = {};
-  for (const row of configRows.results || []) configMap[row.key] = row.value;
+  for (const row of configRows.results || []) {
+    configMap[row.key] = row.value as string;
+  }
 
   const timezone = configMap["timezone"] || DEFAULT_TIMEZONE;
   const attendanceThreshold = parseInt(configMap["attendance_threshold_days"] || "3", 10);
@@ -43,13 +53,26 @@ export async function loadSettings(env: Env): Promise<{
     today: formatDateOnly(clockNow),
   };
 
-  let membershipPlans: any[] = [];
+  let membershipPlans: { name: string; price: number; admissionFee: number }[] = [];
   try {
     const raw = JSON.parse(configMap["membership_plans"] || "[]");
     if (Array.isArray(raw)) {
-      membershipPlans = raw.map((p) => (typeof p === "string" ? { name: p, price: 0, admissionFee: 0 } : p));
+      membershipPlans = raw.map((p: any) => 
+        typeof p === "string" 
+          ? { name: p, price: 0, admissionFee: 0 } 
+          : { 
+              name: p.name || "Unknown", 
+              price: Number(p.price) || 0, 
+              admissionFee: Number(p.admissionFee) || 0 
+            }
+      );
     }
   } catch {
+    membershipPlans = [{ name: "Standard", price: 0, admissionFee: 0 }];
+  }
+
+  // Ensure at least one plan exists
+  if (membershipPlans.length === 0) {
     membershipPlans = [{ name: "Standard", price: 0, admissionFee: 0 }];
   }
 
