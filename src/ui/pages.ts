@@ -450,6 +450,28 @@ export function renderDashboard(user: any, gymName: string) {
       const currentUser={role:"${safeRole}",permissions:${safePerms}};
       if (!Array.isArray(currentUser.permissions)) currentUser.permissions = [];
       
+      // FIX: Added getIcon function here so it is available in the browser scope
+      function getIcon(name) {
+        const icons = {
+          home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>',
+          users: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>',
+          clock: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+          history: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg>',
+          creditCard: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"></rect><line x1="1" y1="10" x2="23" y2="10"></line></svg>',
+          settings: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>',
+          logout: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>',
+          menu: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>',
+          search: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>',
+          check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
+          plus: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+          trash: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+          zap: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
+          filter: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>',
+          print: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>'
+        };
+        return icons[name] || '';
+      }
+
       // --- ROBUST TIME FORMATTER (Fixes Phone Bug) ---
       function formatTime(iso) {
           if (!iso) return '-';
@@ -542,8 +564,8 @@ export function renderDashboard(user: any, gymName: string) {
           pages.filter(p=>this.can(p)).forEach(p=>{
              const isActive = p===v ? 'active' : '';
              const icon = getIcon(icons[p]);
-             dHtml+=\`<div class="nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} \${labels[p]}</div>\`;
-             mHtml+=\`<div class="b-nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} <span>\${labels[p]}</span></div>\`;
+             dHtml+=`<div class="nav-item ${isActive}" onclick="app.nav('${p}')">${icon} ${labels[p]}</div>`;
+             mHtml+=`<div class="b-nav-item ${isActive}" onclick="app.nav('${p}')">${icon} <span>${labels[p]}</span></div>`;
           });
           
           if(dNav) dNav.innerHTML=dHtml;
@@ -598,8 +620,8 @@ export function renderDashboard(user: any, gymName: string) {
              const time=formatTime(a.check_in_time);
              const badge=a.status==='success'?'<span class="badge bg-green"><span class="badge-dot"></span>IN</span>':'<span class="badge bg-red"><span class="badge-dot"></span>EXP</span>';
              return {
-               row: \`<tr><td>\${time}</td><td>\${escapeHtml(a.name)}</td><td>\${badge}</td></tr>\`,
-               card: \`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${time}</div></div>\${badge}</div>\`
+               row: `<tr><td>${time}</td><td>${escapeHtml(a.name)}</td><td>${badge}</td></tr>`,
+               card: `<div class="m-card"><div class="m-info"><div class="m-title">${escapeHtml(a.name)}</div><div class="m-sub">${time}</div></div>${badge}</div>`
              };
           });
           const tblAtt = document.getElementById('tbl-attendance-today');
@@ -635,29 +657,29 @@ export function renderDashboard(user: any, gymName: string) {
               let badge='<span class="badge bg-green"><span class="badge-dot"></span>Active</span>';
               if(m.dueMonths>0) {
                  const dueTxt=m.dueMonthLabels && m.dueMonthLabels.length ? m.dueMonthLabels[0] : (m.dueMonths+' Mo Due');
-                 badge=\`<span class="badge bg-amber"><span class="badge-dot"></span>\${dueTxt}</span>\`;
+                 badge=`<span class="badge bg-amber"><span class="badge-dot"></span>${dueTxt}</span>`;
               }
               if(m.status==='inactive') badge='<span class="badge bg-red"><span class="badge-dot"></span>Inactive</span>';
               
               const date=formatDate(m.expiry_date);
               
-              const actions=\`<div style="display:flex;gap:4px;justify-content:flex-end;">
-                  <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
-                  <button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Pay</button>
-                  <button class="btn btn-danger btn-sm" onclick="app.del(\${m.id})">X</button>
-              </div>\`;
+              const actions=`<div style="display:flex;gap:4px;justify-content:flex-end;">
+                  <button class="btn btn-outline btn-sm" onclick="app.showHistory(${m.id})">Log</button>
+                  <button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(${m.id})">Pay</button>
+                  <button class="btn btn-danger btn-sm" onclick="app.del(${m.id})">X</button>
+              </div>`;
 
               return {
-                 row: \`<tr><td>#\${m.id}</td><td><div style="font-weight:600;">\${escapeHtml(m.name)}</div><div class="text-xs text-muted">\${escapeHtml(m.phone)}</div></td><td>\${escapeHtml(m.plan)}</td><td>\${date}</td><td>\${badge}</td><td>\${actions}</td></tr>\`,
-                 card: \`<div class="m-card">
-                    <div class="m-info" onclick="app.modals.pay.open(\${m.id})">
-                       <div class="m-title">\${escapeHtml(m.name)} <span class="text-muted text-xs">#\${m.id}</span></div>
-                       <div class="m-sub">\${badge} <span style="margin:0 4px;">•</span> \${date}</div>
+                 row: `<tr><td>#${m.id}</td><td><div style="font-weight:600;">${escapeHtml(m.name)}</div><div class="text-xs text-muted">${escapeHtml(m.phone)}</div></td><td>${escapeHtml(m.plan)}</td><td>${date}</td><td>${badge}</td><td>${actions}</td></tr>`,
+                 card: `<div class="m-card">
+                    <div class="m-info" onclick="app.modals.pay.open(${m.id})">
+                       <div class="m-title">${escapeHtml(m.name)} <span class="text-muted text-xs">#${m.id}</span></div>
+                       <div class="m-sub">${badge} <span style="margin:0 4px;">•</span> ${date}</div>
                     </div>
                     <div class="m-actions">
-                       <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
+                       <button class="btn btn-outline btn-sm" onclick="app.showHistory(${m.id})">Log</button>
                     </div>
-                 </div>\`
+                 </div>`
               };
            });
            
@@ -682,20 +704,20 @@ export function renderDashboard(user: any, gymName: string) {
               const displayAmt = dueAmt > 0 ? dueAmt : 0;
               
               let status='<span class="badge bg-green">OK</span>';
-              if(m.dueMonths>0) status=\`<span class="badge bg-amber">\${m.dueMonths} Mo Due</span>\`;
+              if(m.dueMonths>0) status=`<span class="badge bg-amber">${m.dueMonths} Mo Due</span>`;
               if(m.status==='inactive') status='<span class="badge bg-red">Inactive</span>';
               
-              const btn=\`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Collect</button>\`;
+              const btn=`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(${m.id})">Collect</button>`;
               
               return {
-                 row: \`<tr><td>#\${m.id}</td><td>\${escapeHtml(m.name)}</td><td>\${status}</td><td>\${m.dueMonths>0?m.dueMonths+' Mo':'-'}</td><td style="font-weight:700;">\${cur} \${displayAmt}</td><td style="text-align:right">\${btn}</td></tr>\`,
-                 card: \`<div class="m-card">
+                 row: `<tr><td>#${m.id}</td><td>${escapeHtml(m.name)}</td><td>${status}</td><td>${m.dueMonths>0?m.dueMonths+' Mo':'-'}</td><td style="font-weight:700;">${cur} ${displayAmt}</td><td style="text-align:right">${btn}</td></tr>`,
+                 card: `<div class="m-card">
                     <div class="m-info">
-                       <div class="m-title">\${escapeHtml(m.name)}</div>
-                       <div class="m-sub">\${status} • \${cur} \${displayAmt}</div>
+                       <div class="m-title">${escapeHtml(m.name)}</div>
+                       <div class="m-sub">${status} • ${cur} ${displayAmt}</div>
                     </div>
-                    \${btn}
-                 </div>\`
+                    ${btn}
+                 </div>`
               };
            });
            const tbl = document.getElementById('tbl-payment-list');
@@ -708,8 +730,8 @@ export function renderDashboard(user: any, gymName: string) {
            const list=data||this.data.attendanceHistory||[];
            const rows=list.map(a=>{
              return {
-               row: \`<tr><td>\${formatDate(a.check_in_time)}</td><td>\${formatTime(a.check_in_time)}</td><td>\${escapeHtml(a.name)}</td></tr>\`,
-               card: \`<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${formatDate(a.check_in_time)} • \${formatTime(a.check_in_time)}</div></div></div>\`
+               row: `<tr><td>${formatDate(a.check_in_time)}</td><td>${formatTime(a.check_in_time)}</td><td>${escapeHtml(a.name)}</td></tr>`,
+               card: `<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">${escapeHtml(a.name)}</div><div class="m-sub">${formatDate(a.check_in_time)} • ${formatTime(a.check_in_time)}</div></div></div>`
              };
            });
            const tbl=document.getElementById('tbl-attendance-history');
@@ -729,11 +751,11 @@ export function renderDashboard(user: any, gymName: string) {
            const res=await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});
            const d=await res.json();
            const visits=d.history.length;
-           const html=\`<div style="text-align:center;margin-bottom:20px;">
-              <div style="font-size:32px;font-weight:800;color:var(--primary);">\${visits}</div>
+           const html=`<div style="text-align:center;margin-bottom:20px;">
+              <div style="font-size:32px;font-weight:800;color:var(--primary);">${visits}</div>
               <div class="text-muted text-xs">Total Visits</div>
            </div>
-           <div class="mobile-list">\` + (d.history.map(h=>\`<div class="m-card" style="padding:8px 12px;"><div class="m-sub">\${formatDate(h.check_in_time)}</div><div style="font-weight:600;">\${formatTime(h.check_in_time)}</div></div>\`).join('')) + '</div>';
+           <div class="mobile-list">` + (d.history.map(h=>`<div class="m-card" style="padding:8px 12px;"><div class="m-sub">${formatDate(h.check_in_time)}</div><div style="font-weight:600;">${formatTime(h.check_in_time)}</div></div>`).join('')) + '</div>';
            document.getElementById('calendar-container').innerHTML=html;
            document.getElementById('modal-member-history').style.display='flex';
         },
@@ -748,11 +770,11 @@ export function renderDashboard(user: any, gymName: string) {
               const res=await fetch('/api/checkin',{method:'POST',body:JSON.stringify({memberId:id})});
               const d=await res.json();
               if(d.success){
-                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--success)">✅ Welcome, \${d.name}!</span>\`;
+                 document.getElementById('checkin-res').innerHTML=`<span style="color:var(--success)">✅ Welcome, ${d.name}!</span>`;
                  this.toast('Welcome '+d.name);
                  setTimeout(()=>window.location.reload(),800);
               } else {
-                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--danger)">⛔ \${d.error}</span>\`;
+                 document.getElementById('checkin-res').innerHTML=`<span style="color:var(--danger)">⛔ ${d.error}</span>`;
                  btn.disabled=false; btn.innerText="Check In";
               }
            } catch(e) { btn.disabled=false; }
@@ -794,7 +816,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('checkin-suggestions');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>\`<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;" onclick="document.getElementById('checkin-id').value='\${m.id}';document.getElementById('checkin-suggestions').style.display='none';"><b>#\${m.id} \${escapeHtml(m.name)}</b></div>\`).join('');
+              div.innerHTML=res.map(m=>`<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;" onclick="document.getElementById('checkin-id').value='${m.id}';document.getElementById('checkin-suggestions').style.display='none';"><b>#${m.id} ${escapeHtml(m.name)}</b></div>`).join('');
            });
         },
         
@@ -802,7 +824,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('qp-results');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.quickPay.close();app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="text-xs text-muted">(\${m.status})</span></div>\`).join('');
+              div.innerHTML=res.map(m=>`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.quickPay.close();app.modals.pay.open(${m.id})"><b>#${m.id} ${escapeHtml(m.name)}</b> <span class="text-xs text-muted">(${m.status})</span></div>`).join('');
            });
         },
         
@@ -810,7 +832,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('pay-search-results');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="badge bg-amber">\${m.dueMonths||0} Mo Due</span></div>\`).join('');
+              div.innerHTML=res.map(m=>`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.pay.open(${m.id})"><b>#${m.id} ${escapeHtml(m.name)}</b> <span class="badge bg-amber">${m.dueMonths||0} Mo Due</span></div>`).join('');
            });
         },
         
@@ -854,10 +876,10 @@ export function renderDashboard(user: any, gymName: string) {
            const renEl = form.querySelector('[name="renewalFee"]'); if(renEl) renEl.value=s.renewalFee;
            // Render plans
            const container=document.getElementById('plans-container');
-           if(container) container.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="flex plan-row" id="p-\${i}"><input placeholder="Name" value="\${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="\${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="\${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>\`).join('');
+           if(container) container.innerHTML=s.membershipPlans.map((p,i)=>`<div class="flex plan-row" id="p-${i}"><input placeholder="Name" value="${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>`).join('');
            
            // Fill plan select dropdowns elsewhere
-           const opts=s.membershipPlans.map(p=>\`<option value="\${escapeHtml(p.name)}">\${escapeHtml(p.name)}</option>\`).join('');
+           const opts=s.membershipPlans.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
            const sel=document.getElementById('plan-select');
            if(sel) sel.innerHTML=opts;
         },
@@ -865,7 +887,7 @@ export function renderDashboard(user: any, gymName: string) {
         addPlanRow(){
            const div=document.createElement('div');
            div.className='flex plan-row';
-           div.innerHTML=\`<input placeholder="Name" class="p-name"><input type="number" placeholder="Price" class="p-price"><input type="number" placeholder="Adm.Fee" class="p-adm" value="0"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>\`;
+           div.innerHTML=`<input placeholder="Name" class="p-name"><input type="number" placeholder="Price" class="p-price"><input type="number" placeholder="Adm.Fee" class="p-adm" value="0"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>`;
            document.getElementById('plans-container').appendChild(div);
         },
         
@@ -893,9 +915,9 @@ export function renderDashboard(user: any, gymName: string) {
         async loadUsers(){
            const res=await fetch('/api/users/list');
            const d=await res.json();
-           const rows=d.users.map(u=>\`<tr><td>\${escapeHtml(u.name)}</td><td><span class="badge bg-blue">\${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></td></tr>\`).join('');
+           const rows=d.users.map(u=>`<tr><td>${escapeHtml(u.name)}</td><td><span class="badge bg-blue">${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(${u.id})">X</button></td></tr>`).join('');
            document.getElementById('tbl-users').innerHTML=rows;
-           document.getElementById('list-users').innerHTML=d.users.map(u=>\`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(u.name)}</div><div class="m-sub">\${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></div>\`).join('');
+           document.getElementById('list-users').innerHTML=d.users.map(u=>`<div class="m-card"><div class="m-info"><div class="m-title">${escapeHtml(u.name)}</div><div class="m-sub">${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(${u.id})">X</button></div>`).join('');
         },
         async saveUser(e){
            e.preventDefault();
@@ -982,7 +1004,7 @@ export function renderDashboard(user: any, gymName: string) {
            const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({date})});
            const d=await res.json();
            const cur=(this.data && this.data.settings && this.data.settings.currency)||'';
-           const rows=(d.transactions||[]).map(t=>\`<tr><td>\${formatTime(t.date)}</td><td>\${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">\${cur} \${t.amount}</td></tr>\`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
+           const rows=(d.transactions||[]).map(t=>`<tr><td>${formatTime(t.date)}</td><td>${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">${cur} ${t.amount}</td></tr>`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
            if(tbl) tbl.innerHTML=rows;
         }
       };
