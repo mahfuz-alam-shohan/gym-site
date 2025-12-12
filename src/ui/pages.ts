@@ -2,29 +2,31 @@ import { escapeHtml } from "../utils";
 import { baseHead, getIcon } from "./head";
 
 /* ========================================================================
-   2. PAGES & COMPONENTS
+   2. PAGES & COMPONENTS - LOGIC & RENDER
    ======================================================================== */
 
+// --- LOGIN & SETUP PAGES ---
+
 export function renderSetup() {
-  const html = `${baseHead("Gym OS - Setup")}
+  const html = `${baseHead("Setup Gym OS")}
   <body>
     <div class="center-screen">
-      <div style="font-size:48px;margin-bottom:20px;">🚀</div>
-      <div class="card" style="width:100%;max-width:440px;text-align:center;">
-        <h2 style="margin-bottom:10px;font-size:28px;">Let's Get Started!</h2>
-        <p style="color:var(--text-muted);margin-bottom:32px;">Initialize your new Gym OS system.</p>
+      <div class="card" style="width:100%;max-width:400px;text-align:center;">
+        <div style="width:48px;height:48px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:white;font-size:24px;">🚀</div>
+        <h2 style="margin-bottom:8px;">Welcome to Gym OS</h2>
+        <p class="text-muted" style="margin-bottom:24px;">Let's set up your admin account to get started.</p>
         <form id="form" style="text-align:left;">
           <label>Gym Name</label><input name="gymName" required placeholder="e.g. Iron Paradise">
           <label>Admin Name</label><input name="adminName" required placeholder="Your Name">
           <label>Admin Email</label><input name="email" type="email" required placeholder="admin@gym.com">
           <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:16px;font-size:16px;margin-top:10px;">Install System</button>
+          <button type="submit" class="btn btn-primary w-full" style="padding:14px;">Complete Setup</button>
         </form>
-        <div id="error" style="color:var(--danger);margin-top:20px;font-weight:700;"></div>
+        <div id="error" style="color:var(--danger);margin-top:16px;font-weight:600;font-size:13px;"></div>
       </div>
     </div>
     <script>
-      document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;btn.innerText="Setting things up...";try{const res=await fetch('/api/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});const d=await res.json();if(res.ok)window.location.reload();else throw new Error(d.error||"Setup failed");}catch(err){document.getElementById('error').textContent=err.message;btn.disabled=false;btn.innerText="Install System";}}
+      document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;btn.innerText="Setting up...";try{const res=await fetch('/api/setup',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});const d=await res.json();if(res.ok)window.location.reload();else throw new Error(d.error);}catch(err){document.getElementById('error').textContent=err.message;btn.disabled=false;btn.innerText="Complete Setup";}}
     </script>
   </body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
@@ -35,24 +37,26 @@ export function renderLogin(gymName: string) {
   const html = `${baseHead("Login")}
   <body>
     <div class="center-screen">
-      <div style="font-size:48px;margin-bottom:20px;">💪</div>
-      <div class="card" style="width:100%;max-width:400px;text-align:center;">
-        <h2 style="margin-bottom:8px;font-size:24px;">${safeName}</h2>
-        <p style="color:var(--text-muted);margin-bottom:32px;font-weight:600;">Welcome back, Staff!</p>
+      <div class="card" style="width:100%;max-width:360px;text-align:center;">
+        <div style="font-size:32px;margin-bottom:16px;">💪</div>
+        <h3 style="margin-bottom:4px;">${safeName}</h3>
+        <p class="text-muted" style="margin-bottom:24px;">Staff Login Portal</p>
         <form id="form" style="text-align:left;">
-          <label>Email</label><input name="email" required placeholder="name@email.com">
+          <label>Email Address</label><input name="email" required placeholder="name@email.com">
           <label>Password</label><input name="password" type="password" required>
-          <button type="submit" class="btn btn-primary w-full" style="padding:16px;font-size:16px;margin-top:10px;">✨ Sign In</button>
+          <button type="submit" class="btn btn-primary w-full" style="padding:14px;font-size:14px;">Sign In</button>
         </form>
-        <div id="error" style="color:var(--danger);margin-top:20px;font-weight:700;"></div>
+        <div id="error" style="color:var(--danger);margin-top:16px;font-weight:600;font-size:13px;"></div>
       </div>
     </div>
     <script>
-      document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;btn.innerText="Checking...";try{const res=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(res.ok){sessionStorage.removeItem('gym_view');window.location.href='/dashboard';}else{const d=await res.json();throw new Error(d.error||"Login failed");}}catch(err){document.getElementById('error').textContent=err.message;btn.disabled=false;btn.innerText="✨ Sign In";}}
+      document.getElementById('form').onsubmit=async(e)=>{e.preventDefault();const btn=e.target.querySelector('button');btn.disabled=true;btn.innerText="Verifying...";try{const res=await fetch('/api/login',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});if(res.ok){sessionStorage.removeItem('gym_view');window.location.href='/dashboard';}else{const d=await res.json();throw new Error(d.error);}}catch(err){document.getElementById('error').textContent=err.message;btn.disabled=false;btn.innerText="Sign In";}}
     </script>
   </body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
+
+// --- MAIN DASHBOARD ---
 
 export function renderDashboard(user: any, gymName: string) {
   const safeUserName = escapeHtml(user.name);
@@ -63,247 +67,224 @@ export function renderDashboard(user: any, gymName: string) {
   const html = `${baseHead("Dashboard")}
   <body>
     <div id="toast-container"></div>
-    <div class="app-layout">
-      <!-- Mobile Header -->
-      <div class="mobile-header">
-        <div class="flex">
-          <span style="font-size:24px;">💪</span>
-          <div style="font-weight:800;font-size:18px;color:var(--text-heading);">${safeGymName}</div>
-        </div>
-        <button class="btn btn-outline" style="padding:8px 12px;border-radius:12px;" onclick="toggleSidebar()">${getIcon('menu')}</button>
-      </div>
-      <div class="overlay" onclick="toggleSidebar()"></div>
+    
+    <!-- Floating Action Button (Mobile Only) -->
+    <div class="fab" onclick="app.modals.checkin.open()">${getIcon('zap')}</div>
 
-      <!-- Sidebar -->
+    <div class="app-layout">
+      
+      <!-- DESKTOP SIDEBAR -->
       <aside class="sidebar">
-        <div style="padding:32px 24px;display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-          <div style="width:40px;height:40px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;">💪</div>
+        <div class="sidebar-header">
+          <div class="brand-icon">💪</div>
           <div>
-             <div style="font-weight:900;font-size:18px;color:var(--text-heading);line-height:1;">${safeGymName}</div>
-             <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-top:4px;">MANAGEMENT</div>
+             <div style="font-weight:700;font-size:15px;line-height:1.2;">${safeGymName}</div>
+             <div style="font-size:11px;color:var(--text-sec);">Management</div>
           </div>
         </div>
         
-        <div class="nav" id="nav-container"></div>
+        <div class="nav" id="desktop-nav"></div>
         
-        <div style="padding:24px;margin-top:auto;">
-          <div style="background:#f9fafb;padding:16px;border-radius:16px;border:2px solid #f3f4f6;">
-            <div style="font-weight:800;color:var(--text-heading);font-size:14px;">${safeUserName}</div>
-            <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-bottom:12px;">${safeRole}</div>
-            <a href="/api/logout" style="color:#ef4444;font-size:13px;text-decoration:none;display:flex;align-items:center;gap:8px;font-weight:700;" id="txt-logout">${getIcon('logout')} Sign Out</a>
+        <div style="padding:16px;margin-top:auto;">
+          <div style="background:var(--bg-body);padding:12px;border-radius:12px;border:1px solid var(--border);">
+            <div style="font-weight:600;font-size:13px;">${safeUserName}</div>
+            <div style="font-size:11px;color:var(--text-sec);margin-bottom:8px;">${safeRole}</div>
+            <a href="/api/logout" style="color:#ef4444;font-size:12px;text-decoration:none;display:flex;align-items:center;gap:6px;font-weight:600;">${getIcon('logout')} Sign Out</a>
           </div>
         </div>
       </aside>
 
-      <!-- Main Content -->
+      <!-- MOBILE BOTTOM NAV -->
+      <nav class="bottom-nav" id="mobile-nav"></nav>
+
+      <!-- MAIN CONTENT AREA -->
       <main class="main-content">
-        <!-- Top Bar with Quick Actions -->
-        <div class="flex-between" style="padding:20px 10px 30px 10px;">
+        
+        <!-- Top Bar -->
+        <div class="flex-between" style="margin-bottom:24px;">
            <div>
-             <h2 id="page-title" style="margin:0;font-size:28px;">Dashboard</h2>
-             <div style="color:var(--text-muted);font-size:14px;font-weight:600;margin-top:4px;">Let's be productive today! 🚀</div>
+             <h2 id="page-title">Dashboard</h2>
+             <div class="text-muted text-xs" id="page-subtitle">Welcome back!</div>
            </div>
-           
-           <div class="flex" style="gap:16px;">
-              <!-- Floating Quick Actions -->
-              <button class="btn btn-accent" onclick="app.modals.quickPay.open()" id="btn-quick-pay" style="box-shadow: 0 8px 20px -6px rgba(236, 72, 153, 0.5);">
-                ${getIcon('creditCard')} <span style="display:none; @media(min-width:600px){display:inline;}">Quick Pay</span>
-              </button>
-              <button class="btn btn-primary" onclick="app.modals.checkin.open()" id="btn-quick-checkin" style="box-shadow: 0 8px 20px -6px rgba(139, 92, 246, 0.5);">
-                ${getIcon('zap')} <span style="display:none; @media(min-width:600px){display:inline;}">Quick Check-In</span>
-              </button>
+           <!-- Quick Actions (Desktop) -->
+           <div class="hidden" style="display:none;" id="desktop-actions">
+              <button class="btn btn-primary" onclick="app.modals.checkin.open()">${getIcon('zap')} Check In</button>
+              <button class="btn btn-outline" onclick="app.modals.quickPay.open()">${getIcon('creditCard')} Pay</button>
+           </div>
+           <!-- Logout on Mobile Header -->
+           <div style="display:block; @media(min-width:769px){display:none;}">
+              <a href="/api/logout" style="color:var(--text-sec);">${getIcon('logout')}</a>
            </div>
         </div>
 
-        <div style="padding:0 10px 40px 10px;">
-          
-          <!-- VIEW: HOME -->
-          <div id="view-home" class="hidden">
-            <div class="stats-grid">
-              <div class="stat-card">
-                 <div class="stat-icon" style="color:#10b981;background:#d1fae5;">⚡</div>
-                 <span class="stat-val" id="stat-active">--</span>
-                 <span class="stat-label" id="lbl-active-mem">Active Members</span>
+        <!-- VIEW: HOME -->
+        <div id="view-home" class="hidden">
+           <div class="stats-grid">
+             <div class="stat-card">
+               <div class="stat-val" id="stat-active" style="color:var(--success);">--</div>
+               <div class="stat-label">Active Members</div>
+             </div>
+             <div class="stat-card">
+               <div class="stat-val" id="stat-today" style="color:var(--warning);">--</div>
+               <div class="stat-label">Visits Today</div>
+             </div>
+             <div class="stat-card">
+               <div class="stat-val" id="stat-rev" style="color:var(--primary);">--</div>
+               <div class="stat-label">Revenue</div>
+             </div>
+             <div class="stat-card">
+               <div class="stat-val" id="stat-due" style="color:var(--danger);">--</div>
+               <div class="stat-label">Due Members</div>
+             </div>
+           </div>
+           
+           <div class="flex-between" style="align-items:start; flex-wrap:wrap; gap:20px;">
+              <div class="card" style="flex:2; min-width:300px;">
+                 <h4 style="margin-bottom:16px;">Dues Overview</h4>
+                 <div style="height:200px; width:100%; position:relative;"><canvas id="chart-dues"></canvas></div>
               </div>
-              <div class="stat-card">
-                 <div class="stat-icon" style="color:#f59e0b;background:#fef3c7;">👣</div>
-                 <span class="stat-val" id="stat-today">--</span>
-                 <span class="stat-label" id="lbl-today-visits">Visits Today</span>
+              <div class="card" style="flex:1; min-width:280px;">
+                 <h4 style="margin-bottom:12px;">Recent Check-ins</h4>
+                 <div class="mobile-list" id="list-recent-home" style="display:flex;"></div>
+                 <button class="btn btn-outline w-full mt-4" onclick="app.nav('attendance')">View All</button>
               </div>
-              <div class="stat-card">
-                 <div class="stat-icon" style="color:#6366f1;background:#e0e7ff;">💰</div>
-                 <span class="stat-val" style="color:#6366f1;font-size:24px;" id="stat-rev">--</span>
-                 <span class="stat-label" id="lbl-tot-rev">Revenue</span>
-              </div>
-              <div class="stat-card">
-                 <div class="stat-icon" style="color:#ef4444;background:#fee2e2;">⚠️</div>
-                 <span class="stat-val" style="color:#ef4444" id="stat-due">--</span>
-                 <span class="stat-label" id="lbl-mem-due">Members Due</span>
-              </div>
-              <div class="stat-card">
-                 <div class="stat-icon" style="color:#ec4899;background:#fce7f3;">📉</div>
-                 <span class="stat-val" style="color:#ec4899;font-size:24px;" id="stat-total-due">--</span>
-                 <span class="stat-label" id="lbl-total-due-money">Outstanding</span>
-              </div>
-            </div>
+           </div>
+        </div>
 
-            <div class="flex-between" style="align-items:start; gap:24px;">
-                <div class="card" style="flex:2;min-width:300px;">
-                  <h3 style="margin:0 0 24px 0;font-size:18px;" id="lbl-due-overview">📊 Dues Overview</h3>
-                  <div style="position: relative; height:220px; width:100%"><canvas id="chart-dues"></canvas></div>
-                </div>
-                <div class="card" style="flex:1;min-width:280px;">
-                   <h3 style="margin:0 0 20px 0;font-size:18px;">🕒 Latest Check-ins</h3>
-                   <div class="table-container">
-                     <table style="font-size:13px;">
-                       <tbody id="tbl-attendance-today-mini"></tbody>
-                     </table>
-                     <button class="btn btn-outline w-full" style="margin-top:10px;" onclick="app.nav('attendance')">View All</button>
-                   </div>
-                </div>
-            </div>
-          </div>
-
-          <!-- VIEW: MEMBERS -->
-          <div id="view-members" class="hidden">
-            <div class="flex-between" style="margin-bottom:24px;">
-               <div class="flex" style="flex:1; background:white; padding:8px; border-radius:16px; border:2px solid #e5e7eb; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
-                  <div style="padding-left:12px;opacity:0.5;">${getIcon('search')}</div>
-                  <input id="search" placeholder="Find member by ID, Name or Phone..." style="margin:0;border:none;background:transparent;box-shadow:none;padding:12px;" onkeyup="app.renderMembersTable()">
-                  <select id="member-filter" onchange="app.renderMembersTable()" style="margin:0;width:140px;border:none;background:#f3f4f6;border-radius:12px;margin-right:4px;">
-                     <option value="all">All Members</option>
-                     <option value="active">Active Only</option>
-                     <option value="due">Due Only</option>
-                     <option value="advanced">Advanced</option>
-                     <option value="inactive">Inactive</option>
-                  </select>
-               </div>
-               <button class="btn btn-primary" onclick="app.modals.add.open()" id="btn-add-mem">${getIcon('plus')} New Member</button>
-            </div>
-
-            <div class="table-container">
+        <!-- VIEW: MEMBERS -->
+        <div id="view-members" class="hidden">
+           <div class="card" style="padding:12px; display:flex; gap:8px; flex-wrap:wrap;">
+              <div class="flex" style="flex:1; background:var(--bg-body); padding:0 12px; border-radius:var(--radius-md); border:1px solid var(--border);">
+                 <div style="opacity:0.5;">${getIcon('search')}</div>
+                 <input id="search" placeholder="Search ID, Name or Phone..." style="border:none; background:transparent; margin:0; box-shadow:none; padding:12px 0;" onkeyup="app.renderMembersTable()">
+              </div>
+              <select id="member-filter" onchange="app.renderMembersTable()" style="width:auto; margin:0; background:var(--bg-body); border-color:var(--border);">
+                 <option value="all">All Status</option>
+                 <option value="active">Active</option>
+                 <option value="due">Due</option>
+                 <option value="inactive">Inactive</option>
+              </select>
+              <button class="btn btn-primary" onclick="app.modals.add.open()">${getIcon('plus')} Add</button>
+           </div>
+           
+           <!-- Desktop Table -->
+           <div class="card desktop-table" style="padding:0; overflow:hidden;">
+              <div class="table-responsive">
                 <table>
-                  <thead><tr><th>ID</th><th id="th-name">Name / Info</th><th id="th-plan">Plan</th><th id="th-exp">Expiry</th><th id="th-due">Status</th><th id="th-act" style="text-align:right">Actions</th></tr></thead>
+                  <thead><tr><th>ID</th><th>Name</th><th>Plan</th><th>Expiry</th><th>Status</th><th style="text-align:right">Action</th></tr></thead>
                   <tbody id="tbl-members"></tbody>
                 </table>
-            </div>
-          </div>
-
-          <!-- VIEW: ATTENDANCE -->
-          <div id="view-attendance" class="hidden">
-            <div class="card">
-              <h3 id="lbl-today-att" style="margin-bottom:20px;">📅 Today's Attendance</h3>
-              <div class="table-container">
-                <table><thead><tr><th id="th-time">Time</th><th>Name</th><th>Status</th></tr></thead><tbody id="tbl-attendance-today"></tbody></table>
               </div>
-            </div>
-          </div>
+           </div>
+           <!-- Mobile Cards -->
+           <div class="mobile-list" id="list-members"></div>
+        </div>
 
-          <!-- VIEW: HISTORY -->
-          <div id="view-history" class="hidden">
-            <div class="card">
-              <div class="flex-between" style="margin-bottom:24px;">
-                <h3 style="margin:0;" id="lbl-act-log">📜 Activity Log</h3>
-                <div class="flex" style="gap:8px;">
-                  <input type="date" id="history-date" style="margin-bottom:0;max-width:180px;">
-                  <button class="btn btn-outline" onclick="app.applyHistoryFilter()" id="btn-filter">Filter</button>
-                </div>
+        <!-- VIEW: ATTENDANCE -->
+        <div id="view-attendance" class="hidden">
+           <div class="card">
+             <h4 style="margin-bottom:16px;">Today's Activity</h4>
+             <div class="desktop-table">
+                <table class="table-responsive"><thead><tr><th>Time</th><th>Name</th><th>Status</th></tr></thead><tbody id="tbl-attendance-today"></tbody></table>
+             </div>
+             <div class="mobile-list" id="list-attendance-today"></div>
+           </div>
+        </div>
+
+        <!-- VIEW: HISTORY -->
+        <div id="view-history" class="hidden">
+           <div class="card">
+             <div class="flex-between" style="margin-bottom:16px;">
+               <h4>Activity Log</h4>
+               <div class="flex">
+                 <input type="date" id="history-date" style="margin:0; width:auto;">
+                 <button class="btn btn-outline btn-sm" onclick="app.applyHistoryFilter()">Filter</button>
+               </div>
+             </div>
+             <div class="desktop-table">
+               <table><thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead><tbody id="tbl-attendance-history"></tbody></table>
+             </div>
+             <div class="mobile-list" id="list-attendance-history"></div>
+           </div>
+        </div>
+
+        <!-- VIEW: PAYMENTS -->
+        <div id="view-payments" class="hidden">
+           <div class="flex" style="gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+              <div class="card" style="flex:1; margin:0; background:#fff1f2; border-color:#fecaca;">
+                 <div style="font-size:11px; font-weight:700; color:#9f1239; text-transform:uppercase;">Outstanding</div>
+                 <div id="total-outstanding-amount" style="font-size:28px; font-weight:800; color:#be123c;">0</div>
               </div>
-              <div class="table-container">
-                <table><thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead><tbody id="tbl-attendance-history"></tbody></table>
+              <div style="display:flex; gap:8px;">
+                 <button class="btn btn-outline" onclick="app.openPaymentHistory()">${getIcon('history')} History</button>
+                 <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">${getIcon('print')} Print</button>
               </div>
-            </div>
-          </div>
+           </div>
 
-          <!-- VIEW: PAYMENTS -->
-          <div id="view-payments" class="hidden">
-            <div class="flex-between" style="margin-bottom:24px; align-items:stretch;">
-                 <div class="card" style="flex:1; margin:0; background:#fff1f2; border-color:#fecaca;">
-                    <div style="font-size:12px;font-weight:800;color:#9f1239;text-transform:uppercase;margin-bottom:4px;">Total Outstanding Dues</div>
-                    <div id="total-outstanding-amount" style="font-size:36px;font-weight:900;color:#be123c;">0</div>
-                 </div>
-                 <div class="card" style="flex:1; margin:0; display:flex; align-items:center; justify-content:center; gap:12px;">
-                    <button class="btn btn-outline" onclick="app.openPaymentHistory()" id="btn-history">${getIcon('history')} History</button>
-                    <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')" id="btn-print">📄 Print Due List</button>
-                 </div>
-            </div>
-
-            <div class="card">
-              <h3 id="lbl-search-col" style="margin-bottom:20px;">💰 Collect Payments</h3>
+           <div class="card">
+              <div class="flex-between" style="margin-bottom:16px;">
+                 <h4 class="text-muted" style="font-size:12px; text-transform:uppercase;">Collection List</h4>
+                 <select id="pay-filter" onchange="app.renderPaymentsTable()" style="width:auto; margin:0; font-size:12px;">
+                    <option value="due">Due Only</option>
+                    <option value="all">Everyone</option>
+                 </select>
+              </div>
+              <div style="position:relative; margin-bottom:16px;">
+                 <input id="pay-search" placeholder="Type Name or ID to collect..." style="margin:0; padding-left:36px;" onkeyup="app.onPaymentSearchInput(event)">
+                 <div style="position:absolute; left:12px; top:11px; opacity:0.4; width:16px;">${getIcon('search')}</div>
+                 <div id="pay-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-lg); z-index:20; max-height:200px; overflow-y:auto;"></div>
+              </div>
               
-              <div style="margin-bottom:24px;position:relative;">
-                 <input id="pay-search" placeholder="Type Name or ID to collect..." style="margin-bottom:0;padding-left:48px;" onkeyup="app.onPaymentSearchInput(event)">
-                 <div style="position:absolute;left:16px;top:14px;opacity:0.4;">${getIcon('search')}</div>
-                 <div id="pay-search-results" class="checkin-results" style="display:none;position:absolute;width:100%;z-index:20;box-shadow:0 10px 30px rgba(0,0,0,0.1);"></div>
-              </div>
-           
-               <div class="flex-between" style="margin-bottom:16px;">
-                  <h4 style="margin:0;color:var(--text-muted);text-transform:uppercase;font-size:12px;">Due List</h4>
-                  <select id="pay-filter" onchange="app.renderPaymentsTable()" style="margin:0;min-width:140px;width:auto;">
-                    <option value="due">Dues Only</option>
-                    <option value="all">All Members</option>
-                    <option value="running">Running</option>
-                    <option value="advanced">Advanced</option>
-                  </select>
-               </div>
-               <div class="table-container">
+              <div class="desktop-table">
                  <table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th style="text-align:right">Action</th></tr></thead><tbody id="tbl-payment-list"></tbody></table>
-               </div>
-            </div>
-          </div>
+              </div>
+              <div class="mobile-list" id="list-payment-list"></div>
+           </div>
+        </div>
 
-          <!-- VIEW: SETTINGS -->
-          <div id="view-settings" class="hidden">
-            <div class="card">
-              <h3 id="lbl-sys-set" style="margin-bottom:24px;">⚙️ System Settings</h3>
+        <!-- VIEW: SETTINGS -->
+        <div id="view-settings" class="hidden">
+           <div class="card">
+              <h4 style="margin-bottom:20px;">System Settings</h4>
               <form id="settings-form" onsubmit="app.saveSettings(event)">
-                <div class="flex">
-                   <div class="w-full"><label id="lbl-cur">Currency Symbol</label><input name="currency" type="text" placeholder="BDT"></div>
-                   <div class="w-full"><label id="lbl-lang">Language</label><select name="lang" style="margin-bottom:20px;"><option value="en">English</option><option value="bn">Bangla</option></select></div>
+                <div class="flex" style="flex-wrap:wrap;">
+                   <div class="w-full"><label>Currency</label><input name="currency" type="text" placeholder="BDT"></div>
+                   <div class="w-full"><label>Language</label><select name="lang"><option value="en">English</option><option value="bn">Bangla</option></select></div>
                 </div>
-                <div class="flex">
-                   <div class="w-full"><label id="lbl-att-th">Min. Attendance (Days)</label><input name="attendanceThreshold" type="number" min="1" max="31" required></div>
-                   <div class="w-full"><label id="lbl-inact-th">Inactive after (Months)</label><input name="inactiveAfterMonths" type="number" min="1" max="36" required></div>
+                <div class="flex" style="flex-wrap:wrap;">
+                   <div class="w-full"><label>Min. Attendance (Days)</label><input name="attendanceThreshold" type="number" min="1" max="31" required></div>
+                   <div class="w-full"><label>Inactive after (Months)</label><input name="inactiveAfterMonths" type="number" min="1" max="36" required></div>
                 </div>
-                <div class="w-full"><label id="lbl-ren-fee">Renewal Fee</label><input name="renewalFee" type="number" min="0" required></div>
+                <div class="w-full"><label>Renewal Fee</label><input name="renewalFee" type="number" min="0" required></div>
                 
-                <div style="background:#f5f3ff; padding:20px; border-radius:16px; margin:20px 0;">
-                    <label>Developer Zone (Time Travel)</label>
-                    <div class="flex">
-                      <div class="w-full"><label>Timezone</label><input name="timezone" type="text" placeholder="Asia/Dhaka"></div>
-                      <div class="w-full"><label>Simulated Date</label><input name="simulatedTime" type="datetime-local"></div>
-                    </div>
-                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;"><input type="checkbox" name="timeSimulationEnabled" style="width:auto;margin:0;"> Enable Time Simulation</label>
-                    <p id="lbl-current-time" style="font-size:12px;color:var(--text-muted);margin-top:8px;"></p>
+                <div style="background:var(--bg-body); padding:16px; border-radius:12px; margin:20px 0;">
+                    <label style="color:var(--primary);">Membership Plans</label>
+                    <div id="plans-container" style="margin-bottom:12px;"></div>
+                    <button type="button" class="btn btn-outline w-full btn-sm" onclick="app.addPlanRow()">+ Add Plan</button>
                 </div>
-
-                <label style="margin-top:24px;font-size:16px;color:var(--text-heading);" id="lbl-mem-plans">🏷️ Membership Plans</label>
-                <div style="background:#f9fafb;padding:20px;border-radius:16px;border:2px solid #f3f4f6;margin-bottom:24px;">
-                   <div class="plan-row" style="font-weight:800;font-size:11px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;display:grid;grid-template-columns:2fr 1fr 1fr 40px;gap:10px;"><span>Name</span><span>Price</span><span>Adm. Fee</span><span></span></div>
-                   <div id="plans-container"></div>
-                   <button type="button" class="btn btn-outline w-full" onclick="app.addPlanRow()" id="btn-add-plan" style="margin-top:10px;">${getIcon('plus')} Add Another Plan</button>
-                </div>
-                <div class="flex-between">
+                
+                <div style="border-top:1px solid var(--border); padding-top:20px; margin-top:20px;">
                   <button type="submit" class="btn btn-primary" id="btn-save-set">Save Changes</button>
-                  <button onclick="app.resetDB()" class="btn btn-danger" type="button" id="btn-reset-db" style="font-size:12px;">${getIcon('trash')} Factory Reset</button>
+                  <button onclick="app.resetDB()" class="btn btn-danger" type="button" id="btn-reset-db" style="float:right;">Factory Reset</button>
                 </div>
               </form>
-            </div>
-          </div>
-
-          <!-- VIEW: USERS -->
-          <div id="view-users" class="hidden">
-            <div class="card">
-               <div class="flex-between" style="margin-bottom:24px;">
-                 <h3 style="margin:0;" id="lbl-user-acc">👥 User Access</h3>
-                 <button class="btn btn-primary" onclick="app.openAddUser()" id="btn-add-user">${getIcon('plus')} Add User</button>
-               </div>
-               <div class="table-container">
-                 <table><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Permissions</th><th style="text-align:right">Actions</th></tr></thead><tbody id="tbl-users"></tbody></table>
-               </div>
-            </div>
-          </div>
+           </div>
         </div>
+
+        <!-- VIEW: USERS -->
+        <div id="view-users" class="hidden">
+           <div class="card">
+               <div class="flex-between" style="margin-bottom:16px;">
+                 <h4>User Access</h4>
+                 <button class="btn btn-primary btn-sm" onclick="app.openAddUser()">+ Add User</button>
+               </div>
+               <div class="desktop-table">
+                 <table><thead><tr><th>Name</th><th>Role</th><th style="text-align:right">Action</th></tr></thead><tbody id="tbl-users"></tbody></table>
+               </div>
+               <div class="mobile-list" id="list-users"></div>
+           </div>
+        </div>
+
       </main>
     </div>
 
@@ -311,63 +292,60 @@ export function renderDashboard(user: any, gymName: string) {
     
     <!-- CHECK-IN MODAL -->
     <div id="modal-checkin" class="modal-backdrop">
-      <div class="modal-content" style="text-align:center;">
-        <div style="font-size:48px;margin-bottom:10px;">⚡</div>
-        <h3 id="lbl-chk-title" style="margin-bottom:24px;font-size:24px;">Daily Check-In</h3>
-        <input id="checkin-id" type="text" placeholder="Type ID or Name..." style="font-size:18px;padding:18px;text-align:center;border-width:3px;" autofocus onkeyup="app.onCheckinInput(event)">
-        <div id="checkin-suggestions" class="checkin-results" style="display:none;text-align:left;"></div>
-        
-        <button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk" style="padding:16px;font-size:16px;margin-top:16px;">Check In Now</button>
-        <div id="checkin-res" style="margin-top:20px;font-weight:800;min-height:24px;font-size:16px;"></div>
-        <button class="btn btn-outline w-full" style="margin-top:20px;border:none;" onclick="app.modals.checkin.close()">Close</button>
+      <div class="modal-content text-center">
+        <h3 style="margin-bottom:16px;">Daily Check-In</h3>
+        <input id="checkin-id" type="number" placeholder="Enter Member ID..." style="font-size:24px; text-align:center; font-weight:700; padding:20px;" autofocus onkeyup="app.onCheckinInput(event)">
+        <div id="checkin-suggestions" style="text-align:left; max-height:150px; overflow-y:auto; margin-bottom:10px; border:1px solid var(--border); border-radius:8px; display:none;"></div>
+        <button class="btn btn-primary w-full" onclick="app.checkIn()" id="btn-sub-chk" style="padding:16px; font-size:16px;">Check In</button>
+        <div id="checkin-res" style="margin-top:20px; font-weight:600; min-height:24px;"></div>
+        <button class="btn btn-outline w-full mt-4" style="border:none;" onclick="app.modals.checkin.close()">Cancel</button>
       </div>
     </div>
    
     <!-- QUICK PAY MODAL -->
     <div id="modal-quick-pay" class="modal-backdrop">
-      <div class="modal-content" style="text-align:center;">
-        <div style="font-size:48px;margin-bottom:10px;">💰</div>
-        <h3 id="lbl-qp-title" style="margin-bottom:24px;font-size:24px;">Quick Pay</h3>
-        <input id="qp-search" type="text" placeholder="Search Member..." style="font-size:18px;padding:18px;text-align:center;border-width:3px;" autofocus onkeyup="app.onQuickPayInput(event)">
-        <div id="qp-results" class="checkin-results" style="display:none;text-align:left;"></div>
-        <button class="btn btn-outline w-full" style="margin-top:20px;border:none;" onclick="app.modals.quickPay.close()">Close</button>
+      <div class="modal-content text-center">
+        <h3 style="margin-bottom:16px;">Quick Pay</h3>
+        <input id="qp-search" type="text" placeholder="Name or ID..." style="padding:16px;" onkeyup="app.onQuickPayInput(event)">
+        <div id="qp-results" style="text-align:left; max-height:200px; overflow-y:auto; margin-top:8px; display:none; border:1px solid var(--border); border-radius:8px;"></div>
+        <button class="btn btn-outline w-full mt-4" onclick="app.modals.quickPay.close()">Close</button>
       </div>
     </div>
 
     <!-- ADD MEMBER MODAL -->
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="lbl-new-mem" style="margin-bottom:24px;font-size:22px;">New Member</h3>
+        <h3 style="margin-bottom:20px;">New Member</h3>
         
-        <div style="display:flex;background:#f3f4f6;padding:4px;border-radius:12px;margin-bottom:24px;">
-           <div id="tab-new" style="flex:1;text-align:center;padding:10px;border-radius:10px;cursor:pointer;font-weight:700;transition:0.2s;background:white;color:var(--primary);box-shadow:0 2px 4px rgba(0,0,0,0.05);" onclick="app.switchAddTab('new')">New Admission</div>
-           <div id="tab-mig" style="flex:1;text-align:center;padding:10px;border-radius:10px;cursor:pointer;font-weight:700;transition:0.2s;color:var(--text-muted);" onclick="app.switchAddTab('mig')">Old / Migrating</div>
+        <div style="display:flex; background:var(--bg-body); padding:4px; border-radius:8px; margin-bottom:20px;">
+           <div id="tab-new" style="flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px; background:white; shadow:var(--shadow-sm);" onclick="app.switchAddTab('new')">New</div>
+           <div id="tab-mig" style="flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px; color:var(--text-sec);" onclick="app.switchAddTab('mig')">Migrate</div>
         </div>
 
         <form onsubmit="app.addMember(event)">
           <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
-          <label>Full Name</label><input name="name" required placeholder="John Doe">
-          <label>Phone Number</label><input name="phone" required placeholder="017...">
-          <div class="w-full"><label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select></div>
+          <div class="flex" style="gap:10px;">
+             <div class="w-full"><label>Name</label><input name="name" required placeholder="Full Name"></div>
+             <div class="w-full"><label>Phone</label><input name="phone" required placeholder="01XXX..."></div>
+          </div>
+          <label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select>
           
-          <div style="background:#f5f3ff;padding:20px;border-radius:16px;margin-top:10px;border:2px solid #ede9fe;">
+          <div style="background:var(--bg-body); padding:16px; border-radius:12px; margin-bottom:20px; border:1px solid var(--border);">
              <div id="sec-new-fees">
-                 <label style="margin-bottom:12px;font-weight:800;color:var(--primary);">Payment Details</label>
-                 <div class="flex" style="margin-bottom:12px;">
-                    <div class="w-full"><label>Admission Fee</label><input name="admissionFee" id="new-adm-fee" type="number" min="0"></div>
-                    <div style="padding-top:26px;"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;background:white;padding:10px;border-radius:12px;border:1px solid #ddd;"><input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto;margin:0;"> Paid?</label></div>
+                 <div class="flex" style="align-items:flex-end; gap:10px;">
+                    <div style="flex:1;"><label>Adm. Fee</label><input name="admissionFee" id="new-adm-fee" type="number" min="0" style="margin:0;"></div>
+                    <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px; cursor:pointer;"><input type="checkbox" name="admissionFeePaid" value="yes" checked style="width:auto; margin:0;"> Paid</label>
                  </div>
-                 <div class="w-full"><label>Initial Payment (Required)</label><input name="initialPayment" id="new-init-pay" type="number" min="0" required placeholder="Amount..."></div>
+                 <div class="w-full mt-4"><label>Initial Payment</label><input name="initialPayment" id="new-init-pay" type="number" min="0" required placeholder="Amount" style="margin:0;"></div>
              </div>
              <div id="sec-mig-fees" style="display:none;">
-                 <label style="margin-bottom:12px;font-weight:800;color:var(--primary);">Migration Status</label>
-                 <div class="w-full" style="margin-bottom:12px;"><label>Months Due (Legacy)</label><input name="legacyDues" id="mig-legacy-dues" type="number" min="0" value="0" required></div>
-                 <div class="w-full"><label>Payment Now (Optional)</label><input name="initialPayment" id="mig-init-pay" type="number" min="0" value="0"></div>
+                 <div class="w-full"><label>Legacy Dues (Months)</label><input name="legacyDues" id="mig-legacy-dues" type="number" min="0" value="0"></div>
+                 <div class="w-full"><label>Payment Now</label><input name="initialPayment" id="mig-init-pay" type="number" min="0" value="0"></div>
              </div>
           </div>
-          <div class="flex" style="justify-content:flex-end;margin-top:24px;">
+          <div class="flex" style="justify-content:flex-end;">
             <button type="button" class="btn btn-outline" onclick="app.modals.add.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Create Member</button>
+            <button type="submit" class="btn btn-primary">Create</button>
           </div>
         </form>
       </div>
@@ -376,29 +354,28 @@ export function renderDashboard(user: any, gymName: string) {
     <!-- PAY MODAL -->
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="lbl-rec-pay" style="margin-bottom:8px;font-size:22px;">Receive Payment</h3>
-        <p id="pay-name" style="color:var(--primary);margin-bottom:24px;font-weight:800;font-size:18px;"></p>
+        <h3 style="margin-bottom:8px;">Receive Payment</h3>
+        <p id="pay-name" style="color:var(--primary); margin-bottom:20px; font-weight:700; font-size:16px;"></p>
         
-        <div id="pay-status-warning" style="display:none;background:#fee2e2;color:#991b1b;padding:16px;border-radius:16px;margin-bottom:20px;font-size:14px;font-weight:700;border:2px solid #fecaca;">⚠️ Member is Inactive. Re-admission required.</div>
+        <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#b91c1c; padding:12px; border-radius:8px; margin-bottom:16px; font-size:13px; font-weight:600;">⚠️ Inactive. Re-admission required.</div>
         
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
-          <div id="pay-renewal-section" style="display:none;background:#f5f3ff;padding:16px;border-radius:16px;margin-bottom:20px;border:2px solid #ede9fe;">
-             <label>Renewal Fee</label><input name="renewalFee" id="pay-ren-fee" type="number" readonly style="background:#e0e7ff;">
-             <label>Plus Plan Payment (Optional)</label>
+          <div id="pay-renewal-section" style="display:none; background:var(--bg-body); padding:12px; border-radius:8px; margin-bottom:16px;">
+             <label>Renewal Fee</label><input name="renewalFee" id="pay-ren-fee" type="number" readonly style="background:#e2e8f0;">
           </div>
           
-          <div id="pay-standard-label"><label>Amount Paid</label></div>
-          <input name="amount" id="pay-amount" type="number" required placeholder="Enter amount..." style="font-size:24px;font-weight:800;color:var(--primary);">
+          <label id="pay-standard-label">Amount</label>
+          <input name="amount" id="pay-amount" type="number" required placeholder="0.00" style="font-size:20px; font-weight:700; color:var(--primary);">
           
-          <div style="font-size:13px;color:var(--text-muted);margin-top:10px;background:#f9fafb;padding:16px;border-radius:16px;border:1px solid #f3f4f6;">
-             <div class="flex-between"><span>Plan Price:</span> <span id="pay-plan-price" style="font-weight:800;color:var(--text-heading);">-</span></div>
-             <div class="flex-between" style="margin-top:4px;"><span>Wallet Balance:</span> <span id="pay-wallet-bal" style="font-weight:800;color:var(--text-heading);">0</span></div>
+          <div style="font-size:12px; color:var(--text-sec); margin-top:8px; background:var(--bg-body); padding:12px; border-radius:8px;">
+             <div class="flex-between"><span>Plan Price:</span> <span id="pay-plan-price" style="font-weight:700;">-</span></div>
+             <div class="flex-between" style="margin-top:4px;"><span>Wallet:</span> <span id="pay-wallet-bal" style="font-weight:700;">0</span></div>
           </div>
           
-          <div class="flex" style="justify-content:flex-end;margin-top:24px;">
+          <div class="flex" style="justify-content:flex-end; margin-top:20px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm Payment</button>
+            <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
           </div>
         </form>
       </div>
@@ -407,126 +384,88 @@ export function renderDashboard(user: any, gymName: string) {
     <!-- USER MODAL -->
     <div id="modal-user" class="modal-backdrop">
       <div class="modal-content">
-        <h3 id="user-modal-title" style="margin-bottom:24px;">User Access</h3>
-        <form id="user-form" onsubmit="app.saveUser(event)">
+        <h3>User Access</h3>
+        <form id="user-form" onsubmit="app.saveUser(event)" style="margin-top:20px;">
           <input type="hidden" name="id" id="u-id">
           <label>Name</label><input name="name" id="u-name" required>
           <label>Email</label><input name="email" id="u-email" type="email" required>
-          <label>Password <span style="font-size:11px;color:var(--text-muted);" id="u-pass-hint"></span></label>
-          <input name="password" id="u-password" type="password">
+          <label>Password</label><input name="password" id="u-password" type="password">
           <label>Role</label>
           <select name="role" id="u-role" onchange="app.togglePerms(this.value)">
              <option value="staff">Staff</option><option value="admin">Admin</option>
           </select>
           <div id="u-perms-container">
-             <label style="margin-top:16px;margin-bottom:10px;">Access Permissions</label>
-             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="home" style="width:auto;margin:0;"> Overview</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="members" style="width:auto;margin:0;"> Members</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="attendance" style="width:auto;margin:0;"> Attendance</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="history" style="width:auto;margin:0;"> History</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="payments" style="width:auto;margin:0;"> Payments</label>
-                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;background:#f9fafb;padding:10px;border-radius:8px;"><input type="checkbox" name="permissions" value="settings" style="width:auto;margin:0;"> Settings</label>
+             <label class="mt-4">Permissions</label>
+             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="checkbox" name="permissions" value="home" style="width:auto;margin:0;"> Home</label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="checkbox" name="permissions" value="members" style="width:auto;margin:0;"> Members</label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="checkbox" name="permissions" value="attendance" style="width:auto;margin:0;"> Attendance</label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="checkbox" name="permissions" value="payments" style="width:auto;margin:0;"> Payments</label>
              </div>
           </div>
-          <div class="flex" style="justify-content:flex-end;margin-top:24px;">
+          <div class="flex" style="justify-content:flex-end; margin-top:20px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.user.close()">Cancel</button>
-            <button type="submit" class="btn btn-primary">Save User</button>
+            <button type="submit" class="btn btn-primary">Save</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- HISTORY MODALS -->
-    <div id="modal-member-history" class="modal-backdrop">
-      <div class="modal-content" style="max-width:800px;">
-        <div class="flex-between" style="margin-bottom:24px;">
-            <h3 id="mh-title" style="margin:0;">Attendance History</h3>
-            <button class="btn btn-outline" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
-        </div>
-        <div class="flex" style="margin-bottom:20px; background:#f9fafb; padding:10px; border-radius:12px;">
-           <div class="flex" style="align-items:center;">
-              <label style="margin:0;white-space:nowrap;">Year:</label><select id="hist-year" style="margin:0;min-width:100px;border:none;" onchange="app.renderCalendar()"></select>
-           </div>
-           <div class="flex" style="align-items:center;">
-              <label style="margin:0;white-space:nowrap;">Month:</label>
-              <select id="hist-month" style="margin:0;border:none;" onchange="app.renderCalendar()">
-                 <option value="-1">Whole Year</option>
-                 <option value="0">January</option><option value="1">February</option><option value="2">March</option><option value="3">April</option><option value="4">May</option><option value="5">June</option>
-                 <option value="6">July</option><option value="7">August</option><option value="8">September</option><option value="9">October</option><option value="10">November</option><option value="11">December</option>
-              </select>
-           </div>
-        </div>
-        <div id="calendar-container"></div>
-        
-        <style>
-          .year-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; }
-          .year-month-card { background: #f3f4f6; padding: 10px; border-radius: 12px; text-align: center; }
-          .ym-name { font-weight: 800; font-size: 13px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 5px; }
-          .ym-badge { display: inline-block; padding: 4px 10px; border-radius: 99px; font-weight: 800; font-size: 14px; margin-bottom: 5px; }
-          .ym-p { background: #d1fae5; color: #047857; }
-          .ym-a { background: #fee2e2; color: #b91c1c; }
-          .ym-count { font-size: 11px; color: var(--text-muted); font-weight: 700; }
-          
-          .calendar-month { text-align: center; }
-          .cal-header { font-size: 20px; font-weight: 900; color: var(--text-heading); margin-bottom: 20px; }
-          .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; max-width: 500px; margin: 0 auto; }
-          .cal-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-weight: 700; font-size: 14px; }
-          .cal-cell.present { background: var(--success); color: white; box-shadow: 0 4px 10px rgba(16, 185, 129, 0.4); }
-          .cal-cell.absent { background: #f3f4f6; color: #9ca3af; }
-          .cal-stats { margin-top: 20px; font-weight: 700; display: flex; gap: 20px; justify-content: center; }
-        </style>
+    <!-- HISTORY LIST MODAL -->
+    <div id="modal-payment-history" class="modal-backdrop">
+      <div class="modal-content" style="max-width:500px;">
+         <div class="flex-between" style="margin-bottom:16px;">
+            <h3>Transaction History</h3>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
+         </div>
+         <div class="flex" style="margin-bottom:12px;">
+            <input type="date" id="trans-date" style="margin:0;" onchange="app.renderTransactionHistory()">
+         </div>
+         <div class="table-responsive" style="max-height:300px;">
+            <table><thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead><tbody id="tbl-transaction-history"></tbody></table>
+         </div>
       </div>
     </div>
-   
-    <div id="modal-payment-history" class="modal-backdrop">
-      <div class="modal-content" style="max-width:700px;">
-         <div class="flex-between" style="margin-bottom:24px;">
-            <h3 id="ph-title" style="margin:0;">Transaction History</h3>
-            <button class="btn btn-outline" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
-         </div>
-         <div style="background:#f9fafb; padding:12px; border-radius:12px; margin-bottom:20px;" class="flex">
-            <input type="date" id="trans-date" style="margin-bottom:0;" onchange="app.renderTransactionHistory()">
-            <button class="btn btn-outline" onclick="document.getElementById('trans-date').value=''; app.renderTransactionHistory()">Clear</button>
-         </div>
-         <div class="table-container" style="max-height:400px;overflow-y:auto;">
-            <table style="width:100%;"><thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead><tbody id="tbl-transaction-history"></tbody></table>
-         </div>
-      </div>
+    
+    <!-- MEMBER HISTORY MODAL -->
+    <div id="modal-member-history" class="modal-backdrop">
+       <div class="modal-content" style="max-width:400px; text-align:center;">
+          <h3 id="mh-title" style="margin-bottom:16px;">History</h3>
+          <div id="calendar-container" style="max-height:400px; overflow-y:auto;"></div>
+          <button class="btn btn-outline w-full mt-4" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
+       </div>
     </div>
 
     <!-- MAIN SCRIPT -->
     <script>
-      /* --- TRANSLATIONS (Optimized) --- */
-      const translations={en:{dash:"Dashboard",over:"Overview",mem:"Members",att:"Attendance",hist:"History",pay:"Payments",set:"Settings",user:"User Access",act_mem:"Active Members",tod_vis:"Visits Today",tot_rev:"Revenue",mem_due:"Members Due",total_due_amt:"Outstanding",due_ov:"Dues Overview",quick_chk:"⚡ Check-In",quick_pay:"💰 Quick Pay",quick_pay_search:"Quick Pay",search_ph:"Find member...",add_mem:"New Member",nm:"Name / Info",joined:"Joined",ph:"Phone",pl:"Plan",exp:"Expiry",due:"Status",act:"Actions",tod_att:"Today's Attendance",time:"Time",res:"Result",act_log:"Activity Log",filter:"Filter",clear:"Clear",search_col:"Collect Payments",pay_stat:"Due List",print:"Print Due List",sys_set:"System Settings",cur:"Currency",lang:"Language",att_th:"Min Attendance",inact_th:"Inactive Months",adm_fee:"Adm Fee",ren_fee:"Renewal Fee",mem_plans:"Membership Plans",add_plan:"Add Plan",save_set:"Save Changes",user_acc:"User Access",add_user:"Add User",chk_title:"Daily Check-In",submit:"Check In",close:"Close",new_mem:"New Member",create:"Create Member",rec_pay:"Receive Payment",confirm:"Confirm Payment",trans_hist:"History"},bn:{dash:"ড্যাশবোর্ড",over:"সারসংক্ষেপ",mem:"সদস্য",att:"উপস্থিতি",hist:"ইতিহাস",pay:"পেমেন্ট",set:"সেটিংস",user:"ব্যবহারকারী",act_mem:"সক্রিয় সদস্য",tod_vis:"আজকের উপস্থিতি",tot_rev:"মোট আয়",mem_due:"বকেয়া সদস্য",total_due_amt:"মোট বকেয়া",due_ov:"বকেয়া ওভারভিউ",quick_chk:"⚡ চেক-ইন",quick_pay:"💰 পেমেন্ট",quick_pay_search:"পেমেন্ট খুঁজুন",search_ph:"খুঁজুন...",add_mem:"সদস্য যোগ",nm:"নাম ও তথ্য",joined:"ভর্তি",ph:"ফোন",pl:"প্ল্যান",exp:"মেয়াদ",due:"অবস্থা",act:"অ্যাকশন",tod_att:"আজকের উপস্থিতি",time:"সময়",res:"ফলাফল",act_log:"লগ",filter:"ফিল্টার",clear:"মুছুন",search_col:"পেমেন্ট গ্রহণ",pay_stat:"বকেয়া তালিকা",print:"প্রিন্ট",sys_set:"সিস্টেম সেটিংস",cur:"মুদ্রা",lang:"ভাষা",att_th:"উপস্থিতির সীমা",inact_th:"নিষ্ক্রিয় সীমা",adm_fee:"ভর্তি ফি",ren_fee:"রিনিউয়াল ফি",mem_plans:"মেম্বারশিপ প্ল্যান",add_plan:"প্ল্যান যোগ",save_set:"সেভ করুন",user_acc:"ব্যবহারকারী",add_user:"ব্যবহারকারী যোগ",chk_title:"চেক-ইন",submit:"সাবমিট",close:"বন্ধ",new_mem:"নতুন সদস্য",create:"তৈরি করুন",rec_pay:"পেমেন্ট গ্রহণ",confirm:"নিশ্চিত করুন",trans_hist:"ইতিহাস"}};
-      
-      let clientClock={now:null};
-      function setClientNow(iso){clientClock.now=iso||null;}
-      function getClientNow(){return clientClock.now?new Date(clientClock.now):new Date();}
-      function t(key){const lang=app.data?.settings?.lang||'en';return translations[lang][key]||key;}
-      
-      function toggleSidebar(){document.querySelector('.sidebar').classList.toggle('open');document.querySelector('.overlay').classList.toggle('open');}
-      function formatTime(iso){if(!iso)return'-';return new Date(iso).toLocaleString('en-US',{timeZone:'Asia/Dhaka',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:true});}
-      function formatDate(iso){if(!iso)return'-';return new Date(iso).toLocaleDateString('en-GB');}
-      function formatExpiryMonth(iso){if(!iso)return'-';const d=new Date(iso);if(isNaN(d.getTime()))return'-';const monthName=d.toLocaleString('en-US',{month:'short'});return d.getFullYear()===getClientNow().getFullYear()?monthName:monthName+' '+d.getFullYear();}
-      function formatDueMonthsLabel(obj){if(!obj||!obj.dueMonths||obj.dueMonths<=0)return'';const labels=obj.dueMonthLabels||[];if(labels.length)return'Due: '+labels.join(', ');return'Due ('+obj.dueMonths+' Mo)';}
-      
-      // -- ADDED MISSING FUNCTION --
-      function escapeHtml(text){if(!text)return"";return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
-      // ----------------------------
-
       const currentUser={role:"${safeRole}",permissions:${safePerms}};
       
+      // --- ROBUST TIME FORMATTER (Fixes Phone Bug) ---
+      function formatTime(iso) {
+          if (!iso) return '-';
+          try {
+             // Force standard readable time format without relying on 'split'
+             return new Date(iso).toLocaleTimeString('en-US', {
+               hour: '2-digit', minute: '2-digit', hour12: true
+             });
+          } catch(e) { return '-'; }
+      }
+      function formatDate(iso) {
+          if (!iso) return '-';
+          return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      }
+      function escapeHtml(text){if(!text)return"";return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
+
       const app={
-        data:null, userList:[], searchTimeout:null, payingMemberId:null, activeHistory:null, isSubmitting:false, currentHistoryMemberId:null, isRenewalMode:false,
+        data:null, searchTimeout:null, payingMemberId:null, isRenewalMode:false,
         
         toast(msg,type='success'){
            const c=document.getElementById('toast-container');
            const d=document.createElement('div');
            d.className='toast '+type;
-           d.innerHTML=type==='success'?'✅ '+msg:'⚠️ '+msg;
+           d.innerHTML=type==='success'?'<span>✅ '+msg+'</span>':'<span>⚠️ '+msg+'</span>';
            c.appendChild(d);
-           setTimeout(()=>d.remove(),3500);
+           setTimeout(()=>d.remove(),3000);
         },
         
         async init(){
@@ -534,221 +473,452 @@ export function renderDashboard(user: any, gymName: string) {
              const res=await fetch('/api/bootstrap');
              if(!res.ok){if(res.status===401)window.location.href='/';return;}
              this.data=await res.json();
-             setClientNow(this.data?.settings?.clock?.now);
              this.render();
              this.applySettingsUI();
              if(currentUser.role==='admin')this.loadUsers();
-             const last=sessionStorage.getItem('gym_view');
-             if(last&&this.can(last))this.nav(last);else this.nav(this.can('home')?'home':'members');
-          }catch(e){this.toast('System Load Failed: '+e.message,'error');}
+             // Restore last view
+             const last=sessionStorage.getItem('gym_view')||'home';
+             this.nav(this.can(last)?last:'home');
+             
+             // Setup Desktop Actions
+             if(window.innerWidth > 768) {
+               document.getElementById('desktop-actions').style.display='flex';
+             }
+          }catch(e){console.error(e);this.toast('Failed to load data','error');}
         },
         
         can(perm){return currentUser.role==='admin'||currentUser.permissions.includes(perm);},
         
         nav(v){
           if(v==='users'&&currentUser.role!=='admin')return;
-          if(v!=='users'&&!this.can(v))return alert('Access Denied');
           sessionStorage.setItem('gym_view',v);
-          const lang=this.data?.settings?.lang||'en';
           
-          // Render Sidebar
-          const nav=document.getElementById('nav-container');
-          let html='';
-          if(this.can('home'))html+=\`<div class="nav-item" onclick="app.nav('home')">${getIcon('home')} \${t('over')}</div>\`;
-          if(this.can('members'))html+=\`<div class="nav-item" onclick="app.nav('members')">${getIcon('users')} \${t('mem')}</div>\`;
-          if(this.can('attendance'))html+=\`<div class="nav-item" onclick="app.nav('attendance')">${getIcon('clock')} \${t('att')}</div>\`;
-          if(this.can('history'))html+=\`<div class="nav-item" onclick="app.nav('history')">${getIcon('history')} \${t('hist')}</div>\`;
-          if(this.can('payments'))html+=\`<div class="nav-item" onclick="app.nav('payments')">${getIcon('creditCard')} \${t('pay')}</div>\`;
-          if(this.can('settings'))html+=\`<div class="nav-item" onclick="app.nav('settings')">${getIcon('settings')} \${t('set')}</div>\`;
-          if(currentUser.role==='admin')html+=\`<div class="nav-item" onclick="app.nav('users')">${getIcon('users')} \${t('user')}</div>\`;
-          nav.innerHTML=html;
+          // Render Desktop Nav
+          const dNav=document.getElementById('desktop-nav');
+          const mNav=document.getElementById('mobile-nav');
+          const pages=['home','members','attendance','history','payments','settings'];
+          if(currentUser.role==='admin') pages.push('users');
           
-          // Set Active State
-          const navItems=document.querySelectorAll('.nav-item');
-          navItems.forEach(el=>{
-             // Simple hack to find active item based on text content match
-             if(el.textContent.trim().includes(t(v==='home'?'over':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user')))el.classList.add('active');
-          });
+          let dHtml='', mHtml='';
+          const labels={home:'Home',members:'Members',attendance:'Activity',history:'Logs',payments:'Payments',settings:'Settings',users:'Users'};
+          const icons={home:'home',members:'users',attendance:'clock',history:'history',payments:'creditCard',settings:'settings',users:'users'};
 
-          // Toggle View
-          ['home','members','attendance','history','payments','settings','users'].forEach(id=>{const el=document.getElementById('view-'+id);if(el)el.classList.add('hidden');});
+          pages.filter(p=>this.can(p)).forEach(p=>{
+             const isActive = p===v ? 'active' : '';
+             const icon = getIcon(icons[p]);
+             dHtml+=\`<div class="nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} \${labels[p]}</div>\`;
+             mHtml+=\`<div class="b-nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} <span>\${labels[p]}</span></div>\`;
+          });
+          
+          dNav.innerHTML=dHtml;
+          mNav.innerHTML=mHtml;
+
+          // Hide all views, show current
+          document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.add('hidden'));
           document.getElementById('view-'+v).classList.remove('hidden');
           
-          // Mobile Menu Close
-          document.querySelector('.sidebar').classList.remove('open');
-          document.querySelector('.overlay').classList.remove('open');
+          // Update Headers
+          const titles={home:'Dashboard',members:'Member Database',attendance:'Daily Attendance',history:'System Logs',payments:'Payments & Dues',settings:'Configuration',users:'User Management'};
+          document.getElementById('page-title').innerText=titles[v];
+          document.getElementById('page-subtitle').innerText=v==='home'?'Overview & Stats':labels[v];
           
-          // Update Page Title
-          document.getElementById('page-title').innerText=t(v==='home'?'dash':v==='members'?'mem':v==='attendance'?'att':v==='history'?'hist':v==='payments'?'pay':v==='settings'?'set':'user');
+          if(v==='home') this.renderCharts();
         },
         
-        getPlanPrice(planName){const plans=this.data.settings.membershipPlans||[];const found=plans.find(p=>p.name===planName);return found?Number(found.price):0;},
-        getPlanAdmFee(planName){const plans=this.data.settings.membershipPlans||[];const found=plans.find(p=>p.name===planName);return found?Number(found.admissionFee||0):0;},
-        
-        render(){
-          const cur=this.data.settings.currency||'BDT';
-          if(document.getElementById('stat-active')){
-            document.getElementById('stat-active').innerText=this.data.stats.active;
-            document.getElementById('stat-today').innerText=this.data.stats.today;
-            document.getElementById('stat-rev').innerText=cur+' '+this.data.stats.revenue;
-            document.getElementById('stat-due').innerText=this.data.stats.dueMembers;
-            document.getElementById('stat-total-due').innerText=cur+' '+this.data.stats.totalOutstanding;
-          }
-          this.renderMembersTable();
-          
-          // Render Attendance Table
-          const todayRows=(this.data.attendanceToday||[]).map(a=>{let dueStr='';if(a.dueMonths>0)dueStr='<span style="color:#ef4444;font-size:11px;font-weight:700;">(Due)</span>';return\`<tr><td>\${formatTime(a.check_in_time).split(', ')[1]}</td><td><div style="font-weight:700;">\${escapeHtml(a.name)}</div></td><td>\${a.status==='success'?'<span class="badge bg-green">IN</span>':'<span class="badge bg-red">EXPIRED</span>'} \${dueStr}</td></tr>\`;}).join('')||'<tr><td colspan="3" style="text-align:center;padding:20px;color:var(--text-muted);">😴 No check-ins yet today.</td></tr>';
-          document.getElementById('tbl-attendance-today').innerHTML=todayRows;
-          if(document.getElementById('tbl-attendance-today-mini')) document.getElementById('tbl-attendance-today-mini').innerHTML = (this.data.attendanceToday||[]).slice(0,5).map(a=>\`<tr><td>\${formatTime(a.check_in_time).split(', ')[1]}</td><td>\${escapeHtml(a.name)}</td></tr>\`).join('')||'<tr><td colspan="2" style="text-align:center;color:gray;">No check-ins</td></tr>';
+        getPlanPrice(planName){const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);return p?Number(p.price):0;},
+        getPlanAdmFee(planName){const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);return p?Number(p.admissionFee||0):0;},
 
-          this.renderHistoryTable(null);
+        render(){
+          const cur=this.data.settings.currency||'';
+          // Stats
+          if(document.getElementById('stat-active')){
+             document.getElementById('stat-active').innerText=this.data.stats.active;
+             document.getElementById('stat-today').innerText=this.data.stats.today;
+             document.getElementById('stat-rev').innerText=cur+' '+this.data.stats.revenue;
+             document.getElementById('stat-due').innerText=this.data.stats.dueMembers;
+             document.getElementById('total-outstanding-amount').innerText=cur+' '+this.data.stats.totalOutstanding;
+          }
+          
+          // Render Main Tables
+          this.renderMembersTable();
           this.renderPaymentsTable();
-          this.renderCharts();
+          
+          // Attendance (Desktop & Mobile)
+          const attRows=(this.data.attendanceToday||[]).map(a=>{
+             const time=formatTime(a.check_in_time);
+             const badge=a.status==='success'?'<span class="badge bg-green"><span class="badge-dot"></span>IN</span>':'<span class="badge bg-red"><span class="badge-dot"></span>EXP</span>';
+             return {
+               row: \`<tr><td>\${time}</td><td>\${escapeHtml(a.name)}</td><td>\${badge}</td></tr>\`,
+               card: \`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${time}</div></div>\${badge}</div>\`
+             };
+          });
+          document.getElementById('tbl-attendance-today').innerHTML=attRows.map(x=>x.row).join('')||'<tr><td colspan="3" class="text-center text-muted">No check-ins today</td></tr>';
+          document.getElementById('list-attendance-today').innerHTML=attRows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No check-ins today</div>';
+          document.getElementById('list-recent-home').innerHTML=attRows.slice(0,5).map(x=>x.card).join('')||'<div class="text-center text-muted">Quiet day so far...</div>';
+
+          // History Log
+          this.renderHistoryTable();
         },
         
         renderMembersTable(){
-          const q=document.getElementById('search').value.trim().toLowerCase();
-          const filter=document.getElementById('member-filter').value;
-          const isNumeric=/^\d+$/.test(q);
-          const isIdSearch=isNumeric&&q.length>0&&q.length<6;
-          const isPhoneSearch=isNumeric&&q.length>=6;
-          let list=(this.data.members||[]).filter(m=>{
-            let matchSearch=true;
-            if(q){if(isIdSearch)matchSearch=m.id.toString().startsWith(q);else if(isPhoneSearch)matchSearch=m.phone.includes(q);else matchSearch=m.name.toLowerCase().includes(q);}
-            let matchStatus=true;
-            if(filter!=='all'){
-              if(filter==='active')matchStatus=(!m.dueMonths||m.dueMonths===0)&&m.status!=='inactive';
-              else if(filter==='due')matchStatus=m.dueMonths>0;
-              else if(filter==='advanced')matchStatus=m.dueMonths<0;
-              else if(filter==='inactive')matchStatus=m.status==='inactive';
-            }
-            return matchSearch&&matchStatus;
-          });
-          document.getElementById('tbl-members').innerHTML=list.map(m=>{
-            let statusBadge=\`<span class="badge bg-green">Running</span>\`;
-            let statusTxt='Active';
-            let statusColor='var(--text-muted)';
-            if(m.dueMonths>0){
-                const price=this.getPlanPrice(m.plan);
-                const paid=m.balance||0;
-                const owed=(m.dueMonths*price);
-                const remaining=Math.max(0,owed-paid);
-                const dueLabel=formatDueMonthsLabel(m)||(m.dueMonths+' Mo');
-                statusTxt=\`\${remaining} (\${dueLabel})\`;
-                statusColor='#ef4444';
-                statusBadge=\`<span class="badge bg-amber">Due</span>\`;
-                if(m.status==='inactive')statusBadge=\`<span class="badge bg-red">Inactive</span>\`;
-            }else if(m.dueMonths<0){
-                statusTxt='+'+Math.abs(m.dueMonths)+' Mo Adv';
-                statusColor='#10b981';
-                statusBadge=\`<span class="badge bg-blue">Advance</span>\`;
-            }
-            return \`<tr>
-              <td style="color:var(--text-muted);font-weight:800;">#\${m.id}</td>
-              <td><div style="font-weight:800;font-size:15px;">\${escapeHtml(m.name)}</div><div style="font-size:12px;color:var(--text-muted);">\${escapeHtml(m.phone)}</div></td>
-              <td><span style="font-size:12px;background:#f3f4f6;padding:4px 8px;border-radius:6px;font-weight:700;">\${escapeHtml(m.plan)}</span></td>
-              <td style="font-size:13px;">\${formatExpiryMonth(m.expiry_date)}</td>
-              <td>\${statusBadge}<div style="font-size:11px;font-weight:700;color:\${statusColor};margin-top:2px;">\${statusTxt}</div></td>
-              <td style="text-align:right;">
-                <div class="flex" style="justify-content:flex-end;gap:8px;">
-                  <button class="btn btn-outline" style="padding:8px;width:36px;height:36px;border-radius:50%;" onclick="app.showHistory(\${m.id}, '\${escapeHtml(m.name)}')">📜</button>
-                  <button class="btn btn-primary" style="padding:8px 16px;border-radius:12px;font-size:12px;" onclick="app.modals.pay.open(\${m.id})">PAY</button>
-                  <button class="btn btn-danger" style="padding:8px;width:36px;height:36px;border-radius:50%;" onclick="app.del(\${m.id})">${getIcon('trash')}</button>
-                </div>
-              </td>
-            </tr>\`;
-          }).join('')||'<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);">No members found.</td></tr>';
-        },
-        
-        renderPaymentsTable(){
-          const filter=document.getElementById('pay-filter').value;
-          const cur=this.data.settings.currency||'BDT';
-          let list=(this.data.members||[]).slice();
-          if(filter==='due')list=list.filter(m=>m.dueMonths>0);else if(filter==='running')list=list.filter(m=>!m.dueMonths||m.dueMonths===0);else if(filter==='advanced')list=list.filter(m=>m.dueMonths<0);
-          let totalOutstanding=0;
-          list.sort((a,b)=>{const getWeight=(m)=>{if(m.dueMonths>0)return 3;if(!m.dueMonths||m.dueMonths===0)return 2;return 1;};return getWeight(b)-getWeight(a);});
-          document.getElementById('tbl-payment-list').innerHTML=list.map(m=>{
-            const price=this.getPlanPrice(m.plan);
-            let statusHtml=\`<span class="badge bg-green">Running</span>\`;let infoTxt='-';let amtTxt='0';
-            if(m.dueMonths>0){
-                statusHtml=\`<span class="badge bg-amber">Due</span>\`;
-                if(m.status==='inactive')statusHtml=\`<span class="badge bg-red">Inactive</span>\`;
-                infoTxt=formatDueMonthsLabel(m)||(m.dueMonths+' Mo Due');
-                const dueAmt=m.dueMonths*price;const paid=m.balance||0;const remaining=Math.max(0,dueAmt-paid);
-                totalOutstanding+=remaining;
-                amtTxt=\`<span style="color:#ef4444;font-weight:800;font-size:15px;">\${cur} \${remaining}</span>\`;
-                if(paid>0)amtTxt+=\`<br><span style="font-size:10px;color:gray;">(Paid: \${paid})</span>\`;
-            }else if(m.dueMonths<0){statusHtml=\`<span class="badge bg-blue">Adv</span>\`;infoTxt=Math.abs(m.dueMonths)+' Mo Adv';amtTxt=\`<span style="color:#10b981;font-weight:700">+\${cur} \${Math.abs(m.dueMonths*price)}</span>\`;}
-            return \`<tr><td>#\${m.id}</td><td>\${escapeHtml(m.name)}</td><td>\${statusHtml}</td><td>\${infoTxt}</td><td>\${amtTxt}</td><td style="text-align:right"><button class="btn btn-primary" onclick="app.modals.pay.open(\${m.id})">Collect</button></td></tr>\`;
-          }).join('')||'<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-muted);">No records found.</td></tr>';
-          document.getElementById('total-outstanding-amount').innerText=cur+' '+totalOutstanding;
-        },
-        
-        async openPaymentHistory(memberId=null){this.currentHistoryMemberId=memberId;document.getElementById('trans-date').value='';document.getElementById('modal-payment-history').style.display='flex';this.renderTransactionHistory();},
-        
-        async renderTransactionHistory(){
-           const date=document.getElementById('trans-date').value;const memberId=this.currentHistoryMemberId;const tbody=document.getElementById('tbl-transaction-history');const cur=this.data.settings.currency||'BDT';
-           tbody.innerHTML='<tr><td colspan="3" style="text-align:center;padding:20px;">Loading...</td></tr>';
-           try{
-             const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({memberId,date})});
-             const data=await res.json();
-             const titleEl=document.getElementById('ph-title');
-             titleEl.innerText=memberId&&data.memberName?("History: "+data.memberName):"Transaction History";
-             const list=data.transactions||[];
-             if(list.length===0){tbody.innerHTML='<tr><td colspan="3" style="text-align:center;padding:20px;">No records found.</td></tr>';return;}
-             tbody.innerHTML=list.map(p=>\`<tr><td>\${formatTime(p.date)}</td><td>\${p.name?(escapeHtml(p.name)+' (#'+p.member_id+')'):'<span style="color:gray;font-style:italic;">(#'+p.member_id+')</span>'}</td><td style="font-weight:800;color:#10b981;">\${cur} \${p.amount}</td></tr>\`).join('');
-           }catch(e){this.toast('Error loading history','error');}
-        },
-        
-        async showHistory(id,name){document.getElementById('mh-title').innerText='Attendance: '+name;const container=document.getElementById('calendar-container');container.innerHTML='<div style="text-align:center;padding:20px;">Loading calendar...</div>';document.getElementById('modal-member-history').style.display='flex';const res=await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});const data=await res.json();this.activeHistory={history:data.history||[],joinedAt:new Date(data.joinedAt||getClientNow())};const yearSelect=document.getElementById('hist-year');yearSelect.innerHTML='';const startYear=this.activeHistory.joinedAt.getFullYear();const endYear=getClientNow().getFullYear();for(let y=endYear;y>=startYear;y--){const opt=document.createElement('option');opt.value=y;opt.innerText=y;yearSelect.appendChild(opt);}const now=getClientNow();yearSelect.value=now.getFullYear();document.getElementById('hist-month').value=now.getMonth();this.renderCalendar();},
-        
-        renderCalendar(){if(!this.activeHistory)return;const year=parseInt(document.getElementById('hist-year').value);const monthVal=parseInt(document.getElementById('hist-month').value);const container=document.getElementById('calendar-container');const threshold=this.data.settings.attendanceThreshold||3;if(monthVal===-1){let gridHtml='<div class="year-grid">';const monthNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];for(let m=0;m<12;m++){const presentDays=this.activeHistory.history.filter(h=>{const d=new Date(h.check_in_time);return d.getFullYear()===year&&d.getMonth()===m;}).map(h=>new Date(h.check_in_time).getDate());const unique=new Set(presentDays).size;const isP=unique>=threshold;const badgeCls=isP?'ym-p':'ym-a';const badgeTxt=isP?'P':'A';gridHtml+=\`<div class="year-month-card"><div class="ym-name">\${monthNames[m]}</div><div class="ym-badge \${badgeCls}">\${badgeTxt}</div><div class="ym-count">\${unique} Days</div></div>\`;}gridHtml+='</div>';container.innerHTML=gridHtml;return;}const monthName=new Date(year,monthVal).toLocaleString('default',{month:'long'});const daysInMonth=new Date(year,monthVal+1,0).getDate();const presentDays=this.activeHistory.history.filter(h=>{const d=new Date(h.check_in_time);return d.getFullYear()===year&&d.getMonth()===monthVal;}).map(h=>new Date(h.check_in_time).getDate());const uniquePresent=[...new Set(presentDays)];const count=uniquePresent.length;const isBillable=count>=threshold;let gridHtml='';for(let i=1;i<=daysInMonth;i++){const isPresent=uniquePresent.includes(i);const cls=isPresent?'present':'absent';const mark=isPresent?'P':i;gridHtml+=\`<div class="cal-cell \${cls}">\${mark}</div>\`;}container.innerHTML=\`<div class="calendar-month"><div class="cal-header">\${monthName} \${year}</div><div class="cal-grid">\${gridHtml}</div><div class="cal-stats"><span>Days: <strong>\${count}</strong></span><span style="color:\${isBillable?'#10b981':'#ef4444'}">\${isBillable?'Active':'Inactive'}</span></div></div>\`;},
-        
-        async applyHistoryFilter(){const date=document.getElementById('history-date').value;const tbody=document.getElementById('tbl-attendance-history');tbody.innerHTML='<tr><td colspan="3" style="text-align:center;">Loading...</td></tr>';const res=await fetch('/api/history/list',{method:'POST',body:JSON.stringify({date})});const data=await res.json();this.renderHistoryTable(null,data.history);},
-        
-        renderHistoryTable(filterDate,dataList=null){let list=dataList||this.data.attendanceHistory||[];if(filterDate&&!dataList){list=list.filter(a=>a.check_in_time.startsWith(filterDate));}document.getElementById('tbl-attendance-history').innerHTML=list.length?list.map(a=>\`<tr><td>\${formatDate(a.check_in_time)}</td><td>\${formatTime(a.check_in_time).split(', ')[1]}</td><td>\${escapeHtml(a.name)}</td></tr>\`).join(''):'<tr><td colspan="3" style="text-align:center;color:var(--text-muted);padding:20px;">No activity found.</td></tr>';},
-        
-        openAddUser(){document.getElementById('modal-user').style.display='flex';document.getElementById('user-modal-title').innerText="Add New User";document.getElementById('user-form').reset();document.getElementById('u-id').value="";document.getElementById('u-password').required=true;document.getElementById('u-pass-hint').innerText="";this.togglePerms('staff');},
-        
-        async loadUsers(){const res=await fetch('/api/users/list');if(res.ok){const data=await res.json();this.userList=data.users;document.getElementById('tbl-users').innerHTML=this.userList.map(u=>\`<tr><td>#\${u.id}</td><td>\${escapeHtml(u.name)}</td><td><span class="badge bg-blue">\${escapeHtml(u.role)}</span></td><td style="font-size:11px;white-space:normal;max-width:150px;">\${u.role==='admin'?'ALL':(JSON.parse(u.permissions).join(', '))}</td><td style="text-align:right"><button class="btn btn-danger" onclick="app.deleteUser(\${u.id})">Remove</button></td></tr>\`).join('');}},
-        async saveUser(e){e.preventDefault();const data=Object.fromEntries(new FormData(e.target));const perms=[];document.querySelectorAll('input[name="permissions"]:checked').forEach(cb=>perms.push(cb.value));data.permissions=perms;const url=data.id?'/api/users/update':'/api/users/add';const res=await fetch(url,{method:'POST',body:JSON.stringify(data)});if(res.ok){document.getElementById('modal-user').style.display='none';this.loadUsers();this.toast('User saved successfully');}else{alert((await res.json()).error);}},
-        async deleteUser(id){if(confirm("Delete?")){await fetch('/api/users/delete',{method:'POST',body:JSON.stringify({id})});this.loadUsers();this.toast('User deleted');}},
-        togglePerms(role){const container=document.getElementById('u-perms-container');if(role==='admin')container.classList.add('hidden');else container.classList.remove('hidden');},
+           const q=document.getElementById('search').value.toLowerCase();
+           const filter=document.getElementById('member-filter').value;
+           let list=(this.data.members||[]).filter(m=>{
+              const matchQ=m.name.toLowerCase().includes(q)||m.phone.includes(q)||String(m.id).startsWith(q);
+              if(!matchQ)return false;
+              if(filter==='active') return (!m.dueMonths||m.dueMonths===0) && m.status!=='inactive';
+              if(filter==='due') return m.dueMonths>0;
+              if(filter==='inactive') return m.status==='inactive';
+              return true;
+           });
+           
+           const rows=list.map(m=>{
+              let badge='<span class="badge bg-green"><span class="badge-dot"></span>Active</span>';
+              let subText=m.plan;
+              if(m.dueMonths>0) {
+                 const dueTxt=m.dueMonthLabels && m.dueMonthLabels.length ? m.dueMonthLabels[0] : (m.dueMonths+' Mo Due');
+                 badge=\`<span class="badge bg-amber"><span class="badge-dot"></span>\${dueTxt}</span>\`;
+              }
+              if(m.status==='inactive') badge='<span class="badge bg-red"><span class="badge-dot"></span>Inactive</span>';
+              
+              const date=new Date(m.expiry_date).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+              
+              const actions=\`<div style="display:flex;gap:4px;justify-content:flex-end;">
+                  <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
+                  <button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Pay</button>
+                  <button class="btn btn-danger btn-sm" onclick="app.del(\${m.id})">X</button>
+              </div>\`;
 
-        applySettingsUI(){const s=this.data.settings;const form=document.getElementById('settings-form');form.querySelector('input[name="currency"]').value=s.currency||'BDT';form.querySelector('select[name="lang"]').value=s.lang||'en';form.querySelector('input[name="attendanceThreshold"]').value=s.attendanceThreshold;form.querySelector('input[name="inactiveAfterMonths"]').value=s.inactiveAfterMonths;form.querySelector('input[name="renewalFee"]').value=s.renewalFee;form.querySelector('input[name="timezone"]').value=(s.time&&s.time.timezone)||'Asia/Dhaka';setClientNow(s.time?.now);const simInput=form.querySelector('input[name="simulatedTime"]');if(simInput){const iso=s.time?.simulatedTime||s.time?.now||'';simInput.value=iso?new Date(iso).toISOString().slice(0,16):'';}const simToggle=form.querySelector('input[name="timeSimulationEnabled"]');if(simToggle)simToggle.checked=!!s.time?.simulated;const lblClock=document.getElementById('lbl-current-time');if(lblClock){const tz=s.time?.timezone||'Asia/Dhaka';const now=s.time?.now?new Date(s.time.now):getClientNow();lblClock.innerText='Server Time: '+now.toLocaleString('en-GB',{timeZone:tz});}const plansDiv=document.getElementById('plans-container');plansDiv.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="plan-row" id="plan-\${i}"><input type="text" placeholder="Name" value="\${escapeHtml(p.name)}" class="plan-name" style="margin:0;"><input type="number" placeholder="Price" value="\${p.price}" class="plan-price" style="margin:0;"><input type="number" placeholder="Adm" value="\${p.admissionFee||0}" class="plan-adm" style="margin:0;"><button type="button" class="btn btn-danger" onclick="document.getElementById('plan-\${i}').remove()" style="padding:0;width:30px;height:30px;border-radius:50%;">X</button></div>\`).join('');document.getElementById('plan-select').innerHTML=s.membershipPlans.map(p=>\`<option value="\${escapeHtml(p.name)}">\${escapeHtml(p.name)}</option>\`).join('');},
-        addPlanRow(){const id='new-'+Date.now();const html=\`<div class="plan-row" id="\${id}"><input type="text" placeholder="Name" class="plan-name" style="margin:0;"><input type="number" placeholder="Price" value="0" class="plan-price" style="margin:0;"><input type="number" placeholder="Adm" value="0" class="plan-adm" style="margin:0;"><button type="button" class="btn btn-danger" onclick="document.getElementById('\${id}').remove()" style="padding:0;width:30px;height:30px;border-radius:50%;">X</button></div>\`;document.getElementById('plans-container').insertAdjacentHTML('beforeend',html);},
-        async saveSettings(e){e.preventDefault();const plans=[];document.getElementById('plans-container').querySelectorAll('.plan-row').forEach(row=>{const nameInput=row.querySelector('.plan-name');const priceInput=row.querySelector('.plan-price');const admInput=row.querySelector('.plan-adm');if(nameInput&&priceInput){const name=nameInput.value.trim();const price=priceInput.value.trim();const admissionFee=admInput?admInput.value.trim():0;if(name)plans.push({name,price:Number(price),admissionFee:Number(admissionFee)});}});const form=e.target;document.getElementById('btn-save-set').innerText='Saving...';await fetch('/api/settings',{method:'POST',body:JSON.stringify({currency:form.querySelector('input[name="currency"]').value,lang:form.querySelector('select[name="lang"]').value,attendanceThreshold:form.querySelector('input[name="attendanceThreshold"]').value,inactiveAfterMonths:form.querySelector('input[name="inactiveAfterMonths"]').value,renewalFee:form.querySelector('input[name="renewalFee"]').value,membershipPlans:plans,timezone:form.querySelector('input[name="timezone"]').value,timeSimulationEnabled:form.querySelector('input[name="timeSimulationEnabled"]').checked,simulatedTime:form.querySelector('input[name="simulatedTime"]').value})});this.toast('Settings Saved'); setTimeout(()=>location.reload(),1000);},
-        async resetDB(){if(!confirm("Reset everything?"))return;await fetch('/api/nuke');location.reload();},
+              return {
+                 row: \`<tr><td>#\${m.id}</td><td><div style="font-weight:600;">\${escapeHtml(m.name)}</div><div class="text-xs text-muted">\${escapeHtml(m.phone)}</div></td><td>\${escapeHtml(m.plan)}</td><td>\${date}</td><td>\${badge}</td><td>\${actions}</td></tr>\`,
+                 card: \`<div class="m-card">
+                    <div class="m-info" onclick="app.modals.pay.open(\${m.id})">
+                       <div class="m-title">\${escapeHtml(m.name)} <span class="text-muted text-xs">#\${m.id}</span></div>
+                       <div class="m-sub">\${badge} <span style="margin:0 4px;">•</span> \${date}</div>
+                    </div>
+                    <div class="m-actions">
+                       <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
+                    </div>
+                 </div>\`
+              };
+           });
+           document.getElementById('tbl-members').innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">No members found</td></tr>';
+           document.getElementById('list-members').innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No members found</div>';
+        },
+
+        renderPaymentsTable(){
+           const filter=document.getElementById('pay-filter').value;
+           const cur=this.data.settings.currency||'';
+           let list=(this.data.members||[]).slice();
+           if(filter==='due') list=list.filter(m=>m.dueMonths>0);
+           list.sort((a,b)=>(b.dueMonths||0)-(a.dueMonths||0));
+           
+           const rows=list.map(m=>{
+              const price=this.getPlanPrice(m.plan);
+              const dueAmt=(m.dueMonths||0)*price - (m.balance||0);
+              const displayAmt = dueAmt > 0 ? dueAmt : 0;
+              
+              let status='<span class="badge bg-green">OK</span>';
+              if(m.dueMonths>0) status=\`<span class="badge bg-amber">\${m.dueMonths} Mo Due</span>\`;
+              if(m.status==='inactive') status='<span class="badge bg-red">Inactive</span>';
+              
+              const btn=\`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Collect</button>\`;
+              
+              return {
+                 row: \`<tr><td>#\${m.id}</td><td>\${escapeHtml(m.name)}</td><td>\${status}</td><td>\${m.dueMonths>0?m.dueMonths+' Mo':'-'}</td><td style="font-weight:700;">\${cur} \${displayAmt}</td><td style="text-align:right">\${btn}</td></tr>\`,
+                 card: \`<div class="m-card">
+                    <div class="m-info">
+                       <div class="m-title">\${escapeHtml(m.name)}</div>
+                       <div class="m-sub">\${status} • \${cur} \${displayAmt}</div>
+                    </div>
+                    \${btn}
+                 </div>\`
+              };
+           });
+           document.getElementById('tbl-payment-list').innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">All paid up!</td></tr>';
+           document.getElementById('list-payment-list').innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">All paid up!</div>';
+        },
         
-        async pay(e){e.preventDefault();const btn=document.getElementById('pay-submit-btn');btn.disabled=true;btn.innerText="Processing...";try{const endpoint=app.isRenewalMode?'/api/members/renew':'/api/payment';await fetch(endpoint,{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});this.toast('Payment Successful');setTimeout(()=>location.reload(),500);}catch(e){this.toast('Payment Failed','error');btn.disabled=false;btn.innerText="Confirm Payment";}},
+        renderHistoryTable(data=null){
+           const list=data||this.data.attendanceHistory||[];
+           const rows=list.map(a=>{
+             return {
+               row: \`<tr><td>\${formatDate(a.check_in_time)}</td><td>\${formatTime(a.check_in_time)}</td><td>\${escapeHtml(a.name)}</td></tr>\`,
+               card: \`<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${formatDate(a.check_in_time)} • \${formatTime(a.check_in_time)}</div></div></div>\`
+             };
+           });
+           document.getElementById('tbl-attendance-history').innerHTML=rows.map(x=>x.row).join('');
+           document.getElementById('list-attendance-history').innerHTML=rows.map(x=>x.card).join('');
+        },
         
-        async checkIn(){if(this.isSubmitting)return;this.isSubmitting=true;const btn=document.getElementById('btn-sub-chk');if(btn)btn.disabled=true;btn.innerText="Please wait...";const id=document.getElementById('checkin-id').value;try{const res=await fetch('/api/checkin',{method:'POST',body:JSON.stringify({memberId:id})});const json=await res.json();const div=document.getElementById('checkin-res');div.innerText=json.status==='success'?('✅ Welcome '+json.name):(json.error||'⛔ Error');div.style.color=json.status==='success'?'var(--success)':'var(--danger)';if(json.status==='success'){this.toast('Welcome '+json.name);setTimeout(()=>location.reload(),800);}}catch(e){this.toast('Network Error','error');}finally{this.isSubmitting=false;if(btn){btn.disabled=false;btn.innerText="Check In Now";}}},
+        async applyHistoryFilter(){
+           const date=document.getElementById('history-date').value;
+           const res=await fetch('/api/history/list',{method:'POST',body:JSON.stringify({date})});
+           const d=await res.json();
+           this.renderHistoryTable(d.history);
+        },
         
-        onCheckinInput(e){if(e.key==='Enter'){this.checkIn();return;}const val=e.target.value;if(this.searchTimeout)clearTimeout(this.searchTimeout);this.searchTimeout=setTimeout(async()=>{if(!val.trim()){document.getElementById('checkin-suggestions').innerHTML='';document.getElementById('checkin-suggestions').style.display='none';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();const resDiv=document.getElementById('checkin-suggestions');resDiv.style.display='block';resDiv.innerHTML=data.results.map(m=>{let statusStr='<span style="color:gray;">Running</span>';if(m.status==='inactive'){statusStr='<span style="color:red;font-weight:700;">⛔ INACTIVE</span>';}else if(m.dueMonths>0){statusStr='<span style="color:orange;font-weight:700;">'+formatDueMonthsLabel(m)+'</span>';}return\`<div class="checkin-item" onclick="document.getElementById('checkin-id').value='\${m.id}'; document.getElementById('checkin-suggestions').style.display='none';"><div>#\${m.id} · \${escapeHtml(m.name)}</div> <div>\${statusStr}</div></div>\`;}).join('');},300);},
+        async showHistory(id){
+           const res=await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});
+           const d=await res.json();
+           const visits=d.history.length;
+           const html=\`<div style="text-align:center;margin-bottom:20px;">
+              <div style="font-size:32px;font-weight:800;color:var(--primary);">\${visits}</div>
+              <div class="text-muted text-xs">Total Visits</div>
+           </div>
+           <div class="mobile-list">\` + (d.history.map(h=>\`<div class="m-card" style="padding:8px 12px;"><div class="m-sub">\${formatDate(h.check_in_time)}</div><div style="font-weight:600;">\${formatTime(h.check_in_time)}</div></div>\`).join('')) + '</div>';
+           document.getElementById('calendar-container').innerHTML=html;
+           document.getElementById('modal-member-history').style.display='flex';
+        },
+
+        // --- ACTIONS ---
+        async checkIn(){
+           const id=document.getElementById('checkin-id').value;
+           if(!id) return;
+           const btn=document.getElementById('btn-sub-chk');
+           btn.disabled=true; btn.innerText="Checking...";
+           try {
+              const res=await fetch('/api/checkin',{method:'POST',body:JSON.stringify({memberId:id})});
+              const d=await res.json();
+              if(d.success){
+                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--success)">✅ Welcome, \${d.name}!</span>\`;
+                 this.toast('Welcome '+d.name);
+                 setTimeout(()=>window.location.reload(),800);
+              } else {
+                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--danger)">⛔ \${d.error}</span>\`;
+                 btn.disabled=false; btn.innerText="Check In";
+              }
+           } catch(e) { btn.disabled=false; }
+        },
         
-        onQuickPayInput(e){const val=e.target.value;if(this.searchTimeout)clearTimeout(this.searchTimeout);this.searchTimeout=setTimeout(async()=>{if(!val.trim()){document.getElementById('qp-results').innerHTML='';document.getElementById('qp-results').style.display='none';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();const resDiv=document.getElementById('qp-results');resDiv.style.display='block';resDiv.innerHTML=data.results.map(m=>{let dueStr='Active';if(m.status==='inactive')dueStr='⛔ Inactive';else if(m.dueMonths>0)dueStr=formatDueMonthsLabel(m);return\`<div class="checkin-item" onclick="app.modals.quickPay.close(); app.modals.pay.open(\${m.id})"><strong>#\${m.id} · \${escapeHtml(m.name)}</strong> - \${dueStr}</div>\`;}).join('');},300);},
+        async pay(e){
+           e.preventDefault();
+           const btn=document.getElementById('pay-submit-btn');
+           btn.disabled=true; btn.innerText="Processing...";
+           const endpoint=this.isRenewalMode?'/api/members/renew':'/api/payment';
+           try {
+              await fetch(endpoint,{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+              this.toast('Payment Recorded');
+              setTimeout(()=>window.location.reload(),500);
+           } catch(e){ btn.disabled=false; }
+        },
         
-        switchAddTab(tab){const isMig=tab==='mig';const tNew=document.getElementById('tab-new');const tMig=document.getElementById('tab-mig');tNew.style.background=isMig?'transparent':'white';tNew.style.color=isMig?'#6b7280':'var(--primary)';tNew.style.boxShadow=isMig?'none':'0 2px 4px rgba(0,0,0,0.05)';tMig.style.background=isMig?'white':'transparent';tMig.style.color=isMig?'var(--primary)':'#6b7280';tMig.style.boxShadow=isMig?'0 2px 4px rgba(0,0,0,0.05)':'none';document.getElementById('sec-new-fees').style.display=isMig?'none':'block';document.getElementById('sec-mig-fees').style.display=isMig?'block':'none';document.getElementById('add-mig-mode').value=isMig?'true':'false';document.getElementById('new-init-pay').required=!isMig;document.getElementById('mig-legacy-dues').required=isMig;app.updateAddMemberFees();},
+        async addMember(e){
+           e.preventDefault();
+           const btn=e.target.querySelector('button[type="submit"]');
+           btn.disabled=true;
+           try{
+             await fetch('/api/members/add',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});
+             this.toast('Member Added');
+             window.location.reload();
+           } catch(e){ btn.disabled=false; }
+        },
         
-        updateAddMemberFees(){const planName=document.getElementById('plan-select').value;const fee=app.getPlanAdmFee(planName);document.getElementById('new-adm-fee').value=fee;},
-        async addMember(e){e.preventDefault();const btn=e.target.querySelector('button[type="submit"]');btn.disabled=true;btn.innerText="Creating...";try{await fetch('/api/members/add',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});this.toast('Member Added!');location.reload();}catch(e){this.toast('Error adding member','error');btn.disabled=false;btn.innerText="Create Member";}},
-        async del(id){if(confirm("Delete this member permanently?")){await fetch('/api/members/delete',{method:'POST',body:JSON.stringify({id})});this.toast('Member deleted');location.reload();}},
+        async del(id){
+           if(confirm('Delete member permanently?')) {
+              await fetch('/api/members/delete',{method:'POST',body:JSON.stringify({id})});
+              window.location.reload();
+           }
+        },
         
-        onPaymentSearchInput(e){const val=e.target.value;if(this.searchTimeout)clearTimeout(this.searchTimeout);this.searchTimeout=setTimeout(async()=>{if(!val.trim()){document.getElementById('pay-search-results').innerHTML='';document.getElementById('pay-search-results').style.display='none';return;}const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:val})});const data=await res.json();const div=document.getElementById('pay-search-results');div.style.display='block';div.innerHTML=data.results.map(m=>{let dueStr='Active';if(m.status==='inactive')dueStr='⛔ Inactive';else if(m.dueMonths>0)dueStr='⚠️ '+formatDueMonthsLabel(m);return\`<div class="checkin-item" onclick="app.modals.pay.open(\${m.id})"><div>#\${m.id} · \${escapeHtml(m.name)}</div> <div style="font-size:12px;">\${dueStr}</div></div>\`;}).join('');},300);},
+        // --- SEARCH INPUTS ---
+        onCheckinInput(e){
+           if(e.key==='Enter'){ this.checkIn(); return; }
+           this.doSearch(e.target.value, (res)=>{
+              const div=document.getElementById('checkin-suggestions');
+              div.style.display=res.length?'block':'none';
+              div.innerHTML=res.map(m=>\`<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;" onclick="document.getElementById('checkin-id').value='\${m.id}';document.getElementById('checkin-suggestions').style.display='none';"><b>#\${m.id} \${escapeHtml(m.name)}</b></div>\`).join('');
+           });
+        },
         
-        renderCharts(){if(typeof Chart==='undefined')return;const members=this.data.members||[];const ctx1=document.getElementById('chart-dues');if(ctx1){if(window.myChart)window.myChart.destroy();window.myChart=new Chart(ctx1.getContext('2d'),{type:'bar',data:{labels:['No Due','1 Mo','2+ Mo','Inactive'],datasets:[{label:'Members',data:[members.filter(m=>!m.dueMonths||m.dueMonths<=0).length,members.filter(m=>m.dueMonths===1).length,members.filter(m=>m.dueMonths>=2&&m.status!=='inactive').length,members.filter(m=>m.status==='inactive').length],backgroundColor:['#10b981','#f59e0b','#ef4444','#64748b'],borderRadius:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f3f4f6'}},x:{grid:{display:false}}}}});}},
+        onQuickPayInput(e){
+           this.doSearch(e.target.value, (res)=>{
+              const div=document.getElementById('qp-results');
+              div.style.display=res.length?'block':'none';
+              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.quickPay.close();app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="text-xs text-muted">(\${m.status})</span></div>\`).join('');
+           });
+        },
         
+        onPaymentSearchInput(e){
+           this.doSearch(e.target.value, (res)=>{
+              const div=document.getElementById('pay-search-results');
+              div.style.display=res.length?'block':'none';
+              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="badge bg-amber">\${m.dueMonths||0} Mo Due</span></div>\`).join('');
+           });
+        },
+        
+        doSearch(q, cb){
+           if(this.searchTimeout) clearTimeout(this.searchTimeout);
+           this.searchTimeout=setTimeout(async()=>{
+              if(!q.trim()){ cb([]); return; }
+              const res=await fetch('/api/members/search',{method:'POST',body:JSON.stringify({query:q})});
+              const d=await res.json();
+              cb(d.results);
+           }, 300);
+        },
+
+        // --- HELPERS & SETTINGS ---
+        switchAddTab(t){
+           const isMig=t==='mig';
+           document.getElementById('tab-new').style.background=isMig?'transparent':'white';
+           document.getElementById('tab-mig').style.background=isMig?'white':'transparent';
+           document.getElementById('tab-mig').style.color=isMig?'var(--text-main)':'var(--text-sec)';
+           document.getElementById('sec-new-fees').style.display=isMig?'none':'block';
+           document.getElementById('sec-mig-fees').style.display=isMig?'block':'none';
+           document.getElementById('add-mig-mode').value=isMig;
+           document.getElementById('new-init-pay').required=!isMig;
+           this.updateAddMemberFees();
+        },
+        updateAddMemberFees(){
+           const p=document.getElementById('plan-select').value;
+           document.getElementById('new-adm-fee').value=this.getPlanAdmFee(p);
+        },
+        
+        applySettingsUI(){
+           const s=this.data.settings;
+           const form=document.getElementById('settings-form');
+           if(!form) return;
+           // Fill form fields
+           form.querySelector('[name="currency"]').value=s.currency;
+           form.querySelector('[name="lang"]').value=s.lang;
+           form.querySelector('[name="attendanceThreshold"]').value=s.attendanceThreshold;
+           form.querySelector('[name="inactiveAfterMonths"]').value=s.inactiveAfterMonths;
+           form.querySelector('[name="renewalFee"]').value=s.renewalFee;
+           // Render plans
+           const container=document.getElementById('plans-container');
+           container.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="flex plan-row" id="p-\${i}"><input placeholder="Name" value="\${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="\${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="\${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>\`).join('');
+           
+           // Fill plan select dropdowns elsewhere
+           const opts=s.membershipPlans.map(p=>\`<option value="\${escapeHtml(p.name)}">\${escapeHtml(p.name)}</option>\`).join('');
+           const sel=document.getElementById('plan-select');
+           if(sel) sel.innerHTML=opts;
+        },
+        
+        addPlanRow(){
+           const div=document.createElement('div');
+           div.className='flex plan-row';
+           div.innerHTML=\`<input placeholder="Name" class="p-name"><input type="number" placeholder="Price" class="p-price"><input type="number" placeholder="Adm.Fee" class="p-adm" value="0"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>\`;
+           document.getElementById('plans-container').appendChild(div);
+        },
+        
+        async saveSettings(e){
+           e.preventDefault();
+           const plans=[];
+           document.querySelectorAll('.plan-row').forEach(r=>{
+              const n=r.querySelector('.p-name').value;
+              const p=r.querySelector('.p-price').value;
+              const a=r.querySelector('.p-adm').value;
+              if(n&&p) plans.push({name:n, price:Number(p), admissionFee:Number(a)});
+           });
+           const fd=new FormData(e.target);
+           const data=Object.fromEntries(fd);
+           data.membershipPlans=plans;
+           await fetch('/api/settings',{method:'POST',body:JSON.stringify(data)});
+           this.toast('Settings Saved');
+           setTimeout(()=>window.location.reload(),800);
+        },
+        
+        async resetDB(){ if(confirm('Factory Reset?')) { await fetch('/api/nuke'); window.location.reload(); } },
+
+        // --- USER MANAGEMENT ---
+        openAddUser(){ document.getElementById('modal-user').style.display='flex'; document.getElementById('user-form').reset(); },
+        async loadUsers(){
+           const res=await fetch('/api/users/list');
+           const d=await res.json();
+           const rows=d.users.map(u=>\`<tr><td>\${escapeHtml(u.name)}</td><td><span class="badge bg-blue">\${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></td></tr>\`).join('');
+           document.getElementById('tbl-users').innerHTML=rows;
+           document.getElementById('list-users').innerHTML=d.users.map(u=>\`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(u.name)}</div><div class="m-sub">\${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></div>\`).join('');
+        },
+        async saveUser(e){
+           e.preventDefault();
+           const fd=new FormData(e.target);
+           const data=Object.fromEntries(fd);
+           data.permissions=Array.from(document.querySelectorAll('input[name="permissions"]:checked')).map(c=>c.value);
+           await fetch(data.id?'/api/users/update':'/api/users/add',{method:'POST',body:JSON.stringify(data)});
+           document.getElementById('modal-user').style.display='none';
+           this.loadUsers();
+        },
+        async deleteUser(id){ if(confirm('Remove user?')) { await fetch('/api/users/delete',{method:'POST',body:JSON.stringify({id})}); this.loadUsers(); } },
+        togglePerms(role){ document.getElementById('u-perms-container').style.display=role==='admin'?'none':'block'; },
+        
+        renderCharts(){
+          if(typeof Chart==='undefined' || !document.getElementById('chart-dues')) return;
+          const ctx=document.getElementById('chart-dues').getContext('2d');
+          if(window.myChart) window.myChart.destroy();
+          const mem=this.data.members||[];
+          window.myChart=new Chart(ctx,{
+            type:'bar',
+            data:{
+               labels:['Paid', '1 Mo', '2+ Mo', 'Inactive'],
+               datasets:[{
+                  data:[
+                     mem.filter(m=>(!m.dueMonths||m.dueMonths<=0)&&m.status!=='inactive').length,
+                     mem.filter(m=>m.dueMonths===1).length,
+                     mem.filter(m=>m.dueMonths>=2&&m.status!=='inactive').length,
+                     mem.filter(m=>m.status==='inactive').length
+                  ],
+                  backgroundColor:['#10b981', '#f59e0b', '#ef4444', '#cbd5e1'],
+                  borderRadius:6
+               }]
+            },
+            options:{
+               responsive:true, maintainAspectRatio:false,
+               plugins:{legend:{display:false}},
+               scales:{y:{beginAtZero:true, grid:{display:false}}, x:{grid:{display:false}}}
+            }
+          });
+        },
+        
+        // Modals
         modals:{
-          checkin:{open:()=>{document.getElementById('modal-checkin').style.display='flex';document.getElementById('checkin-id').focus();},close:()=>{document.getElementById('modal-checkin').style.display='none';document.getElementById('checkin-res').innerText='';}},
-          quickPay:{open:()=>{document.getElementById('modal-quick-pay').style.display='flex';document.getElementById('qp-search').focus();},close:()=>document.getElementById('modal-quick-pay').style.display='none'},
-          add:{open:()=>{app.switchAddTab('new');app.updateAddMemberFees();document.getElementById('mig-legacy-dues').value='0';document.getElementById('mig-init-pay').value='0';document.getElementById('modal-add').style.display='flex';},close:()=>document.getElementById('modal-add').style.display='none'},
-          pay:{open:(id)=>{app.payingMemberId=id;const m=app.data.members.find(x=>x.id===id);const price=app.getPlanPrice(m.plan);document.getElementById('pay-id').value=id;document.getElementById('pay-name').innerText=m?m.name:'';document.getElementById('pay-amount').value='';document.getElementById('pay-status-warning').style.display='none';document.getElementById('pay-renewal-section').style.display='none';document.getElementById('pay-standard-label').style.display='block';const btn=document.getElementById('pay-submit-btn');btn.innerText='Confirm Payment';btn.disabled=false;document.getElementById('pay-amount').required=true;app.isRenewalMode=false;if(m.status==='inactive'){app.isRenewalMode=true;document.getElementById('pay-status-warning').style.display='block';document.getElementById('pay-renewal-section').style.display='block';document.getElementById('pay-standard-label').style.display='none';document.getElementById('pay-ren-fee').value=app.data.settings.renewalFee||0;btn.innerText='Re-admit & Pay';}document.getElementById('pay-plan-price').innerText=price;document.getElementById('pay-wallet-bal').innerText=m.balance||0;document.getElementById('modal-pay').style.display='flex';},close:()=>{app.payingMemberId=null;document.getElementById('modal-pay').style.display='none'}},
-          user:{close:()=>document.getElementById('modal-user').style.display='none'}
+           checkin:{open:()=>{document.getElementById('modal-checkin').style.display='flex';document.getElementById('checkin-id').focus();},close:()=>{document.getElementById('modal-checkin').style.display='none';document.getElementById('checkin-res').innerHTML='';}},
+           quickPay:{open:()=>{document.getElementById('modal-quick-pay').style.display='flex';document.getElementById('qp-search').focus();},close:()=>document.getElementById('modal-quick-pay').style.display='none'},
+           add:{open:()=>{app.switchAddTab('new');document.getElementById('modal-add').style.display='flex';},close:()=>document.getElementById('modal-add').style.display='none'},
+           pay:{open:(id)=>{
+              app.payingMemberId=id;
+              const m=app.data.members.find(x=>x.id===id);
+              document.getElementById('pay-id').value=id;
+              document.getElementById('pay-name').innerText=m?m.name:'Member';
+              document.getElementById('pay-amount').value='';
+              document.getElementById('pay-status-warning').style.display='none';
+              document.getElementById('pay-renewal-section').style.display='none';
+              document.getElementById('pay-standard-label').innerText='Amount';
+              const btn=document.getElementById('pay-submit-btn');
+              btn.innerText='Confirm';
+              app.isRenewalMode=false;
+              if(m && m.status==='inactive'){
+                 app.isRenewalMode=true;
+                 document.getElementById('pay-status-warning').style.display='block';
+                 document.getElementById('pay-renewal-section').style.display='block';
+                 document.getElementById('pay-standard-label').innerText='Plus Plan Payment (Optional)';
+                 document.getElementById('pay-ren-fee').value=app.data.settings.renewalFee||0;
+                 btn.innerText='Re-admit';
+              }
+              const planPrice=app.getPlanPrice(m?m.plan:'');
+              document.getElementById('pay-plan-price').innerText=planPrice;
+              document.getElementById('pay-wallet-bal').innerText=m?m.balance:0;
+              document.getElementById('modal-pay').style.display='flex';
+           }, close:()=>{document.getElementById('modal-pay').style.display='none';}},
+           user:{close:()=>document.getElementById('modal-user').style.display='none'}
+        },
+        
+        openPaymentHistory(){
+           document.getElementById('modal-payment-history').style.display='flex';
+           this.renderTransactionHistory();
+        },
+        async renderTransactionHistory(){
+           const date=document.getElementById('trans-date').value;
+           document.getElementById('tbl-transaction-history').innerHTML='<tr><td colspan="3" class="text-center text-muted">Loading...</td></tr>';
+           const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({date})});
+           const d=await res.json();
+           const cur=this.data.settings.currency||'';
+           const rows=(d.transactions||[]).map(t=>\`<tr><td>\${formatTime(t.date)}</td><td>\${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">\${cur} \${t.amount}</td></tr>\`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
+           document.getElementById('tbl-transaction-history').innerHTML=rows;
         }
       };
-      
-      // Close overlays on Escape
-      document.addEventListener('keydown', function(event) { if (event.key === "Escape") { document.querySelectorAll('.modal-backdrop').forEach(el=>el.style.display='none'); }});
+
+      // Close modals on Escape
+      document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal-backdrop').forEach(el=>el.style.display='none')});
 
       app.init();
     </script>
