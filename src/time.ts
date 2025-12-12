@@ -1,3 +1,4 @@
+// STRICT GMT+6 Timezone Handling for Bangladesh
 export type SystemClock = {
   timezone: string;
   simulated: boolean;
@@ -6,39 +7,49 @@ export type SystemClock = {
   today: string;
 };
 
-export const DEFAULT_TIMEZONE = "Asia/Dhaka"; // GMT+6
+export const DEFAULT_TIMEZONE = "Asia/Dhaka";
+export const BD_OFFSET_HOURS = 6;
 
+// Get current time in BD as a Date object (technically UTC-shifted)
+// Use this to EXTRACT year/month/date. Do not use this to save timestamps.
+export function getBdDate(date: Date = new Date()): Date {
+  const utc = date.getTime() + (date.getTimezoneOffset() * 60000);
+  return new Date(utc + (3600000 * BD_OFFSET_HOURS));
+}
+
+export function zonedNow(timezone: string = DEFAULT_TIMEZONE): Date {
+  // Returns a standard Date object representing "Now"
+  return new Date();
+}
+
+// Returns YYYY-MM-DD string in BD Time
+export function formatDateOnly(date: Date): string {
+  const bd = getBdDate(date);
+  const y = bd.getFullYear();
+  const m = String(bd.getMonth() + 1).padStart(2, '0');
+  const d = String(bd.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Returns YYYY-MM string for grouping attendance
+export function formatMonthKey(date: Date): string {
+  const bd = getBdDate(date);
+  return `${bd.getFullYear()}-${bd.getMonth()}`; // 0-indexed month
+}
+
+// Returns the END of the given month (Last millisecond) in BD time, converted back to UTC ISO
 export function monthEnd(date: Date): Date {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return new Date(); // Fallback safety
-  d.setMonth(d.getMonth() + 1, 0);
-  d.setHours(23, 59, 59, 999);
-  return d;
+  const bd = getBdDate(date);
+  // Set to next month's 0th day (which is this month's last day)
+  const endBd = new Date(bd.getFullYear(), bd.getMonth() + 1, 0, 23, 59, 59, 999);
+  // Convert back to real UTC for storage
+  return new Date(endBd.getTime() - (3600000 * BD_OFFSET_HOURS));
 }
 
+// Get the 1st day of the NEXT month
 export function nextMonthStart(date: Date): Date {
-  const d = new Date(date.getFullYear(), date.getMonth() + 1, 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-export function zonedNow(timezone: string): Date {
-  try {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: timezone }));
-  } catch (e) {
-    return new Date(); // Fallback to UTC if timezone is invalid
-  }
-}
-
-export function formatDateOnly(date: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(date);
-  } catch (e) {
-    return date.toISOString().split("T")[0];
-  }
+  const bd = getBdDate(date);
+  // Set to next month 1st date
+  const nextBd = new Date(bd.getFullYear(), bd.getMonth() + 1, 1, 0, 0, 0, 0);
+  return new Date(nextBd.getTime() - (3600000 * BD_OFFSET_HOURS));
 }
