@@ -61,11 +61,9 @@ export function renderLogin(gymName: string) {
 export function renderDashboard(user: any, gymName: string) {
   const safeUserName = escapeHtml(user.name || "User");
   const safeRole = escapeHtml((user.role || "staff").toUpperCase());
-  // Ensure permissions is a valid JSON array string, or default to empty array
   let safePerms = '[]';
   try {
     if (user.permissions && typeof user.permissions === 'string') {
-        // Validate it's parseable
         JSON.parse(user.permissions);
         safePerms = user.permissions;
     }
@@ -76,13 +74,9 @@ export function renderDashboard(user: any, gymName: string) {
   const html = `${baseHead("Dashboard")}
   <body>
     <div id="toast-container"></div>
-    
-    <!-- Floating Action Button (Mobile Only) -->
     <div class="fab" onclick="app.modals.checkin.open()">${getIcon('zap')}</div>
 
     <div class="app-layout">
-      
-      <!-- DESKTOP SIDEBAR -->
       <aside class="sidebar">
         <div class="sidebar-header">
           <div class="brand-icon">💪</div>
@@ -91,9 +85,7 @@ export function renderDashboard(user: any, gymName: string) {
              <div style="font-size:11px;color:var(--text-sec);">Management</div>
           </div>
         </div>
-        
         <div class="nav" id="desktop-nav"></div>
-        
         <div style="padding:16px;margin-top:auto;">
           <div style="background:var(--bg-body);padding:12px;border-radius:12px;border:1px solid var(--border);">
             <div style="font-weight:600;font-size:13px;">${safeUserName}</div>
@@ -103,24 +95,18 @@ export function renderDashboard(user: any, gymName: string) {
         </div>
       </aside>
 
-      <!-- MOBILE BOTTOM NAV -->
       <nav class="bottom-nav" id="mobile-nav"></nav>
 
-      <!-- MAIN CONTENT AREA -->
       <main class="main-content">
-        
-        <!-- Top Bar -->
         <div class="flex-between" style="margin-bottom:24px;">
            <div>
              <h2 id="page-title">Dashboard</h2>
              <div class="text-muted text-xs" id="page-subtitle">Welcome back!</div>
            </div>
-           <!-- Quick Actions (Desktop) -->
            <div class="hidden" style="display:none;" id="desktop-actions">
               <button class="btn btn-primary" onclick="app.modals.checkin.open()">${getIcon('zap')} Check In</button>
               <button class="btn btn-outline" onclick="app.modals.quickPay.open()">${getIcon('creditCard')} Pay</button>
            </div>
-           <!-- Logout on Mobile Header -->
            <div style="display:block; @media(min-width:769px){display:none;}">
               <a href="/api/logout" style="color:var(--text-sec);">${getIcon('logout')}</a>
            </div>
@@ -146,7 +132,6 @@ export function renderDashboard(user: any, gymName: string) {
                <div class="stat-label">Due Members</div>
              </div>
            </div>
-           
            <div class="flex-between" style="align-items:start; flex-wrap:wrap; gap:20px;">
               <div class="card" style="flex:2; min-width:300px;">
                  <h4 style="margin-bottom:16px;">Dues Overview</h4>
@@ -175,8 +160,6 @@ export function renderDashboard(user: any, gymName: string) {
               </select>
               <button class="btn btn-primary" onclick="app.modals.add.open()">${getIcon('plus')} Add</button>
            </div>
-           
-           <!-- Desktop Table -->
            <div class="card desktop-table" style="padding:0; overflow:hidden;">
               <div class="table-responsive">
                 <table>
@@ -185,7 +168,6 @@ export function renderDashboard(user: any, gymName: string) {
                 </table>
               </div>
            </div>
-           <!-- Mobile Cards -->
            <div class="mobile-list" id="list-members"></div>
         </div>
 
@@ -229,7 +211,6 @@ export function renderDashboard(user: any, gymName: string) {
                  <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">${getIcon('print')} Print</button>
               </div>
            </div>
-
            <div class="card">
               <div class="flex-between" style="margin-bottom:16px;">
                  <h4 class="text-muted" style="font-size:12px; text-transform:uppercase;">Collection List</h4>
@@ -243,7 +224,6 @@ export function renderDashboard(user: any, gymName: string) {
                  <div style="position:absolute; left:12px; top:11px; opacity:0.4; width:16px;">${getIcon('search')}</div>
                  <div id="pay-search-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid var(--border); border-radius:8px; box-shadow:var(--shadow-lg); z-index:20; max-height:200px; overflow-y:auto;"></div>
               </div>
-              
               <div class="desktop-table">
                  <table><thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Due / Adv</th><th>Amount</th><th style="text-align:right">Action</th></tr></thead><tbody id="tbl-payment-list"></tbody></table>
               </div>
@@ -265,13 +245,11 @@ export function renderDashboard(user: any, gymName: string) {
                    <div class="w-full"><label>Inactive after (Months)</label><input name="inactiveAfterMonths" type="number" min="1" max="36" required></div>
                 </div>
                 <div class="w-full"><label>Renewal Fee</label><input name="renewalFee" type="number" min="0" required></div>
-                
                 <div style="background:var(--bg-body); padding:16px; border-radius:12px; margin:20px 0;">
                     <label style="color:var(--primary);">Membership Plans</label>
                     <div id="plans-container" style="margin-bottom:12px;"></div>
                     <button type="button" class="btn btn-outline w-full btn-sm" onclick="app.addPlanRow()">+ Add Plan</button>
                 </div>
-                
                 <div style="border-top:1px solid var(--border); padding-top:20px; margin-top:20px;">
                   <button type="submit" class="btn btn-primary" id="btn-save-set">Save Changes</button>
                   <button onclick="app.resetDB()" class="btn btn-danger" type="button" id="btn-reset-db" style="float:right;">Factory Reset</button>
@@ -293,13 +271,11 @@ export function renderDashboard(user: any, gymName: string) {
                <div class="mobile-list" id="list-users"></div>
            </div>
         </div>
-
       </main>
     </div>
 
     <!-- MODALS -->
     
-    <!-- CHECK-IN MODAL -->
     <div id="modal-checkin" class="modal-backdrop">
       <div class="modal-content text-center">
         <h3 style="margin-bottom:16px;">Daily Check-In</h3>
@@ -311,7 +287,6 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
    
-    <!-- QUICK PAY MODAL -->
     <div id="modal-quick-pay" class="modal-backdrop">
       <div class="modal-content text-center">
         <h3 style="margin-bottom:16px;">Quick Pay</h3>
@@ -321,16 +296,13 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- ADD MEMBER MODAL -->
     <div id="modal-add" class="modal-backdrop">
       <div class="modal-content">
         <h3 style="margin-bottom:20px;">New Member</h3>
-        
         <div style="display:flex; background:var(--bg-body); padding:4px; border-radius:8px; margin-bottom:20px;">
            <div id="tab-new" style="flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px; background:white; shadow:var(--shadow-sm);" onclick="app.switchAddTab('new')">New</div>
            <div id="tab-mig" style="flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; font-weight:600; font-size:13px; color:var(--text-sec);" onclick="app.switchAddTab('mig')">Migrate</div>
         </div>
-
         <form onsubmit="app.addMember(event)">
           <input type="hidden" name="migrationMode" id="add-mig-mode" value="false">
           <div class="flex" style="gap:10px;">
@@ -338,7 +310,6 @@ export function renderDashboard(user: any, gymName: string) {
              <div class="w-full"><label>Phone</label><input name="phone" required placeholder="01XXX..."></div>
           </div>
           <label>Plan</label><select name="plan" id="plan-select" onchange="app.updateAddMemberFees()"></select>
-          
           <div style="background:var(--bg-body); padding:16px; border-radius:12px; margin-bottom:20px; border:1px solid var(--border);">
              <div id="sec-new-fees">
                  <div class="flex" style="align-items:flex-end; gap:10px;">
@@ -360,28 +331,22 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- PAY MODAL -->
     <div id="modal-pay" class="modal-backdrop">
       <div class="modal-content">
         <h3 style="margin-bottom:8px;">Receive Payment</h3>
         <p id="pay-name" style="color:var(--primary); margin-bottom:20px; font-weight:700; font-size:16px;"></p>
-        
         <div id="pay-status-warning" style="display:none; background:#fee2e2; color:#b91c1c; padding:12px; border-radius:8px; margin-bottom:16px; font-size:13px; font-weight:600;">⚠️ Inactive. Re-admission required.</div>
-        
         <form onsubmit="app.pay(event)">
           <input type="hidden" name="memberId" id="pay-id">
           <div id="pay-renewal-section" style="display:none; background:var(--bg-body); padding:12px; border-radius:8px; margin-bottom:16px;">
              <label>Renewal Fee</label><input name="renewalFee" id="pay-ren-fee" type="number" readonly style="background:#e2e8f0;">
           </div>
-          
           <label id="pay-standard-label">Amount</label>
           <input name="amount" id="pay-amount" type="number" required placeholder="0.00" style="font-size:20px; font-weight:700; color:var(--primary);">
-          
           <div style="font-size:12px; color:var(--text-sec); margin-top:8px; background:var(--bg-body); padding:12px; border-radius:8px;">
              <div class="flex-between"><span>Plan Price:</span> <span id="pay-plan-price" style="font-weight:700;">-</span></div>
              <div class="flex-between" style="margin-top:4px;"><span>Wallet:</span> <span id="pay-wallet-bal" style="font-weight:700;">0</span></div>
           </div>
-          
           <div class="flex" style="justify-content:flex-end; margin-top:20px;">
             <button type="button" class="btn btn-outline" onclick="app.modals.pay.close()">Cancel</button>
             <button type="submit" class="btn btn-primary" id="pay-submit-btn">Confirm</button>
@@ -390,7 +355,6 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- USER MODAL -->
     <div id="modal-user" class="modal-backdrop">
       <div class="modal-content">
         <h3>User Access</h3>
@@ -420,7 +384,6 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- HISTORY LIST MODAL -->
     <div id="modal-payment-history" class="modal-backdrop">
       <div class="modal-content" style="max-width:500px;">
          <div class="flex-between" style="margin-bottom:16px;">
@@ -436,7 +399,6 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
     
-    <!-- MEMBER HISTORY MODAL -->
     <div id="modal-member-history" class="modal-backdrop">
        <div class="modal-content" style="max-width:400px; text-align:center;">
           <h3 id="mh-title" style="margin-bottom:16px;">History</h3>
@@ -445,12 +407,10 @@ export function renderDashboard(user: any, gymName: string) {
        </div>
     </div>
 
-    <!-- MAIN SCRIPT -->
     <script>
       const currentUser={role:"${safeRole}",permissions:${safePerms}};
       if (!Array.isArray(currentUser.permissions)) currentUser.permissions = [];
       
-      // FIX: Added getIcon function here so it is available in the browser scope
       function getIcon(name) {
         const icons = {
           home: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>',
@@ -472,7 +432,6 @@ export function renderDashboard(user: any, gymName: string) {
         return icons[name] || '';
       }
 
-      // --- ROBUST TIME FORMATTER (Fixes Phone Bug) ---
       function formatTime(iso) {
           if (!iso) return '-';
           try {
@@ -510,14 +469,12 @@ export function renderDashboard(user: any, gymName: string) {
              const res=await fetch('/api/bootstrap');
              if(!res.ok){
                  if(res.status===401) { window.location.href='/'; return; }
-                 // ERROR HANDLING FIX: Try to get JSON error message, else use status text
                  let errMsg = 'Server Error ' + res.status;
                  try { const errJson = await res.json(); if(errJson.error) errMsg = errJson.error; } catch(e){}
                  throw new Error(errMsg);
              }
              this.data=await res.json();
              
-             // Initial Render
              try {
                 this.render();
              } catch(e) { console.error(e); this.toast('Render Error: ' + e.message, 'error'); }
@@ -526,18 +483,15 @@ export function renderDashboard(user: any, gymName: string) {
              
              if(currentUser.role==='admin')this.loadUsers();
              
-             // Restore last view safely
              const last=sessionStorage.getItem('gym_view')||'home';
              this.nav(this.can(last)?last:'home');
              
-             // Setup Desktop Actions
              if(window.innerWidth > 768) {
                const da = document.getElementById('desktop-actions');
                if(da) da.style.display='flex';
              }
           }catch(e){
               console.error(e);
-              // IMPROVED ERROR MESSAGE: Show the actual error instead of generic "Network"
               this.toast('Connection Failed: ' + (e.message || 'Check Server Logs'), 'error');
           }
         },
@@ -551,7 +505,6 @@ export function renderDashboard(user: any, gymName: string) {
           if(v==='users'&&currentUser.role!=='admin')return;
           sessionStorage.setItem('gym_view',v);
           
-          // Render Desktop Nav
           const dNav=document.getElementById('desktop-nav');
           const mNav=document.getElementById('mobile-nav');
           const pages=['home','members','attendance','history','payments','settings'];
@@ -564,19 +517,17 @@ export function renderDashboard(user: any, gymName: string) {
           pages.filter(p=>this.can(p)).forEach(p=>{
              const isActive = p===v ? 'active' : '';
              const icon = getIcon(icons[p]);
-             dHtml+=`<div class="nav-item ${isActive}" onclick="app.nav('${p}')">${icon} ${labels[p]}</div>`;
-             mHtml+=`<div class="b-nav-item ${isActive}" onclick="app.nav('${p}')">${icon} <span>${labels[p]}</span></div>`;
+             dHtml+=\`<div class="nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} \${labels[p]}</div>\`;
+             mHtml+=\`<div class="b-nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} <span>\${labels[p]}</span></div>\`;
           });
           
           if(dNav) dNav.innerHTML=dHtml;
           if(mNav) mNav.innerHTML=mHtml;
 
-          // Hide all views, show current
           document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.add('hidden'));
           const target = document.getElementById('view-'+v);
           if (target) target.classList.remove('hidden');
           
-          // Update Headers
           const titles={home:'Dashboard',members:'Member Database',attendance:'Daily Attendance',history:'System Logs',payments:'Payments & Dues',settings:'Configuration',users:'User Management'};
           const pgTitle = document.getElementById('page-title');
           if(pgTitle) pgTitle.innerText=titles[v] || 'Dashboard';
@@ -601,7 +552,6 @@ export function renderDashboard(user: any, gymName: string) {
           if (!this.data) return;
           const cur=this.data.settings.currency||'';
           
-          // Stats
           if(document.getElementById('stat-active') && this.data.stats){
              document.getElementById('stat-active').innerText=this.data.stats.active;
              document.getElementById('stat-today').innerText=this.data.stats.today;
@@ -610,18 +560,16 @@ export function renderDashboard(user: any, gymName: string) {
              document.getElementById('total-outstanding-amount').innerText=cur+' '+this.data.stats.totalOutstanding;
           }
           
-          // Render Main Tables
           this.renderMembersTable();
           this.renderPaymentsTable();
           
-          // Attendance (Desktop & Mobile)
           const attList = this.data.attendanceToday || [];
           const attRows=attList.map(a=>{
              const time=formatTime(a.check_in_time);
              const badge=a.status==='success'?'<span class="badge bg-green"><span class="badge-dot"></span>IN</span>':'<span class="badge bg-red"><span class="badge-dot"></span>EXP</span>';
              return {
-               row: `<tr><td>${time}</td><td>${escapeHtml(a.name)}</td><td>${badge}</td></tr>`,
-               card: `<div class="m-card"><div class="m-info"><div class="m-title">${escapeHtml(a.name)}</div><div class="m-sub">${time}</div></div>${badge}</div>`
+               row: \`<tr><td>\${time}</td><td>\${escapeHtml(a.name)}</td><td>\${badge}</td></tr>\`,
+               card: \`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${time}</div></div>\${badge}</div>\`
              };
           });
           const tblAtt = document.getElementById('tbl-attendance-today');
@@ -632,7 +580,6 @@ export function renderDashboard(user: any, gymName: string) {
           const listRecent = document.getElementById('list-recent-home');
           if(listRecent) listRecent.innerHTML=attRows.slice(0,5).map(x=>x.card).join('')||'<div class="text-center text-muted">Quiet day so far...</div>';
 
-          // History Log
           this.renderHistoryTable();
         },
         
@@ -657,29 +604,29 @@ export function renderDashboard(user: any, gymName: string) {
               let badge='<span class="badge bg-green"><span class="badge-dot"></span>Active</span>';
               if(m.dueMonths>0) {
                  const dueTxt=m.dueMonthLabels && m.dueMonthLabels.length ? m.dueMonthLabels[0] : (m.dueMonths+' Mo Due');
-                 badge=`<span class="badge bg-amber"><span class="badge-dot"></span>${dueTxt}</span>`;
+                 badge=\`<span class="badge bg-amber"><span class="badge-dot"></span>\${dueTxt}</span>\`;
               }
               if(m.status==='inactive') badge='<span class="badge bg-red"><span class="badge-dot"></span>Inactive</span>';
               
               const date=formatDate(m.expiry_date);
               
-              const actions=`<div style="display:flex;gap:4px;justify-content:flex-end;">
-                  <button class="btn btn-outline btn-sm" onclick="app.showHistory(${m.id})">Log</button>
-                  <button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(${m.id})">Pay</button>
-                  <button class="btn btn-danger btn-sm" onclick="app.del(${m.id})">X</button>
-              </div>`;
+              const actions=\`<div style="display:flex;gap:4px;justify-content:flex-end;">
+                  <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
+                  <button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Pay</button>
+                  <button class="btn btn-danger btn-sm" onclick="app.del(\${m.id})">X</button>
+              </div>\`;
 
               return {
-                 row: `<tr><td>#${m.id}</td><td><div style="font-weight:600;">${escapeHtml(m.name)}</div><div class="text-xs text-muted">${escapeHtml(m.phone)}</div></td><td>${escapeHtml(m.plan)}</td><td>${date}</td><td>${badge}</td><td>${actions}</td></tr>`,
-                 card: `<div class="m-card">
-                    <div class="m-info" onclick="app.modals.pay.open(${m.id})">
-                       <div class="m-title">${escapeHtml(m.name)} <span class="text-muted text-xs">#${m.id}</span></div>
-                       <div class="m-sub">${badge} <span style="margin:0 4px;">•</span> ${date}</div>
+                 row: \`<tr><td>#\${m.id}</td><td><div style="font-weight:600;">\${escapeHtml(m.name)}</div><div class="text-xs text-muted">\${escapeHtml(m.phone)}</div></td><td>\${escapeHtml(m.plan)}</td><td>\${date}</td><td>\${badge}</td><td>\${actions}</td></tr>\`,
+                 card: \`<div class="m-card">
+                    <div class="m-info" onclick="app.modals.pay.open(\${m.id})">
+                       <div class="m-title">\${escapeHtml(m.name)} <span class="text-muted text-xs">#\${m.id}</span></div>
+                       <div class="m-sub">\${badge} <span style="margin:0 4px;">•</span> \${date}</div>
                     </div>
                     <div class="m-actions">
-                       <button class="btn btn-outline btn-sm" onclick="app.showHistory(${m.id})">Log</button>
+                       <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
                     </div>
-                 </div>`
+                 </div>\`
               };
            });
            
@@ -704,20 +651,20 @@ export function renderDashboard(user: any, gymName: string) {
               const displayAmt = dueAmt > 0 ? dueAmt : 0;
               
               let status='<span class="badge bg-green">OK</span>';
-              if(m.dueMonths>0) status=`<span class="badge bg-amber">${m.dueMonths} Mo Due</span>`;
+              if(m.dueMonths>0) status=\`<span class="badge bg-amber">\${m.dueMonths} Mo Due</span>\`;
               if(m.status==='inactive') status='<span class="badge bg-red">Inactive</span>';
               
-              const btn=`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(${m.id})">Collect</button>`;
+              const btn=\`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id})">Collect</button>\`;
               
               return {
-                 row: `<tr><td>#${m.id}</td><td>${escapeHtml(m.name)}</td><td>${status}</td><td>${m.dueMonths>0?m.dueMonths+' Mo':'-'}</td><td style="font-weight:700;">${cur} ${displayAmt}</td><td style="text-align:right">${btn}</td></tr>`,
-                 card: `<div class="m-card">
+                 row: \`<tr><td>#\${m.id}</td><td>\${escapeHtml(m.name)}</td><td>\${status}</td><td>\${m.dueMonths>0?m.dueMonths+' Mo':'-'}</td><td style="font-weight:700;">\${cur} \${displayAmt}</td><td style="text-align:right">\${btn}</td></tr>\`,
+                 card: \`<div class="m-card">
                     <div class="m-info">
-                       <div class="m-title">${escapeHtml(m.name)}</div>
-                       <div class="m-sub">${status} • ${cur} ${displayAmt}</div>
+                       <div class="m-title">\${escapeHtml(m.name)}</div>
+                       <div class="m-sub">\${status} • \${cur} \${displayAmt}</div>
                     </div>
-                    ${btn}
-                 </div>`
+                    \${btn}
+                 </div>\`
               };
            });
            const tbl = document.getElementById('tbl-payment-list');
@@ -730,8 +677,8 @@ export function renderDashboard(user: any, gymName: string) {
            const list=data||this.data.attendanceHistory||[];
            const rows=list.map(a=>{
              return {
-               row: `<tr><td>${formatDate(a.check_in_time)}</td><td>${formatTime(a.check_in_time)}</td><td>${escapeHtml(a.name)}</td></tr>`,
-               card: `<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">${escapeHtml(a.name)}</div><div class="m-sub">${formatDate(a.check_in_time)} • ${formatTime(a.check_in_time)}</div></div></div>`
+               row: \`<tr><td>\${formatDate(a.check_in_time)}</td><td>\${formatTime(a.check_in_time)}</td><td>\${escapeHtml(a.name)}</td></tr>\`,
+               card: \`<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${formatDate(a.check_in_time)} • \${formatTime(a.check_in_time)}</div></div></div>\`
              };
            });
            const tbl=document.getElementById('tbl-attendance-history');
@@ -751,11 +698,11 @@ export function renderDashboard(user: any, gymName: string) {
            const res=await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});
            const d=await res.json();
            const visits=d.history.length;
-           const html=`<div style="text-align:center;margin-bottom:20px;">
-              <div style="font-size:32px;font-weight:800;color:var(--primary);">${visits}</div>
+           const html=\`<div style="text-align:center;margin-bottom:20px;">
+              <div style="font-size:32px;font-weight:800;color:var(--primary);">\${visits}</div>
               <div class="text-muted text-xs">Total Visits</div>
            </div>
-           <div class="mobile-list">` + (d.history.map(h=>`<div class="m-card" style="padding:8px 12px;"><div class="m-sub">${formatDate(h.check_in_time)}</div><div style="font-weight:600;">${formatTime(h.check_in_time)}</div></div>`).join('')) + '</div>';
+           <div class="mobile-list">\` + (d.history.map(h=>\`<div class="m-card" style="padding:8px 12px;"><div class="m-sub">\${formatDate(h.check_in_time)}</div><div style="font-weight:600;">\${formatTime(h.check_in_time)}</div></div>\`).join('')) + '</div>';
            document.getElementById('calendar-container').innerHTML=html;
            document.getElementById('modal-member-history').style.display='flex';
         },
@@ -770,11 +717,11 @@ export function renderDashboard(user: any, gymName: string) {
               const res=await fetch('/api/checkin',{method:'POST',body:JSON.stringify({memberId:id})});
               const d=await res.json();
               if(d.success){
-                 document.getElementById('checkin-res').innerHTML=`<span style="color:var(--success)">✅ Welcome, ${d.name}!</span>`;
+                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--success)">✅ Welcome, \${d.name}!</span>\`;
                  this.toast('Welcome '+d.name);
                  setTimeout(()=>window.location.reload(),800);
               } else {
-                 document.getElementById('checkin-res').innerHTML=`<span style="color:var(--danger)">⛔ ${d.error}</span>`;
+                 document.getElementById('checkin-res').innerHTML=\`<span style="color:var(--danger)">⛔ \${d.error}</span>\`;
                  btn.disabled=false; btn.innerText="Check In";
               }
            } catch(e) { btn.disabled=false; }
@@ -816,7 +763,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('checkin-suggestions');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>`<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;" onclick="document.getElementById('checkin-id').value='${m.id}';document.getElementById('checkin-suggestions').style.display='none';"><b>#${m.id} ${escapeHtml(m.name)}</b></div>`).join('');
+              div.innerHTML=res.map(m=>\`<div style="padding:10px;border-bottom:1px solid #eee;cursor:pointer;" onclick="document.getElementById('checkin-id').value='\${m.id}';document.getElementById('checkin-suggestions').style.display='none';"><b>#\${m.id} \${escapeHtml(m.name)}</b></div>\`).join('');
            });
         },
         
@@ -824,7 +771,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('qp-results');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.quickPay.close();app.modals.pay.open(${m.id})"><b>#${m.id} ${escapeHtml(m.name)}</b> <span class="text-xs text-muted">(${m.status})</span></div>`).join('');
+              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.quickPay.close();app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="text-xs text-muted">(\${m.status})</span></div>\`).join('');
            });
         },
         
@@ -832,7 +779,7 @@ export function renderDashboard(user: any, gymName: string) {
            this.doSearch(e.target.value, (res)=>{
               const div=document.getElementById('pay-search-results');
               div.style.display=res.length?'block':'none';
-              div.innerHTML=res.map(m=>`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.pay.open(${m.id})"><b>#${m.id} ${escapeHtml(m.name)}</b> <span class="badge bg-amber">${m.dueMonths||0} Mo Due</span></div>`).join('');
+              div.innerHTML=res.map(m=>\`<div style="padding:12px;border-bottom:1px solid #eee;cursor:pointer;" onclick="app.modals.pay.open(\${m.id})"><b>#\${m.id} \${escapeHtml(m.name)}</b> <span class="badge bg-amber">\${m.dueMonths||0} Mo Due</span></div>\`).join('');
            });
         },
         
@@ -868,18 +815,15 @@ export function renderDashboard(user: any, gymName: string) {
            const s=this.data.settings;
            const form=document.getElementById('settings-form');
            if(!form) return;
-           // Fill form fields
            const curEl = form.querySelector('[name="currency"]'); if(curEl) curEl.value=s.currency;
            const langEl = form.querySelector('[name="lang"]'); if(langEl) langEl.value=s.lang;
            const attEl = form.querySelector('[name="attendanceThreshold"]'); if(attEl) attEl.value=s.attendanceThreshold;
            const inactEl = form.querySelector('[name="inactiveAfterMonths"]'); if(inactEl) inactEl.value=s.inactiveAfterMonths;
            const renEl = form.querySelector('[name="renewalFee"]'); if(renEl) renEl.value=s.renewalFee;
-           // Render plans
            const container=document.getElementById('plans-container');
-           if(container) container.innerHTML=s.membershipPlans.map((p,i)=>`<div class="flex plan-row" id="p-${i}"><input placeholder="Name" value="${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>`).join('');
+           if(container) container.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="flex plan-row" id="p-\${i}"><input placeholder="Name" value="\${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="\${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="\${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>\`).join('');
            
-           // Fill plan select dropdowns elsewhere
-           const opts=s.membershipPlans.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+           const opts=s.membershipPlans.map(p=>\`<option value="\${escapeHtml(p.name)}">\${escapeHtml(p.name)}</option>\`).join('');
            const sel=document.getElementById('plan-select');
            if(sel) sel.innerHTML=opts;
         },
@@ -887,7 +831,7 @@ export function renderDashboard(user: any, gymName: string) {
         addPlanRow(){
            const div=document.createElement('div');
            div.className='flex plan-row';
-           div.innerHTML=`<input placeholder="Name" class="p-name"><input type="number" placeholder="Price" class="p-price"><input type="number" placeholder="Adm.Fee" class="p-adm" value="0"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>`;
+           div.innerHTML=\`<input placeholder="Name" class="p-name"><input type="number" placeholder="Price" class="p-price"><input type="number" placeholder="Adm.Fee" class="p-adm" value="0"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button>\`;
            document.getElementById('plans-container').appendChild(div);
         },
         
@@ -915,9 +859,9 @@ export function renderDashboard(user: any, gymName: string) {
         async loadUsers(){
            const res=await fetch('/api/users/list');
            const d=await res.json();
-           const rows=d.users.map(u=>`<tr><td>${escapeHtml(u.name)}</td><td><span class="badge bg-blue">${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(${u.id})">X</button></td></tr>`).join('');
+           const rows=d.users.map(u=>\`<tr><td>\${escapeHtml(u.name)}</td><td><span class="badge bg-blue">\${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></td></tr>\`).join('');
            document.getElementById('tbl-users').innerHTML=rows;
-           document.getElementById('list-users').innerHTML=d.users.map(u=>`<div class="m-card"><div class="m-info"><div class="m-title">${escapeHtml(u.name)}</div><div class="m-sub">${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(${u.id})">X</button></div>`).join('');
+           document.getElementById('list-users').innerHTML=d.users.map(u=>\`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(u.name)}</div><div class="m-sub">\${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></div>\`).join('');
         },
         async saveUser(e){
            e.preventDefault();
@@ -959,7 +903,6 @@ export function renderDashboard(user: any, gymName: string) {
           });
         },
         
-        // Modals
         modals:{
            checkin:{open:()=>{document.getElementById('modal-checkin').style.display='flex';document.getElementById('checkin-id').focus();},close:()=>{document.getElementById('modal-checkin').style.display='none';document.getElementById('checkin-res').innerHTML='';}},
            quickPay:{open:()=>{document.getElementById('modal-quick-pay').style.display='flex';document.getElementById('qp-search').focus();},close:()=>document.getElementById('modal-quick-pay').style.display='none'},
@@ -1004,12 +947,11 @@ export function renderDashboard(user: any, gymName: string) {
            const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({date})});
            const d=await res.json();
            const cur=(this.data && this.data.settings && this.data.settings.currency)||'';
-           const rows=(d.transactions||[]).map(t=>`<tr><td>${formatTime(t.date)}</td><td>${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">${cur} ${t.amount}</td></tr>`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
+           const rows=(d.transactions||[]).map(t=>\`<tr><td>\${formatTime(t.date)}</td><td>\${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">\${cur} \${t.amount}</td></tr>\`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
            if(tbl) tbl.innerHTML=rows;
         }
       };
 
-      // Close modals on Escape
       document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.modal-backdrop').forEach(el=>el.style.display='none')});
 
       app.init();
