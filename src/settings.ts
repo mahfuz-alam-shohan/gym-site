@@ -1,5 +1,5 @@
 import { Env } from "./env";
-import { DEFAULT_TIMEZONE, SystemClock, formatDateOnly, zonedNow } from "./time";
+import { DEFAULT_TIMEZONE, zonedNow, formatDateOnly } from "./time";
 
 export async function loadSettings(env: Env): Promise<{
   configMap: Record<string, string>;
@@ -9,7 +9,7 @@ export async function loadSettings(env: Env): Promise<{
   currency: string;
   lang: string;
   membershipPlans: any[];
-  clock: SystemClock;
+  clock: any;
 }> {
   const configRows = await env.DB.prepare("SELECT key, value FROM config").all<any>();
   const configMap: Record<string, string> = {};
@@ -35,12 +35,12 @@ export async function loadSettings(env: Env): Promise<{
     }
   }
 
-  const clock: SystemClock = {
+  const clock = {
     timezone,
     simulated,
     simulatedTime: simulated ? clockNow.toISOString() : null,
     now: clockNow,
-    today: formatDateOnly(clockNow, timezone),
+    today: formatDateOnly(clockNow),
   };
 
   let membershipPlans: any[] = [];
