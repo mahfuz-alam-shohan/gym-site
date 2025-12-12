@@ -486,7 +486,13 @@ export function renderDashboard(user: any, gymName: string) {
         async init(){
           try{
              const res=await fetch('/api/bootstrap');
-             if(!res.ok){if(res.status===401)window.location.href='/';return;}
+             if(!res.ok){
+                 if(res.status===401) { window.location.href='/'; return; }
+                 // ERROR HANDLING FIX: Try to get JSON error message, else use status text
+                 let errMsg = 'Server Error ' + res.status;
+                 try { const errJson = await res.json(); if(errJson.error) errMsg = errJson.error; } catch(e){}
+                 throw new Error(errMsg);
+             }
              this.data=await res.json();
              
              // Initial Render
@@ -507,7 +513,11 @@ export function renderDashboard(user: any, gymName: string) {
                const da = document.getElementById('desktop-actions');
                if(da) da.style.display='flex';
              }
-          }catch(e){console.error(e);this.toast('Failed to load data (Network)','error');}
+          }catch(e){
+              console.error(e);
+              // IMPROVED ERROR MESSAGE: Show the actual error instead of generic "Network"
+              this.toast('Connection Failed: ' + (e.message || 'Check Server Logs'), 'error');
+          }
         },
         
         can(perm){
