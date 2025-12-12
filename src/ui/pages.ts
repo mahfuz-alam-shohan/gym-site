@@ -59,9 +59,18 @@ export function renderLogin(gymName: string) {
 // --- MAIN DASHBOARD ---
 
 export function renderDashboard(user: any, gymName: string) {
-  const safeUserName = escapeHtml(user.name);
-  const safeRole = escapeHtml(user.role.toUpperCase());
-  const safePerms = user.permissions || '[]'; 
+  const safeUserName = escapeHtml(user.name || "User");
+  const safeRole = escapeHtml((user.role || "staff").toUpperCase());
+  // Ensure permissions is a valid JSON array string, or default to empty array
+  let safePerms = '[]';
+  try {
+    if (user.permissions && typeof user.permissions === 'string') {
+        // Validate it's parseable
+        JSON.parse(user.permissions);
+        safePerms = user.permissions;
+    }
+  } catch (e) { safePerms = '[]'; }
+  
   const safeGymName = escapeHtml(gymName || "Gym OS");
 
   const html = `${baseHead("Dashboard")}
@@ -439,20 +448,26 @@ export function renderDashboard(user: any, gymName: string) {
     <!-- MAIN SCRIPT -->
     <script>
       const currentUser={role:"${safeRole}",permissions:${safePerms}};
+      if (!Array.isArray(currentUser.permissions)) currentUser.permissions = [];
       
       // --- ROBUST TIME FORMATTER (Fixes Phone Bug) ---
       function formatTime(iso) {
           if (!iso) return '-';
           try {
-             // Force standard readable time format without relying on 'split'
-             return new Date(iso).toLocaleTimeString('en-US', {
+             const d = new Date(iso);
+             if (isNaN(d.getTime())) return '-';
+             return d.toLocaleTimeString('en-US', {
                hour: '2-digit', minute: '2-digit', hour12: true
              });
           } catch(e) { return '-'; }
       }
       function formatDate(iso) {
           if (!iso) return '-';
-          return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          try {
+             const d = new Date(iso);
+             if (isNaN(d.getTime())) return '-';
+             return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          } catch (e) { return '-'; }
       }
       function escapeHtml(text){if(!text)return"";return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
 
@@ -473,21 +488,32 @@ export function renderDashboard(user: any, gymName: string) {
              const res=await fetch('/api/bootstrap');
              if(!res.ok){if(res.status===401)window.location.href='/';return;}
              this.data=await res.json();
-             this.render();
+             
+             // Initial Render
+             try {
+                this.render();
+             } catch(e) { console.error(e); this.toast('Render Error: ' + e.message, 'error'); }
+
              this.applySettingsUI();
+             
              if(currentUser.role==='admin')this.loadUsers();
-             // Restore last view
+             
+             // Restore last view safely
              const last=sessionStorage.getItem('gym_view')||'home';
              this.nav(this.can(last)?last:'home');
              
              // Setup Desktop Actions
              if(window.innerWidth > 768) {
-               document.getElementById('desktop-actions').style.display='flex';
+               const da = document.getElementById('desktop-actions');
+               if(da) da.style.display='flex';
              }
-          }catch(e){console.error(e);this.toast('Failed to load data','error');}
+          }catch(e){console.error(e);this.toast('Failed to load data (Network)','error');}
         },
         
-        can(perm){return currentUser.role==='admin'||currentUser.permissions.includes(perm);},
+        can(perm){
+           if (!currentUser.permissions || !Array.isArray(currentUser.permissions)) return false;
+           return currentUser.role==='admin'||currentUser.permissions.includes(perm);
+        },
         
         nav(v){
           if(v==='users'&&currentUser.role!=='admin')return;
@@ -510,28 +536,41 @@ export function renderDashboard(user: any, gymName: string) {
              mHtml+=\`<div class="b-nav-item \${isActive}" onclick="app.nav('\${p}')">\${icon} <span>\${labels[p]}</span></div>\`;
           });
           
-          dNav.innerHTML=dHtml;
-          mNav.innerHTML=mHtml;
+          if(dNav) dNav.innerHTML=dHtml;
+          if(mNav) mNav.innerHTML=mHtml;
 
           // Hide all views, show current
           document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.add('hidden'));
-          document.getElementById('view-'+v).classList.remove('hidden');
+          const target = document.getElementById('view-'+v);
+          if (target) target.classList.remove('hidden');
           
           // Update Headers
           const titles={home:'Dashboard',members:'Member Database',attendance:'Daily Attendance',history:'System Logs',payments:'Payments & Dues',settings:'Configuration',users:'User Management'};
-          document.getElementById('page-title').innerText=titles[v];
-          document.getElementById('page-subtitle').innerText=v==='home'?'Overview & Stats':labels[v];
+          const pgTitle = document.getElementById('page-title');
+          if(pgTitle) pgTitle.innerText=titles[v] || 'Dashboard';
+          const pgSub = document.getElementById('page-subtitle');
+          if(pgSub) pgSub.innerText=v==='home'?'Overview & Stats':(labels[v]||'');
           
           if(v==='home') this.renderCharts();
         },
         
-        getPlanPrice(planName){const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);return p?Number(p.price):0;},
-        getPlanAdmFee(planName){const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);return p?Number(p.admissionFee||0):0;},
+        getPlanPrice(planName){
+            if (!this.data || !this.data.settings) return 0;
+            const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);
+            return p?Number(p.price):0;
+        },
+        getPlanAdmFee(planName){
+            if (!this.data || !this.data.settings) return 0;
+            const p=(this.data.settings.membershipPlans||[]).find(x=>x.name===planName);
+            return p?Number(p.admissionFee||0):0;
+        },
 
         render(){
+          if (!this.data) return;
           const cur=this.data.settings.currency||'';
+          
           // Stats
-          if(document.getElementById('stat-active')){
+          if(document.getElementById('stat-active') && this.data.stats){
              document.getElementById('stat-active').innerText=this.data.stats.active;
              document.getElementById('stat-today').innerText=this.data.stats.today;
              document.getElementById('stat-rev').innerText=cur+' '+this.data.stats.revenue;
@@ -544,7 +583,8 @@ export function renderDashboard(user: any, gymName: string) {
           this.renderPaymentsTable();
           
           // Attendance (Desktop & Mobile)
-          const attRows=(this.data.attendanceToday||[]).map(a=>{
+          const attList = this.data.attendanceToday || [];
+          const attRows=attList.map(a=>{
              const time=formatTime(a.check_in_time);
              const badge=a.status==='success'?'<span class="badge bg-green"><span class="badge-dot"></span>IN</span>':'<span class="badge bg-red"><span class="badge-dot"></span>EXP</span>';
              return {
@@ -552,17 +592,26 @@ export function renderDashboard(user: any, gymName: string) {
                card: \`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${time}</div></div>\${badge}</div>\`
              };
           });
-          document.getElementById('tbl-attendance-today').innerHTML=attRows.map(x=>x.row).join('')||'<tr><td colspan="3" class="text-center text-muted">No check-ins today</td></tr>';
-          document.getElementById('list-attendance-today').innerHTML=attRows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No check-ins today</div>';
-          document.getElementById('list-recent-home').innerHTML=attRows.slice(0,5).map(x=>x.card).join('')||'<div class="text-center text-muted">Quiet day so far...</div>';
+          const tblAtt = document.getElementById('tbl-attendance-today');
+          if(tblAtt) tblAtt.innerHTML=attRows.map(x=>x.row).join('')||'<tr><td colspan="3" class="text-center text-muted">No check-ins today</td></tr>';
+          const listAtt = document.getElementById('list-attendance-today');
+          if(listAtt) listAtt.innerHTML=attRows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No check-ins today</div>';
+          
+          const listRecent = document.getElementById('list-recent-home');
+          if(listRecent) listRecent.innerHTML=attRows.slice(0,5).map(x=>x.card).join('')||'<div class="text-center text-muted">Quiet day so far...</div>';
 
           // History Log
           this.renderHistoryTable();
         },
         
         renderMembersTable(){
-           const q=document.getElementById('search').value.toLowerCase();
-           const filter=document.getElementById('member-filter').value;
+           const searchEl = document.getElementById('search');
+           const filterEl = document.getElementById('member-filter');
+           if (!searchEl || !filterEl) return;
+
+           const q=searchEl.value.toLowerCase();
+           const filter=filterEl.value;
+           
            let list=(this.data.members||[]).filter(m=>{
               const matchQ=m.name.toLowerCase().includes(q)||m.phone.includes(q)||String(m.id).startsWith(q);
               if(!matchQ)return false;
@@ -574,14 +623,13 @@ export function renderDashboard(user: any, gymName: string) {
            
            const rows=list.map(m=>{
               let badge='<span class="badge bg-green"><span class="badge-dot"></span>Active</span>';
-              let subText=m.plan;
               if(m.dueMonths>0) {
                  const dueTxt=m.dueMonthLabels && m.dueMonthLabels.length ? m.dueMonthLabels[0] : (m.dueMonths+' Mo Due');
                  badge=\`<span class="badge bg-amber"><span class="badge-dot"></span>\${dueTxt}</span>\`;
               }
               if(m.status==='inactive') badge='<span class="badge bg-red"><span class="badge-dot"></span>Inactive</span>';
               
-              const date=new Date(m.expiry_date).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+              const date=formatDate(m.expiry_date);
               
               const actions=\`<div style="display:flex;gap:4px;justify-content:flex-end;">
                   <button class="btn btn-outline btn-sm" onclick="app.showHistory(\${m.id})">Log</button>
@@ -602,12 +650,17 @@ export function renderDashboard(user: any, gymName: string) {
                  </div>\`
               };
            });
-           document.getElementById('tbl-members').innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">No members found</td></tr>';
-           document.getElementById('list-members').innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No members found</div>';
+           
+           const tbl = document.getElementById('tbl-members');
+           if(tbl) tbl.innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">No members found</td></tr>';
+           const lst = document.getElementById('list-members');
+           if(lst) lst.innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">No members found</div>';
         },
 
         renderPaymentsTable(){
-           const filter=document.getElementById('pay-filter').value;
+           const filterEl = document.getElementById('pay-filter');
+           if(!filterEl) return;
+           const filter=filterEl.value;
            const cur=this.data.settings.currency||'';
            let list=(this.data.members||[]).slice();
            if(filter==='due') list=list.filter(m=>m.dueMonths>0);
@@ -635,8 +688,10 @@ export function renderDashboard(user: any, gymName: string) {
                  </div>\`
               };
            });
-           document.getElementById('tbl-payment-list').innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">All paid up!</td></tr>';
-           document.getElementById('list-payment-list').innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">All paid up!</div>';
+           const tbl = document.getElementById('tbl-payment-list');
+           if(tbl) tbl.innerHTML=rows.map(x=>x.row).join('')||'<tr><td colspan="6" class="text-center text-muted p-4">All paid up!</td></tr>';
+           const lst = document.getElementById('list-payment-list');
+           if(lst) lst.innerHTML=rows.map(x=>x.card).join('')||'<div class="text-center text-muted p-4">All paid up!</div>';
         },
         
         renderHistoryTable(data=null){
@@ -647,8 +702,10 @@ export function renderDashboard(user: any, gymName: string) {
                card: \`<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${formatDate(a.check_in_time)} • \${formatTime(a.check_in_time)}</div></div></div>\`
              };
            });
-           document.getElementById('tbl-attendance-history').innerHTML=rows.map(x=>x.row).join('');
-           document.getElementById('list-attendance-history').innerHTML=rows.map(x=>x.card).join('');
+           const tbl=document.getElementById('tbl-attendance-history');
+           if(tbl) tbl.innerHTML=rows.map(x=>x.row).join('');
+           const lst=document.getElementById('list-attendance-history');
+           if(lst) lst.innerHTML=rows.map(x=>x.card).join('');
         },
         
         async applyHistoryFilter(){
@@ -775,18 +832,19 @@ export function renderDashboard(user: any, gymName: string) {
         },
         
         applySettingsUI(){
+           if(!this.data || !this.data.settings) return;
            const s=this.data.settings;
            const form=document.getElementById('settings-form');
            if(!form) return;
            // Fill form fields
-           form.querySelector('[name="currency"]').value=s.currency;
-           form.querySelector('[name="lang"]').value=s.lang;
-           form.querySelector('[name="attendanceThreshold"]').value=s.attendanceThreshold;
-           form.querySelector('[name="inactiveAfterMonths"]').value=s.inactiveAfterMonths;
-           form.querySelector('[name="renewalFee"]').value=s.renewalFee;
+           const curEl = form.querySelector('[name="currency"]'); if(curEl) curEl.value=s.currency;
+           const langEl = form.querySelector('[name="lang"]'); if(langEl) langEl.value=s.lang;
+           const attEl = form.querySelector('[name="attendanceThreshold"]'); if(attEl) attEl.value=s.attendanceThreshold;
+           const inactEl = form.querySelector('[name="inactiveAfterMonths"]'); if(inactEl) inactEl.value=s.inactiveAfterMonths;
+           const renEl = form.querySelector('[name="renewalFee"]'); if(renEl) renEl.value=s.renewalFee;
            // Render plans
            const container=document.getElementById('plans-container');
-           container.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="flex plan-row" id="p-\${i}"><input placeholder="Name" value="\${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="\${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="\${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>\`).join('');
+           if(container) container.innerHTML=s.membershipPlans.map((p,i)=>\`<div class="flex plan-row" id="p-\${i}"><input placeholder="Name" value="\${escapeHtml(p.name)}" class="p-name"><input type="number" placeholder="Price" value="\${p.price}" class="p-price"><input type="number" placeholder="Adm.Fee" value="\${p.admissionFee||0}" class="p-adm"><button type="button" class="btn btn-danger" onclick="this.parentElement.remove()">X</button></div>\`).join('');
            
            // Fill plan select dropdowns elsewhere
            const opts=s.membershipPlans.map(p=>\`<option value="\${escapeHtml(p.name)}">\${escapeHtml(p.name)}</option>\`).join('');
@@ -845,7 +903,7 @@ export function renderDashboard(user: any, gymName: string) {
           if(typeof Chart==='undefined' || !document.getElementById('chart-dues')) return;
           const ctx=document.getElementById('chart-dues').getContext('2d');
           if(window.myChart) window.myChart.destroy();
-          const mem=this.data.members||[];
+          const mem=(this.data && this.data.members)||[];
           window.myChart=new Chart(ctx,{
             type:'bar',
             data:{
@@ -907,13 +965,15 @@ export function renderDashboard(user: any, gymName: string) {
            this.renderTransactionHistory();
         },
         async renderTransactionHistory(){
-           const date=document.getElementById('trans-date').value;
-           document.getElementById('tbl-transaction-history').innerHTML='<tr><td colspan="3" class="text-center text-muted">Loading...</td></tr>';
+           const dateEl=document.getElementById('trans-date');
+           const date = dateEl ? dateEl.value : '';
+           const tbl = document.getElementById('tbl-transaction-history');
+           if(tbl) tbl.innerHTML='<tr><td colspan="3" class="text-center text-muted">Loading...</td></tr>';
            const res=await fetch('/api/payments/history',{method:'POST',body:JSON.stringify({date})});
            const d=await res.json();
-           const cur=this.data.settings.currency||'';
+           const cur=(this.data && this.data.settings && this.data.settings.currency)||'';
            const rows=(d.transactions||[]).map(t=>\`<tr><td>\${formatTime(t.date)}</td><td>\${escapeHtml(t.name||'-')}</td><td style="font-weight:700;color:var(--success);">\${cur} \${t.amount}</td></tr>\`).join('')||'<tr><td colspan="3" class="text-center text-muted">No history found</td></tr>';
-           document.getElementById('tbl-transaction-history').innerHTML=rows;
+           if(tbl) tbl.innerHTML=rows;
         }
       };
 
