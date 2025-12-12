@@ -1,5 +1,6 @@
 import { getSession } from "./auth";
-import { calculateDues, processPayment } from "./attendance";
+// FIX: Imported correct function names matching attendance.ts
+import { calculateDues, processPayment } from "./attendance"; 
 import { initDB, factoryReset } from "./db";
 import { Env } from "./env";
 import { hashPassword, verifyPassword } from "./security";
@@ -9,7 +10,7 @@ import { renderDashboard, renderLogin, renderSetup } from "./ui/pages";
 import { corsHeaders, escapeHtml, errorResponse, json, validate } from "./utils";
 
 /* ========================================================================
-   2. WORKER LOGIC
+   WORKER LOGIC
    ======================================================================== */
 
 export default {
@@ -116,7 +117,6 @@ export default {
         return new Response(html, { headers: {"Content-Type":"text/html"} });
       }
 
-      // ... [Standard User CRUD Routes omitted for brevity, they remain same] ...
       if (url.pathname === "/api/users/list") {
         if (user.role !== 'admin') return json({ error: 'Forbidden' }, 403);
         const users = await env.DB.prepare("SELECT id, name, email, role, permissions FROM users ORDER BY id").all();
