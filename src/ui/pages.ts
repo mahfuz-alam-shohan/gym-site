@@ -54,10 +54,11 @@ export function renderLogin(gymName: string) {
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
 
-export function renderDashboard(user: any) {
+export function renderDashboard(user: any, gymName: string) {
   const safeUserName = escapeHtml(user.name);
   const safeRole = escapeHtml(user.role.toUpperCase());
   const safePerms = user.permissions || '[]'; 
+  const safeGymName = escapeHtml(gymName || "Gym OS");
 
   const html = `${baseHead("Dashboard")}
   <body>
@@ -67,7 +68,7 @@ export function renderDashboard(user: any) {
       <div class="mobile-header">
         <div class="flex">
           <span style="font-size:24px;">💪</span>
-          <div style="font-weight:800;font-size:18px;color:var(--text-heading);">Gym OS</div>
+          <div style="font-weight:800;font-size:18px;color:var(--text-heading);">${safeGymName}</div>
         </div>
         <button class="btn btn-outline" style="padding:8px 12px;border-radius:12px;" onclick="toggleSidebar()">${getIcon('menu')}</button>
       </div>
@@ -78,7 +79,7 @@ export function renderDashboard(user: any) {
         <div style="padding:32px 24px;display:flex;align-items:center;gap:12px;margin-bottom:10px;">
           <div style="width:40px;height:40px;background:var(--primary);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;">💪</div>
           <div>
-             <div style="font-weight:900;font-size:18px;color:var(--text-heading);line-height:1;">Gym OS</div>
+             <div style="font-weight:900;font-size:18px;color:var(--text-heading);line-height:1;">${safeGymName}</div>
              <div style="font-size:11px;color:var(--text-muted);font-weight:700;margin-top:4px;">MANAGEMENT</div>
           </div>
         </div>
