@@ -510,6 +510,10 @@ export function renderDashboard(user: any) {
       function formatExpiryMonth(iso){if(!iso)return'-';const d=new Date(iso);if(isNaN(d.getTime()))return'-';const monthName=d.toLocaleString('en-US',{month:'short'});return d.getFullYear()===getClientNow().getFullYear()?monthName:monthName+' '+d.getFullYear();}
       function formatDueMonthsLabel(obj){if(!obj||!obj.dueMonths||obj.dueMonths<=0)return'';const labels=obj.dueMonthLabels||[];if(labels.length)return'Due: '+labels.join(', ');return'Due ('+obj.dueMonths+' Mo)';}
       
+      // -- ADDED MISSING FUNCTION --
+      function escapeHtml(text){if(!text)return"";return String(text).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");}
+      // ----------------------------
+
       const currentUser={role:"${safeRole}",permissions:${safePerms}};
       
       const app={
