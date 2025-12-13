@@ -285,7 +285,7 @@ export default {
         return json({ success: true });
       }
 
-      // --- CRITICAL CHECK-IN LOGIC RESTORED ---
+      // --- CRITICAL CHECK-IN LOGIC ---
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const settings = await loadSettings(env);
         const { memberId } = await req.json() as any;
@@ -297,7 +297,6 @@ export default {
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = ? LIMIT 1").bind(memberId, settings.clock.today).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
         
-        // RESTORED: Check expiry vs Now to determine 'success' or 'expired' status
         const isExpired = new Date(member.expiry_date) < settings.clock.now;
         const status = isExpired ? 'expired' : 'success';
 
@@ -306,7 +305,7 @@ export default {
         const att = await env.DB.prepare("SELECT check_in_time FROM attendance WHERE member_id = ?").bind(memberId).all<any>();
         const streak = getStreak((att.results||[]).map((a:any)=>a.check_in_time));
         
-        return json({ success: true, name: member.name, streak, status }); // Return status to UI
+        return json({ success: true, name: member.name, streak, status }); 
       }
 
       if ((url.pathname === "/api/payment" || url.pathname === "/api/members/renew") && req.method === "POST") {
