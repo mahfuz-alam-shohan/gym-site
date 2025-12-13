@@ -1,8 +1,6 @@
 import { escapeHtml } from "../utils";
 import { baseHead, getIcon } from "./head";
 
-// --- LOGIN & SETUP PAGES ---
-
 export function renderLogin(gymName: string) {
   const safeName = escapeHtml(gymName);
   const html = `${baseHead("Login")}
@@ -29,8 +27,6 @@ export function renderLogin(gymName: string) {
 
 export function renderSetup() { return renderLogin("Setup Needed"); }
 
-// --- DASHBOARD ---
-
 export function renderDashboard(user: any, gymName: string) {
   const safeUserName = escapeHtml(user.name || "User");
   const safeGymName = escapeHtml(gymName || "Gym OS");
@@ -38,6 +34,7 @@ export function renderDashboard(user: any, gymName: string) {
   const html = `${baseHead("Dashboard")}
   <body>
     <div id="toast-container"></div>
+    <!-- FLOATING ACTION BUTTON FOR CHECK-IN -->
     <div class="fab" onclick="app.modals.checkin.open()">${getIcon('zap')}</div>
 
     <div class="app-layout">
@@ -137,7 +134,7 @@ export function renderDashboard(user: any, gymName: string) {
            </div>
         </div>
 
-        <!-- VIEW: ATTENDANCE -->
+        <!-- VIEW: ATTENDANCE (FIXED: NOW POPULATES CORRECTLY) -->
         <div id="view-attendance" class="hidden">
            <div class="card">
              <h4>Today's Floor</h4>
@@ -148,7 +145,7 @@ export function renderDashboard(user: any, gymName: string) {
            </div>
         </div>
 
-        <!-- VIEW: HISTORY (RESTORED) -->
+        <!-- VIEW: HISTORY -->
         <div id="view-history" class="hidden">
            <div class="card">
              <div class="flex-between" style="margin-bottom:20px;">
@@ -193,7 +190,7 @@ export function renderDashboard(user: any, gymName: string) {
            </div>
         </div>
 
-        <!-- VIEW: SETTINGS (RESTORED) -->
+        <!-- VIEW: SETTINGS -->
         <div id="view-settings" class="hidden">
            <div class="card">
               <h4 style="margin-bottom:24px;">Configuration</h4>
@@ -222,7 +219,7 @@ export function renderDashboard(user: any, gymName: string) {
            </div>
         </div>
 
-        <!-- VIEW: USERS (RESTORED) -->
+        <!-- VIEW: USERS -->
         <div id="view-users" class="hidden">
            <div class="card">
                <div class="flex-between" style="margin-bottom:20px;">
@@ -253,7 +250,7 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- 2. MEMBER PROFILE (THE HUB) -->
+    <!-- 2. MEMBER PROFILE -->
     <div id="modal-profile" class="modal-backdrop">
        <div class="modal-content" style="max-width:600px;">
           <div class="flex-between" style="margin-bottom:20px;">
@@ -285,7 +282,7 @@ export function renderDashboard(user: any, gymName: string) {
              </div>
           </div>
 
-          <!-- Physical Stats (NEW FEATURE) -->
+          <!-- Physical Stats -->
           <h4 style="margin-bottom:12px; font-size:14px; color:var(--text-sec);">PHYSICAL STATS</h4>
           <form id="stats-form" onsubmit="app.updateStats(event)" style="background:#0f172a; padding:16px; border-radius:12px;">
              <input type="hidden" name="id" id="prof-id">
@@ -453,13 +450,26 @@ export function renderDashboard(user: any, gymName: string) {
             document.getElementById('recent-list').innerHTML = recent.map(r => \`
                <div class="m-card" style="padding:12px;">
                   <div class="m-info"><div class="m-title">\${escapeHtml(r.name)}</div><div class="m-sub">\${formatTime(r.check_in_time)}</div></div>
-                  <div style="color:var(--success);">Checked In</div>
+                  <div>\${r.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>'}</div>
                </div>
             \`).join('') || '<div class="text-muted text-center p-4">No check-ins today</div>';
 
             this.renderMembersTable();
             this.renderPaymentsTable();
+            this.renderAttendanceToday(); // FIXED: Now calling this!
             this.renderHistoryTable();
+         },
+         
+         renderAttendanceToday: function() {
+             const list = this.data.attendanceToday || [];
+             const rows = list.map(r => \`<tr><td>\${formatTime(r.check_in_time)}</td><td>\${escapeHtml(r.name)}</td><td>\${r.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>'}</td></tr>\`).join('');
+             document.getElementById('tbl-attendance-today').innerHTML = rows || '<tr><td colspan="3" class="text-center text-muted">No check-ins yet</td></tr>';
+             
+             document.getElementById('list-attendance-today').innerHTML = list.map(r => \`
+               <div class="m-card">
+                  <div class="m-info"><div class="m-title">\${escapeHtml(r.name)}</div><div class="m-sub">\${formatTime(r.check_in_time)}</div></div>
+                  <div>\${r.status==='success'?'<span class="badge bg-green">OK</span>':'<span class="badge bg-red">Expired</span>'}</div>
+               </div>\`).join('');
          },
          
          renderMembersTable: function() {
@@ -590,6 +600,7 @@ export function renderDashboard(user: any, gymName: string) {
                 if(d.success) {
                    resDiv.innerHTML = \`<div style="color:var(--success); font-weight:700; font-size:18px;">✅ WELCOME, \${d.name.toUpperCase()}!</div>\`;
                    if(d.streak > 1) resDiv.innerHTML += \`<div style="color:var(--warning); margin-top:4px;">🔥 \${d.streak} DAY STREAK!</div>\`;
+                   if(d.status === 'expired') resDiv.innerHTML += \`<div style="color:var(--danger); font-size:12px; font-weight:bold;">⚠️ MEMBERSHIP EXPIRED</div>\`;
                    setTimeout(() => { app.modals.checkin.close(); window.location.reload(); }, 1500);
                 } else {
                    resDiv.innerHTML = \`<div style="color:var(--danger); font-weight:700;">⛔ \${d.error}</div>\`;
