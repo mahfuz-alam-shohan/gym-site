@@ -2,7 +2,6 @@ import { formatMonthKey, getBdDate, monthEnd, nextMonthStart } from "./time";
 
 // --- HELPERS ---
 
-// Converts list of ISO timestamps into a Set of "YYYY-MM" keys and their day counts
 export function getAttendanceStats(attendanceTs: string[] | undefined): Record<string, number> {
   const stats: Record<string, Set<number>> = {};
   for (const ts of attendanceTs || []) {
@@ -24,19 +23,44 @@ export function formatMonthLabel(date: Date): string {
   return `${monthName} ${bd.getFullYear()}`;
 }
 
+export function getStreak(attendanceTs: string[]): number {
+    if (!attendanceTs || attendanceTs.length === 0) return 0;
+    // Sort descending
+    const sorted = attendanceTs.map(t => new Date(t).toISOString().split('T')[0]).sort().reverse();
+    const uniqueDays = [...new Set(sorted)];
+    
+    if (uniqueDays.length === 0) return 0;
+
+    // Check if today or yesterday was attended
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    if (uniqueDays[0] !== today && uniqueDays[0] !== yesterday) return 0;
+
+    let streak = 1;
+    for (let i = 0; i < uniqueDays.length - 1; i++) {
+        const curr = new Date(uniqueDays[i]);
+        const prev = new Date(uniqueDays[i+1]);
+        const diffTime = Math.abs(curr.getTime() - prev.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        
+        if (diffDays === 1) streak++;
+        else break;
+    }
+    return streak;
+}
+
 // --- CORE LOGIC ---
 
 export type DueResult = {
-  count: number;          // Number of months strictly DUE (billable & unpaid)
-  months: Date[];         // The specific months that are due
-  labels: string[];       // Human readable labels (e.g., "Jan 2024")
-  gapMonths: number;      // Number of months skipped because attendance < threshold
+  count: number;
+  months: Date[];
+  labels: string[];
+  gapMonths: number;
+  isRunningMonthPaid: boolean;
+  paidUntil: string | null;
 };
 
-/**
- * Calculates exactly which months the user owes money for.
- * It skips months where attendance < threshold (The "Gap").
- */
 export function calculateDues(
   expiryDateStr: string | null,
   attendanceTs: string[],
@@ -48,8 +72,7 @@ export function calculateDues(
   const dueMonths: Date[] = [];
   let gapMonths = 0;
   
-  // 1. Handle Manual Dues (Migration or Penalty)
-  // We just generate placeholder dates for them descending from current date
+  // 1. Manual Dues
   if (manualDue > 0) {
     const anchor = getBdDate(now);
     for(let i=0; i<manualDue; i++) {
@@ -58,31 +81,30 @@ export function calculateDues(
   }
 
   // 2. Scan from Expiry Date forward
+  let isRunningMonthPaid = false;
   if (expiryDateStr) {
     const expiry = new Date(expiryDateStr);
-    const attendanceStats = getAttendanceStats(attendanceTs);
     
-    // Start checking from the MONTH AFTER expiry
+    // Check if running month is covered
+    if (expiry >= now) {
+        isRunningMonthPaid = true;
+    }
+
+    const attendanceStats = getAttendanceStats(attendanceTs);
     let cursor = nextMonthStart(expiry);
     const today = now; 
-
-    // Safety break: don't loop more than 5 years
     let loopGuard = 0;
     
-    // Loop while cursor is in the past or present month
     while (cursor <= today && loopGuard < 60) {
       loopGuard++;
       const key = formatMonthKey(cursor);
       const daysAttended = attendanceStats[key] || 0;
 
       if (daysAttended >= threshold) {
-        // User attended enough. This month is BILLABLE.
         dueMonths.push(new Date(cursor));
       } else {
-        // User did NOT attend enough. This is a GAP month.
         gapMonths++;
       }
-      
       cursor = nextMonthStart(cursor);
     }
   }
@@ -91,16 +113,12 @@ export function calculateDues(
     count: dueMonths.length,
     months: dueMonths,
     labels: dueMonths.map(d => formatMonthLabel(d)),
-    gapMonths
+    gapMonths,
+    isRunningMonthPaid,
+    paidUntil: expiryDateStr
   };
 }
 
-/**
- * Calculates the NEW expiry date after a payment.
- * CRITICAL: This implements the "School Fee" logic.
- * It pays off manual dues first, then billable months, then extends into future.
- * It automatically JUMPS over gap months (updates expiry to skip them) for free.
- */
 export function processPayment(
   currentExpiryStr: string,
   attendanceTs: string[],
@@ -113,41 +131,26 @@ export function processPayment(
 ) {
   let balance = currentBalance + amountPaid;
   let manualDue = currentManualDue;
-  
-  // How many full months can we pay for?
   let monthsToPay = planPrice > 0 ? Math.floor(balance / planPrice) : 0;
   
-  // Remainder stays in wallet
-  if (planPrice > 0) {
-    balance = balance % planPrice;
-  } else {
-    // If plan is free (0), we usually treat any payment as significant or ignore it
-    // Logic: if price is 0, they effectively have infinite months, but let's just guard
-    if(amountPaid > 0) monthsToPay = 99; 
-  }
+  if (planPrice > 0) balance = balance % planPrice;
+  else if(amountPaid > 0) monthsToPay = 99; 
 
   let expiry = new Date(currentExpiryStr);
   const attendanceStats = getAttendanceStats(attendanceTs);
   
-  // 1. Pay off Manual Dues first (Old Debt)
+  // 1. Pay Old Debt
   while (manualDue > 0 && monthsToPay > 0) {
     manualDue--;
     monthsToPay--;
   }
 
-  // 2. Pay off Billable Months & Skip Gaps
-  // We scan forward from current expiry
-  
+  // 2. Pay Billable & Skip Gaps
   let cursor = nextMonthStart(expiry);
-  
-  // We scan at least until TODAY to "Resolve" any gaps in the past
-  // even if user has no money, we should theoretically advance over gaps.
-  
   let loop = 0;
   
   while (loop < 60) {
     loop++;
-    
     const isPastOrPresent = cursor <= now;
     
     if (isPastOrPresent) {
@@ -157,29 +160,22 @@ export function processPayment(
 
        if (isBillable) {
          if (monthsToPay > 0) {
-           // PAYING for this month
            monthsToPay--;
-           expiry = monthEnd(cursor); // Advance expiry to end of this billable month
+           expiry = monthEnd(cursor);
          } else {
-           // Owe money for this month, but no funds. Stop advancing.
            break; 
          }
        } else {
-         // NOT BILLABLE (Gap).
-         // We SKIP this month for free.
-         expiry = monthEnd(cursor); // Advance expiry over the gap
+         expiry = monthEnd(cursor); // Skip gap
        }
     } else {
-       // FUTURE month.
-       // Only advance if we have credits (Advance Payment)
        if (monthsToPay > 0) {
          monthsToPay--;
          expiry = monthEnd(cursor);
        } else {
-         break; // No more money, stop.
+         break;
        }
     }
-    
     cursor = nextMonthStart(cursor);
   }
 
