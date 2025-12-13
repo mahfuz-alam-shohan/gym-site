@@ -72,8 +72,6 @@ export default {
         return renderDashboard(user, gymConfig?.value || "Gym OS");
       }
 
-      // --- ORIGINALS PRESERVED: Print, Users, Settings ---
-
       if (url.pathname === "/dues/print") {
         const settings = await loadSettings(env);
         const gymRow = await env.DB.prepare("SELECT value FROM config WHERE key='gym_name'").first<any>();
@@ -158,7 +156,6 @@ export default {
         return json({ success: true });
       }
 
-      // --- ENHANCED BOOTSTRAP (Includes new stats/leaderboard) ---
       if (url.pathname === "/api/bootstrap") {
         const settings = await loadSettings(env);
         const { attendanceThreshold, inactiveAfterMonths, membershipPlans, clock } = settings;
@@ -199,22 +196,20 @@ export default {
           
           if (newStatus !== m.status) await env.DB.prepare("UPDATE members SET status = ? WHERE id = ?").bind(newStatus, m.id).run();
           
-          // NEW: Streak Calculation
           const streak = getStreak(attTs);
 
           membersProcessed.push({ 
              ...m, status: newStatus, 
              dueMonths: dueInfo.count, 
              dueMonthLabels: dueInfo.labels, 
-             isRunningMonthPaid: dueInfo.isRunningMonthPaid, // NEW
-             paidUntil: dueInfo.paidUntil, // NEW
-             streak // NEW
+             isRunningMonthPaid: dueInfo.isRunningMonthPaid, 
+             paidUntil: dueInfo.paidUntil, 
+             streak 
           });
         }
 
         const attendanceToday = await env.DB.prepare("SELECT a.check_in_time, a.status, m.name, m.id AS member_id FROM attendance a JOIN members m ON a.member_id = m.id WHERE date(a.check_in_time) = ? ORDER BY a.id DESC").bind(clock.today).all<any>();
         
-        // NEW: Leaderboard Data
         const topVisitors = await env.DB.prepare(`SELECT m.name, count(a.id) as visits FROM attendance a JOIN members m ON a.member_id = m.id WHERE a.check_in_time > ? GROUP BY m.id ORDER BY visits DESC LIMIT 5`).bind(new Date(new Date().setDate(1)).toISOString()).all();
 
         return json({
@@ -226,8 +221,6 @@ export default {
           settings: { ...settings, clock: { timezone: clock.timezone, now: clock.now.toISOString() } }
         });
       }
-
-      // --- MEMBERS & PAYMENTS & HISTORY (PRESERVED) ---
 
       if (url.pathname === "/api/members/history" && req.method === "POST") {
         const { memberId } = await req.json() as any;
@@ -258,7 +251,6 @@ export default {
         return json({ transactions: res.results || [] });
       }
 
-      // NEW: Profile Update Route
       if (url.pathname === "/api/members/update-profile" && req.method === "POST") {
          const body = await req.json() as any;
          await env.DB.prepare("UPDATE members SET weight = ?, height = ?, gender = ?, notes = ? WHERE id = ?")
@@ -270,7 +262,6 @@ export default {
         const body = await req.json() as any;
         const qRaw = (body.query || "").toString().trim();
         if (!qRaw) return json({ results: [] });
-        // Enhanced search query
         const res = await env.DB.prepare("SELECT id, name, phone, status FROM members WHERE name LIKE ? OR phone LIKE ? LIMIT 10").bind(`%${qRaw}%`, `%${qRaw}%`).all();
         return json({ results: res.results });
       }
@@ -281,7 +272,6 @@ export default {
         let base = new Date(settings.clock.now);
         base.setMonth(base.getMonth() - 1, 1);
         let paidThrough = monthEnd(base);
-        // Add new columns to insert
         const result = await env.DB.prepare("INSERT INTO members (name, phone, plan, joined_at, expiry_date, manual_due_months, gender, weight, height) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id").bind(body.name, body.phone, body.plan, settings.clock.now.toISOString(), paidThrough.toISOString(), 0, body.gender||'other', body.weight||0, body.height||0).first<any>();
         
         if (body.initialPayment && result.id) {
@@ -295,6 +285,7 @@ export default {
         return json({ success: true });
       }
 
+      // --- CRITICAL CHECK-IN LOGIC RESTORED ---
       if (url.pathname === "/api/checkin" && req.method === "POST") {
         const settings = await loadSettings(env);
         const { memberId } = await req.json() as any;
@@ -306,13 +297,16 @@ export default {
         const alreadyToday = await env.DB.prepare("SELECT id FROM attendance WHERE member_id = ? AND date(check_in_time) = ? LIMIT 1").bind(memberId, settings.clock.today).first();
         if (alreadyToday) return json({ error: "Already checked in today", code: "DUPLICATE" }, 400);
         
-        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, settings.clock.now.toISOString(), 'success').run();
+        // RESTORED: Check expiry vs Now to determine 'success' or 'expired' status
+        const isExpired = new Date(member.expiry_date) < settings.clock.now;
+        const status = isExpired ? 'expired' : 'success';
+
+        await env.DB.prepare("INSERT INTO attendance (member_id, check_in_time, status) VALUES (?, ?, ?)").bind(memberId, settings.clock.now.toISOString(), status).run();
         
-        // Get Streak for UI return
         const att = await env.DB.prepare("SELECT check_in_time FROM attendance WHERE member_id = ?").bind(memberId).all<any>();
         const streak = getStreak((att.results||[]).map((a:any)=>a.check_in_time));
         
-        return json({ success: true, name: member.name, streak });
+        return json({ success: true, name: member.name, streak, status }); // Return status to UI
       }
 
       if ((url.pathname === "/api/payment" || url.pathname === "/api/members/renew") && req.method === "POST") {
@@ -350,13 +344,6 @@ export default {
         const { id } = await req.json() as any;
         await env.DB.prepare("DELETE FROM members WHERE id = ?").bind(id).run();
         await env.DB.prepare("DELETE FROM attendance WHERE member_id = ?").bind(id).run();
-        return json({ success: true });
-      }
-
-      if (url.pathname === "/api/settings" && req.method === "POST") {
-        if (user.role !== 'admin') return json({ error: 'Unauthorized' }, 403);
-        const body = await req.json() as any;
-        // ... (standard config updates)
         return json({ success: true });
       }
 
