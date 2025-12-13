@@ -1,6 +1,8 @@
 import { escapeHtml } from "../utils";
 import { baseHead, getIcon } from "./head";
 
+// --- LOGIN & SETUP PAGES ---
+
 export function renderLogin(gymName: string) {
   const safeName = escapeHtml(gymName);
   const html = `${baseHead("Login")}
@@ -25,9 +27,9 @@ export function renderLogin(gymName: string) {
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
 
-export function renderSetup() {
-    return renderLogin("Setup Needed"); // Reuse login for simplicity or keep separate
-}
+export function renderSetup() { return renderLogin("Setup Needed"); }
+
+// --- DASHBOARD ---
 
 export function renderDashboard(user: any, gymName: string) {
   const safeUserName = escapeHtml(user.name || "User");
@@ -89,7 +91,7 @@ export function renderDashboard(user: any, gymName: string) {
              </div>
              <div class="stat-card">
                <div class="stat-val" id="stat-rev" style="color:white;">--</div>
-               <div class="stat-label">Total Outstanding</div>
+               <div class="stat-label">Outstanding</div>
              </div>
            </div>
 
@@ -146,11 +148,34 @@ export function renderDashboard(user: any, gymName: string) {
            </div>
         </div>
 
+        <!-- VIEW: HISTORY (RESTORED) -->
+        <div id="view-history" class="hidden">
+           <div class="card">
+             <div class="flex-between" style="margin-bottom:20px;">
+               <h4>System Logs</h4>
+               <div class="flex">
+                 <input type="date" id="history-date" style="margin:0; width:auto;">
+                 <button class="btn btn-outline btn-sm" onclick="app.applyHistoryFilter()">Filter</button>
+               </div>
+             </div>
+             <div class="desktop-table">
+               <table><thead><tr><th>Date</th><th>Time</th><th>Name</th></tr></thead><tbody id="tbl-attendance-history"></tbody></table>
+             </div>
+             <div class="mobile-list" id="list-attendance-history"></div>
+           </div>
+        </div>
+
         <!-- VIEW: PAYMENTS -->
         <div id="view-payments" class="hidden">
-           <div class="card" style="border-left: 4px solid var(--danger);">
-               <div style="font-size:12px; text-transform:uppercase; color:var(--text-sec); letter-spacing:0.05em;">Total Collections Pending</div>
-               <div id="pay-total-out" style="font-size:32px; font-weight:700; color:white; font-family:'Oswald'; margin-top:4px;">0</div>
+           <div class="flex" style="gap:16px; margin-bottom:20px; flex-wrap:wrap;">
+               <div class="card" style="border-left: 4px solid var(--danger); flex:1; margin-bottom:0;">
+                   <div style="font-size:12px; text-transform:uppercase; color:var(--text-sec); letter-spacing:0.05em;">Total Pending</div>
+                   <div id="pay-total-out" style="font-size:32px; font-weight:700; color:white; font-family:'Oswald'; margin-top:4px;">0</div>
+               </div>
+               <div style="display:flex; gap:10px;">
+                   <button class="btn btn-outline" onclick="app.openPaymentHistory()">${getIcon('history')} History</button>
+                   <button class="btn btn-outline" onclick="window.open('/dues/print','_blank')">${getIcon('print')} Print</button>
+               </div>
            </div>
            
            <div class="card">
@@ -165,6 +190,49 @@ export function renderDashboard(user: any, gymName: string) {
                  <table><thead><tr><th>Member</th><th>Current Month</th><th>Paid Until</th><th>Owed</th><th style="text-align:right">Action</th></tr></thead><tbody id="tbl-payment-list"></tbody></table>
               </div>
               <div class="mobile-list" id="list-payment-list"></div>
+           </div>
+        </div>
+
+        <!-- VIEW: SETTINGS (RESTORED) -->
+        <div id="view-settings" class="hidden">
+           <div class="card">
+              <h4 style="margin-bottom:24px;">Configuration</h4>
+              <form id="settings-form" onsubmit="app.saveSettings(event)">
+                <div class="flex" style="flex-wrap:wrap; margin-bottom:20px;">
+                   <div class="w-full"><label>Currency Symbol</label><input name="currency" type="text" placeholder="BDT"></div>
+                   <div class="w-full"><label>Language</label><select name="lang"><option value="en">English</option></select></div>
+                </div>
+                <div class="flex" style="flex-wrap:wrap;">
+                   <div class="w-full"><label>Min. Attendance (Days/Month)</label><input name="attendanceThreshold" type="number" min="1" max="31" required></div>
+                   <div class="w-full"><label>Auto-Inactive After (Months Due)</label><input name="inactiveAfterMonths" type="number" min="1" max="36" required></div>
+                </div>
+                <div class="w-full"><label>Renewal/Re-admission Fee</label><input name="renewalFee" type="number" min="0" required></div>
+                
+                <div style="background:#0f172a; padding:20px; border-radius:12px; margin:24px 0;">
+                    <label style="color:var(--primary); margin-bottom:12px;">Membership Plans</label>
+                    <div id="plans-container" style="margin-bottom:12px; display:flex; flex-direction:column; gap:10px;"></div>
+                    <button type="button" class="btn btn-outline w-full btn-sm" onclick="app.addPlanRow()">+ Add Plan Variant</button>
+                </div>
+                
+                <div style="border-top:1px solid var(--border); padding-top:20px; display:flex; justify-content:space-between;">
+                   <button onclick="app.resetDB()" class="btn btn-danger" type="button">Factory Reset</button>
+                   <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+              </form>
+           </div>
+        </div>
+
+        <!-- VIEW: USERS (RESTORED) -->
+        <div id="view-users" class="hidden">
+           <div class="card">
+               <div class="flex-between" style="margin-bottom:20px;">
+                 <h4>Admin Access</h4>
+                 <button class="btn btn-primary btn-sm" onclick="app.openAddUser()">+ Add User</button>
+               </div>
+               <div class="desktop-table">
+                 <table><thead><tr><th>Name</th><th>Role</th><th style="text-align:right">Action</th></tr></thead><tbody id="tbl-users"></tbody></table>
+               </div>
+               <div class="mobile-list" id="list-users"></div>
            </div>
         </div>
 
@@ -185,7 +253,7 @@ export function renderDashboard(user: any, gymName: string) {
       </div>
     </div>
 
-    <!-- 2. MEMBER PROFILE -->
+    <!-- 2. MEMBER PROFILE (THE HUB) -->
     <div id="modal-profile" class="modal-backdrop">
        <div class="modal-content" style="max-width:600px;">
           <div class="flex-between" style="margin-bottom:20px;">
@@ -217,7 +285,7 @@ export function renderDashboard(user: any, gymName: string) {
              </div>
           </div>
 
-          <!-- Physical Stats -->
+          <!-- Physical Stats (NEW FEATURE) -->
           <h4 style="margin-bottom:12px; font-size:14px; color:var(--text-sec);">PHYSICAL STATS</h4>
           <form id="stats-form" onsubmit="app.updateStats(event)" style="background:#0f172a; padding:16px; border-radius:12px;">
              <input type="hidden" name="id" id="prof-id">
@@ -230,12 +298,22 @@ export function renderDashboard(user: any, gymName: string) {
                  <div class="w-full"><label style="visibility:hidden">Save</label><button type="submit" class="btn btn-outline w-full">UPDATE STATS</button></div>
              </div>
           </form>
-
-          <button class="btn btn-danger w-full mt-4" onclick="app.delMember()" style="opacity:0.6;">DELETE MEMBER DATABASE RECORD</button>
+          
+          <button class="btn btn-outline w-full mt-4" onclick="app.showHistory(document.getElementById('prof-id').value)">VIEW ENTRY LOGS</button>
+          <button class="btn btn-danger w-full mt-2" onclick="app.delMember()" style="opacity:0.6;">DELETE MEMBER DATABASE RECORD</button>
+       </div>
+    </div>
+    
+    <!-- 3. MEMBER HISTORY LOG -->
+    <div id="modal-member-history" class="modal-backdrop">
+       <div class="modal-content" style="max-width:400px; text-align:center;">
+          <h3 style="margin-bottom:16px;">Entry Logs</h3>
+          <div id="calendar-container" style="max-height:400px; overflow-y:auto;"></div>
+          <button class="btn btn-outline w-full mt-4" onclick="document.getElementById('modal-member-history').style.display='none'">Close</button>
        </div>
     </div>
 
-    <!-- 3. ADD MEMBER -->
+    <!-- 4. ADD MEMBER -->
     <div id="modal-add" class="modal-backdrop">
        <div class="modal-content">
           <h3 style="margin-bottom:20px;">NEW REGISTRATION</h3>
@@ -253,7 +331,7 @@ export function renderDashboard(user: any, gymName: string) {
        </div>
     </div>
 
-    <!-- 4. PAYMENT CONFIRM -->
+    <!-- 5. PAYMENT CONFIRM -->
     <div id="modal-pay" class="modal-backdrop">
        <div class="modal-content">
           <h3 style="margin-bottom:8px;">RECEIVE PAYMENT</h3>
@@ -269,6 +347,41 @@ export function renderDashboard(user: any, gymName: string) {
        </div>
     </div>
 
+    <!-- 6. USER MODAL -->
+    <div id="modal-user" class="modal-backdrop">
+      <div class="modal-content">
+        <h3>User Details</h3>
+        <form id="user-form" onsubmit="app.saveUser(event)" style="margin-top:20px;">
+          <input type="hidden" name="id" id="u-id">
+          <label>Name</label><input name="name" id="u-name" required>
+          <label>Email</label><input name="email" id="u-email" type="email" required>
+          <label>Password</label><input name="password" id="u-password" type="password" placeholder="Leave empty to keep current">
+          <label>Role</label>
+          <select name="role" id="u-role">
+             <option value="staff">Staff</option><option value="admin">Admin</option>
+          </select>
+          <button type="submit" class="btn btn-primary w-full mt-4">Save User</button>
+          <button type="button" class="btn btn-outline w-full mt-2" onclick="app.modals.user.close()">Cancel</button>
+        </form>
+      </div>
+    </div>
+    
+    <!-- 7. PAYMENT HISTORY -->
+    <div id="modal-payment-history" class="modal-backdrop">
+      <div class="modal-content" style="max-width:500px;">
+         <div class="flex-between" style="margin-bottom:16px;">
+            <h3>Transaction History</h3>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('modal-payment-history').style.display='none'">Close</button>
+         </div>
+         <div class="flex" style="margin-bottom:12px;">
+            <input type="date" id="trans-date" style="margin:0;" onchange="app.renderTransactionHistory()">
+         </div>
+         <div class="desktop-table" style="max-height:300px; overflow-y:auto;">
+            <table><thead><tr><th>Date</th><th>Member</th><th>Amount</th></tr></thead><tbody id="tbl-transaction-history"></tbody></table>
+         </div>
+      </div>
+    </div>
+
     <script>
       const currentUser={name:"${user.name}", role:"${user.role}"};
       
@@ -281,7 +394,11 @@ export function renderDashboard(user: any, gymName: string) {
                const res = await fetch('/api/bootstrap');
                this.data = await res.json();
                this.render();
-               this.nav('home');
+               this.applySettingsUI();
+               if(currentUser.role === 'admin') this.loadUsers();
+               
+               const last = sessionStorage.getItem('gym_view') || 'home';
+               this.nav(last);
                
                // Populate Add Plan Select
                const plans = this.data.settings.membershipPlans || [];
@@ -292,13 +409,17 @@ export function renderDashboard(user: any, gymName: string) {
          },
          
          nav: function(page) {
+            if(page === 'users' && currentUser.role !== 'admin') return;
+            sessionStorage.setItem('gym_view', page);
+            
             document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
             document.getElementById('view-'+page).classList.remove('hidden');
             
-            // Render Nav
-            const pages = ['home', 'members', 'attendance', 'payments'];
-            const icons = {home:'home', members:'users', attendance:'clock', payments:'creditCard'};
-            const labels = {home:'Home', members:'Members', attendance:'Activity', payments:'Billing'};
+            const pages = ['home', 'members', 'attendance', 'payments', 'history', 'settings'];
+            if(currentUser.role === 'admin') pages.push('users');
+            
+            const icons = {home:'home', members:'users', attendance:'clock', payments:'creditCard', history:'history', settings:'settings', users:'users'};
+            const labels = {home:'Home', members:'Members', attendance:'Activity', payments:'Billing', history:'Logs', settings:'Config', users:'Users'};
             
             document.getElementById('desktop-nav').innerHTML = pages.map(p => \`
                <div class="nav-item \${p===page?'active':''}" onclick="app.nav('\${p}')">\${getIcon(icons[p])} \${labels[p]}</div>
@@ -313,14 +434,12 @@ export function renderDashboard(user: any, gymName: string) {
             if(!this.data) return;
             const cur = this.data.settings.currency || '';
             
-            // 1. Stats
             document.getElementById('stat-today').innerText = this.data.stats.today;
             document.getElementById('stat-active').innerText = this.data.stats.active;
             document.getElementById('stat-due').innerText = this.data.stats.dueMembers;
             document.getElementById('stat-rev').innerText = cur + ' ' + this.data.stats.totalOutstanding;
             document.getElementById('pay-total-out').innerText = cur + ' ' + this.data.stats.totalOutstanding;
 
-            // 2. Leaderboard
             const tops = this.data.topVisitors || [];
             document.getElementById('leaderboard-list').innerHTML = tops.map((t, i) => \`
                <div class="m-card" style="padding:12px;">
@@ -330,7 +449,6 @@ export function renderDashboard(user: any, gymName: string) {
                </div>
             \`).join('') || '<div class="text-muted text-center p-4">No data yet</div>';
 
-            // 3. Recent
             const recent = (this.data.attendanceToday || []).slice(0, 5);
             document.getElementById('recent-list').innerHTML = recent.map(r => \`
                <div class="m-card" style="padding:12px;">
@@ -341,6 +459,7 @@ export function renderDashboard(user: any, gymName: string) {
 
             this.renderMembersTable();
             this.renderPaymentsTable();
+            this.renderHistoryTable();
          },
          
          renderMembersTable: function() {
@@ -352,8 +471,6 @@ export function renderDashboard(user: any, gymName: string) {
                const statusBadge = m.isRunningMonthPaid 
                    ? '<span class="badge bg-green">Month Paid</span>' 
                    : '<span class="badge bg-red">Month Unpaid</span>';
-               
-               // Progress bar logic for visual flare
                const streak = m.streak ? \`<span class="badge bg-amber" style="margin-left:6px;">\${getIcon('fire')} \${m.streak}</span>\` : '';
 
                return \`
@@ -368,8 +485,6 @@ export function renderDashboard(user: any, gymName: string) {
             }).join('');
             
             document.getElementById('tbl-members').innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted">No members found</td></tr>';
-            
-            // Mobile List
             document.getElementById('list-members').innerHTML = list.map(m => \`
                <div class="m-card" onclick="app.openProfile(\${m.id})">
                   <div class="m-info">
@@ -385,14 +500,11 @@ export function renderDashboard(user: any, gymName: string) {
              const cur = this.data.settings.currency || '';
              let list = this.data.members;
              if(filter === 'due') list = list.filter(m => !m.isRunningMonthPaid || m.dueMonths > 0);
-             
-             // Sort by urgency
              list.sort((a,b) => (b.dueMonths||0) - (a.dueMonths||0));
 
              const rows = list.map(m => {
                  const price = (this.data.settings.membershipPlans.find(p=>p.name===m.plan)||{price:0}).price;
                  const owe = Math.max(0, (m.dueMonths * price) - (m.balance||0));
-                 
                  const btn = \`<button class="btn btn-primary btn-sm" onclick="app.modals.pay.open(\${m.id}); event.stopPropagation();">PAY</button>\`;
                  
                  return \`
@@ -405,7 +517,6 @@ export function renderDashboard(user: any, gymName: string) {
                  </tr>\`;
              }).join('');
              document.getElementById('tbl-payment-list').innerHTML = rows;
-             
              document.getElementById('list-payment-list').innerHTML = list.map(m => {
                  const price = (this.data.settings.membershipPlans.find(p=>p.name===m.plan)||{price:0}).price;
                  const owe = Math.max(0, (m.dueMonths * price) - (m.balance||0));
@@ -415,36 +526,50 @@ export function renderDashboard(user: any, gymName: string) {
                  </div>\`;
              }).join('');
          },
+         
+         renderHistoryTable: function(data=null) {
+            const list = data || this.data.attendanceHistory || [];
+            const rows = list.map(a => \`<tr><td>\${formatDate(a.check_in_time)}</td><td>\${formatTime(a.check_in_time)}</td><td>\${escapeHtml(a.name)}</td></tr>\`).join('');
+            document.getElementById('tbl-attendance-history').innerHTML = rows;
+            document.getElementById('list-attendance-history').innerHTML = list.map(a => \`<div class="m-card" style="padding:10px;"><div class="m-info"><div class="m-title">\${escapeHtml(a.name)}</div><div class="m-sub">\${formatDate(a.check_in_time)} • \${formatTime(a.check_in_time)}</div></div></div>\`).join('');
+         },
+         
+         applyHistoryFilter: async function() {
+            const date = document.getElementById('history-date').value;
+            const res = await fetch('/api/history/list',{method:'POST',body:JSON.stringify({date})});
+            const d = await res.json();
+            this.renderHistoryTable(d.history);
+         },
 
          openProfile: function(id) {
              const m = this.data.members.find(x => x.id === id);
              if(!m) return;
-             
              document.getElementById('prof-id').value = id;
              document.getElementById('prof-name').innerText = m.name;
              document.getElementById('prof-plan').innerText = m.plan;
              document.getElementById('prof-status').innerHTML = m.isRunningMonthPaid 
                  ? '<span class="badge bg-green">ACTIVE THIS MONTH</span>' 
                  : '<span class="badge bg-red">PAYMENT DUE</span>';
-             
              document.getElementById('prof-expiry').innerText = m.paidUntil ? formatDate(m.paidUntil) : 'Never';
              
-             // Visual Bar logic
              const bar = document.getElementById('prof-valid-bar');
-             if (m.isRunningMonthPaid) {
-                 bar.style.width = '100%'; bar.style.background = 'var(--success)';
-             } else {
-                 bar.style.width = '15%'; bar.style.background = 'var(--danger)';
-             }
+             if (m.isRunningMonthPaid) { bar.style.width = '100%'; bar.style.background = 'var(--success)'; } 
+             else { bar.style.width = '15%'; bar.style.background = 'var(--danger)'; }
 
              document.getElementById('prof-btn-pay').onclick = () => { app.modals.profile.close(); app.modals.pay.open(id); };
-
-             // Stats
              document.getElementById('prof-weight').value = m.weight || '';
              document.getElementById('prof-height').value = m.height || '';
              document.getElementById('prof-gender').value = m.gender || 'other';
 
              app.modals.profile.open();
+         },
+         
+         showHistory: async function(id) {
+            const res = await fetch('/api/members/history',{method:'POST',body:JSON.stringify({memberId:id})});
+            const d = await res.json();
+            const html = d.history.map(h => \`<div class="m-card" style="padding:8px 12px; margin-bottom:8px;"><div class="m-sub">\${formatDate(h.check_in_time)}</div><div style="font-weight:600; color:white;">\${formatTime(h.check_in_time)}</div></div>\`).join('');
+            document.getElementById('calendar-container').innerHTML = html || '<div class="text-muted">No history found</div>';
+            document.getElementById('modal-member-history').style.display = 'flex';
          },
          
          updateStats: async function(e) {
@@ -491,6 +616,78 @@ export function renderDashboard(user: any, gymName: string) {
              }
          },
          
+         // --- SETTINGS & USERS ---
+         applySettingsUI: function() {
+            if(!this.data || !this.data.settings) return;
+            const s = this.data.settings;
+            const form = document.getElementById('settings-form');
+            if(!form) return;
+            form.querySelector('[name="currency"]').value = s.currency;
+            form.querySelector('[name="lang"]').value = s.lang;
+            form.querySelector('[name="attendanceThreshold"]').value = s.attendanceThreshold;
+            form.querySelector('[name="inactiveAfterMonths"]').value = s.inactiveAfterMonths;
+            form.querySelector('[name="renewalFee"]').value = s.renewalFee;
+            
+            const container = document.getElementById('plans-container');
+            container.innerHTML = s.membershipPlans.map(p => \`<div class="flex plan-row" style="background:rgba(255,255,255,0.03); padding:8px; border-radius:6px;"><input value="\${escapeHtml(p.name)}" class="p-name" placeholder="Name"><input type="number" value="\${p.price}" class="p-price" placeholder="Price"><input type="number" value="\${p.admissionFee||0}" class="p-adm" placeholder="Adm Fee"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">X</button></div>\`).join('');
+         },
+         addPlanRow: function() {
+            const div = document.createElement('div');
+            div.className = 'flex plan-row';
+            div.style.cssText = 'background:rgba(255,255,255,0.03); padding:8px; border-radius:6px;';
+            div.innerHTML = \`<input class="p-name" placeholder="Name"><input type="number" class="p-price" placeholder="Price"><input type="number" class="p-adm" placeholder="Adm Fee"><button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">X</button>\`;
+            document.getElementById('plans-container').appendChild(div);
+         },
+         saveSettings: async function(e) {
+             e.preventDefault();
+             const plans = [];
+             document.querySelectorAll('.plan-row').forEach(r => {
+                const n = r.querySelector('.p-name').value;
+                const p = r.querySelector('.p-price').value;
+                const a = r.querySelector('.p-adm').value;
+                if(n && p) plans.push({name:n, price:Number(p), admissionFee:Number(a)});
+             });
+             const fd = new FormData(e.target);
+             const data = Object.fromEntries(fd);
+             data.membershipPlans = plans;
+             await fetch('/api/settings', {method:'POST', body:JSON.stringify(data)});
+             app.toast('Settings Saved');
+             setTimeout(() => window.location.reload(), 800);
+         },
+         resetDB: async function() {
+             if(confirm('FACTORY RESET: This will delete ALL data. Are you sure?')) {
+                 await fetch('/api/nuke');
+                 window.location.reload();
+             }
+         },
+         loadUsers: async function() {
+             const res = await fetch('/api/users/list');
+             const d = await res.json();
+             const rows = d.users.map(u => \`<tr><td>\${escapeHtml(u.name)}</td><td><span class="badge bg-blue">\${u.role}</span></td><td style="text-align:right"><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></td></tr>\`).join('');
+             document.getElementById('tbl-users').innerHTML = rows;
+             document.getElementById('list-users').innerHTML = d.users.map(u => \`<div class="m-card"><div class="m-info"><div class="m-title">\${escapeHtml(u.name)}</div><div class="m-sub">\${u.role}</div></div><button class="btn btn-danger btn-sm" onclick="app.deleteUser(\${u.id})">X</button></div>\`).join('');
+         },
+         openAddUser: function() {
+             document.getElementById('modal-user').style.display='flex';
+             document.getElementById('user-form').reset();
+             document.getElementById('u-id').value = '';
+         },
+         saveUser: async function(e) {
+             e.preventDefault();
+             const fd = new FormData(e.target);
+             const endpoint = fd.get('id') ? '/api/users/update' : '/api/users/add';
+             await fetch(endpoint, {method:'POST', body:JSON.stringify(Object.fromEntries(fd))});
+             document.getElementById('modal-user').style.display='none';
+             this.loadUsers();
+         },
+         deleteUser: async function(id) {
+             if(confirm('Delete User?')) {
+                 await fetch('/api/users/delete', {method:'POST', body:JSON.stringify({id})});
+                 this.loadUsers();
+             }
+         },
+         
+         // --- SEARCH INPUTS ---
          onCheckinInput: function(e) {
             if(e.key === 'Enter') { this.checkIn(); return; }
             this.doSearch(e.target.value, (res) => {
@@ -498,7 +695,6 @@ export function renderDashboard(user: any, gymName: string) {
                div.innerHTML = res.map(m => \`<div style="padding:12px; border-bottom:1px solid #1e293b; cursor:pointer;" onclick="document.getElementById('checkin-id').value='\${m.id}'; document.getElementById('checkin-suggestions').innerHTML='';">#\${m.id} \${m.name}</div>\`).join('');
             });
          },
-         
          doSearch: function(q, cb) {
             if(this.searchTimeout) clearTimeout(this.searchTimeout);
             this.searchTimeout = setTimeout(async () => {
@@ -508,7 +704,17 @@ export function renderDashboard(user: any, gymName: string) {
                cb(d.results);
             }, 300);
          },
-         
+         openPaymentHistory: function() {
+            document.getElementById('modal-payment-history').style.display = 'flex';
+            this.renderTransactionHistory();
+         },
+         renderTransactionHistory: async function() {
+            const date = document.getElementById('trans-date').value;
+            const res = await fetch('/api/payments/history', {method:'POST', body:JSON.stringify({date})});
+            const d = await res.json();
+            const cur = this.data.settings.currency || '';
+            document.getElementById('tbl-transaction-history').innerHTML = (d.transactions||[]).map(t => \`<tr><td>\${formatDate(t.date)}</td><td>\${escapeHtml(t.name||'-')}</td><td style="font-weight:700; color:var(--success);">\${cur} \${t.amount}</td></tr>\`).join('') || '<tr><td colspan="3" class="text-center text-muted">No transactions</td></tr>';
+         },
          toast: function(msg) {
              const c = document.getElementById('toast-container');
              const d = document.createElement('div');
@@ -528,12 +734,13 @@ export function renderDashboard(user: any, gymName: string) {
                 document.getElementById('pay-name').innerText = m ? m.name : 'Member';
                 document.getElementById('pay-bal').innerText = m ? m.balance : 0;
                 document.getElementById('modal-pay').style.display='flex';
-            }, close:()=>document.getElementById('modal-pay').style.display='none'}
+            }, close:()=>document.getElementById('modal-pay').style.display='none'},
+            user: {close:()=>document.getElementById('modal-user').style.display='none'}
          }
       };
       
       function getIcon(n){
-          const i={home:'${getIcon("home")}',users:'${getIcon("users")}',clock:'${getIcon("clock")}',creditCard:'${getIcon("creditCard")}',trophy:'${getIcon("trophy")}',fire:'${getIcon("fire")}'};
+          const i={home:'${getIcon("home")}',users:'${getIcon("users")}',clock:'${getIcon("clock")}',creditCard:'${getIcon("creditCard")}',trophy:'${getIcon("trophy")}',fire:'${getIcon("fire")}',history:'${getIcon("history")}',settings:'${getIcon("settings")}',print:'${getIcon("print")}'};
           return i[n]||'';
       }
       function formatTime(iso){try{return new Date(iso).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});}catch{return'-';}}
