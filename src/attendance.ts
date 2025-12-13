@@ -7,7 +7,7 @@ export function getAttendanceStats(attendanceTs: string[] | undefined): Record<s
   for (const ts of attendanceTs || []) {
     const d = new Date(ts);
     if (isNaN(d.getTime())) continue;
-    const key = formatMonthKey(d); // Uses BD time
+    const key = formatMonthKey(d); 
     if (!stats[key]) stats[key] = new Set();
     stats[key].add(getBdDate(d).getDate());
   }
@@ -23,15 +23,16 @@ export function formatMonthLabel(date: Date): string {
   return `${monthName} ${bd.getFullYear()}`;
 }
 
+// NEW: Calculate Gym Streak (Consecutive days visited)
 export function getStreak(attendanceTs: string[]): number {
     if (!attendanceTs || attendanceTs.length === 0) return 0;
-    // Sort descending
+    // Sort descending by day
     const sorted = attendanceTs.map(t => new Date(t).toISOString().split('T')[0]).sort().reverse();
     const uniqueDays = [...new Set(sorted)];
     
     if (uniqueDays.length === 0) return 0;
 
-    // Check if today or yesterday was attended
+    // Check if today or yesterday was attended to keep streak alive
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     
@@ -57,7 +58,7 @@ export type DueResult = {
   months: Date[];
   labels: string[];
   gapMonths: number;
-  isRunningMonthPaid: boolean;
+  isRunningMonthPaid: boolean; // NEW: Explicitly tells if current month is paid
   paidUntil: string | null;
 };
 
@@ -82,10 +83,11 @@ export function calculateDues(
 
   // 2. Scan from Expiry Date forward
   let isRunningMonthPaid = false;
+  
   if (expiryDateStr) {
     const expiry = new Date(expiryDateStr);
     
-    // Check if running month is covered
+    // Check coverage: If expiry date is in the future compared to NOW, the "running time" is paid.
     if (expiry >= now) {
         isRunningMonthPaid = true;
     }
@@ -134,7 +136,7 @@ export function processPayment(
   let monthsToPay = planPrice > 0 ? Math.floor(balance / planPrice) : 0;
   
   if (planPrice > 0) balance = balance % planPrice;
-  else if(amountPaid > 0) monthsToPay = 99; 
+  else if(amountPaid > 0) monthsToPay = 99; // Free plan logic
 
   let expiry = new Date(currentExpiryStr);
   const attendanceStats = getAttendanceStats(attendanceTs);
