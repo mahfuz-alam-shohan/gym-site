@@ -11,19 +11,16 @@ export async function initDB(env: Env) {
   ];
   for (const sql of q) await env.DB.prepare(sql).run();
 
-  // --- MIGRATIONS (Safe to run multiple times) ---
-  
-  // 1. Financials
+  // --- MIGRATIONS: Ensure these columns exist for the new features ---
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN balance INTEGER DEFAULT 0").run(); } catch (e) {}
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN manual_due_months INTEGER DEFAULT 0").run(); } catch (e) {}
   
-  // 2. Physical Stats (New!)
+  // NEW: Physical Stats & Notes
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN gender TEXT DEFAULT 'other'").run(); } catch (e) {}
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN weight REAL DEFAULT 0").run(); } catch (e) {}
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN height REAL DEFAULT 0").run(); } catch (e) {}
   try { await env.DB.prepare("ALTER TABLE members ADD COLUMN notes TEXT").run(); } catch (e) {}
 
-  // 3. Indexes
   try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_member_date ON attendance(member_id, check_in_time)").run(); } catch (e) {}
   try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(check_in_time)").run(); } catch (e) {}
   try { await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_members_phone ON members(phone)").run(); } catch (e) {}
