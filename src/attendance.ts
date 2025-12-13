@@ -23,16 +23,13 @@ export function formatMonthLabel(date: Date): string {
   return `${monthName} ${bd.getFullYear()}`;
 }
 
-// NEW: Calculate Gym Streak (Consecutive days visited)
+// NEW: Streak Logic (Visual only, does not affect billing)
 export function getStreak(attendanceTs: string[]): number {
     if (!attendanceTs || attendanceTs.length === 0) return 0;
-    // Sort descending by day
     const sorted = attendanceTs.map(t => new Date(t).toISOString().split('T')[0]).sort().reverse();
     const uniqueDays = [...new Set(sorted)];
-    
     if (uniqueDays.length === 0) return 0;
 
-    // Check if today or yesterday was attended to keep streak alive
     const today = new Date().toISOString().split('T')[0];
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
     
@@ -42,23 +39,21 @@ export function getStreak(attendanceTs: string[]): number {
     for (let i = 0; i < uniqueDays.length - 1; i++) {
         const curr = new Date(uniqueDays[i]);
         const prev = new Date(uniqueDays[i+1]);
-        const diffTime = Math.abs(curr.getTime() - prev.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-        
-        if (diffDays === 1) streak++;
-        else break;
+        const diffDays = Math.ceil(Math.abs(curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)); 
+        if (diffDays === 1) streak++; else break;
     }
     return streak;
 }
 
-// --- CORE LOGIC ---
+// --- CORE LOGIC (Restored from Original) ---
 
 export type DueResult = {
   count: number;
   months: Date[];
   labels: string[];
   gapMonths: number;
-  isRunningMonthPaid: boolean; // NEW: Explicitly tells if current month is paid
+  // New UI flags
+  isRunningMonthPaid: boolean;
   paidUntil: string | null;
 };
 
@@ -83,30 +78,31 @@ export function calculateDues(
 
   // 2. Scan from Expiry Date forward
   let isRunningMonthPaid = false;
-  
   if (expiryDateStr) {
     const expiry = new Date(expiryDateStr);
     
-    // Check coverage: If expiry date is in the future compared to NOW, the "running time" is paid.
-    if (expiry >= now) {
-        isRunningMonthPaid = true;
-    }
+    // UI Check: If expiry > now, they are good.
+    if (expiry >= now) isRunningMonthPaid = true;
 
     const attendanceStats = getAttendanceStats(attendanceTs);
     let cursor = nextMonthStart(expiry);
     const today = now; 
     let loopGuard = 0;
     
+    // ORIGINAL LOGIC: Scan forward
     while (cursor <= today && loopGuard < 60) {
       loopGuard++;
       const key = formatMonthKey(cursor);
       const daysAttended = attendanceStats[key] || 0;
 
       if (daysAttended >= threshold) {
+        // Billable
         dueMonths.push(new Date(cursor));
       } else {
+        // Gap (User didn't come enough, don't bill)
         gapMonths++;
       }
+      
       cursor = nextMonthStart(cursor);
     }
   }
@@ -133,26 +129,31 @@ export function processPayment(
 ) {
   let balance = currentBalance + amountPaid;
   let manualDue = currentManualDue;
+  
   let monthsToPay = planPrice > 0 ? Math.floor(balance / planPrice) : 0;
   
-  if (planPrice > 0) balance = balance % planPrice;
-  else if(amountPaid > 0) monthsToPay = 99; // Free plan logic
+  if (planPrice > 0) {
+    balance = balance % planPrice;
+  } else {
+    if(amountPaid > 0) monthsToPay = 99; 
+  }
 
   let expiry = new Date(currentExpiryStr);
   const attendanceStats = getAttendanceStats(attendanceTs);
   
-  // 1. Pay Old Debt
+  // 1. Pay off Manual Dues first
   while (manualDue > 0 && monthsToPay > 0) {
     manualDue--;
     monthsToPay--;
   }
 
-  // 2. Pay Billable & Skip Gaps
+  // 2. Pay off Billable Months & Skip Gaps (ORIGINAL LOGIC)
   let cursor = nextMonthStart(expiry);
   let loop = 0;
   
   while (loop < 60) {
     loop++;
+    
     const isPastOrPresent = cursor <= now;
     
     if (isPastOrPresent) {
@@ -162,22 +163,27 @@ export function processPayment(
 
        if (isBillable) {
          if (monthsToPay > 0) {
+           // PAYING for this month
            monthsToPay--;
-           expiry = monthEnd(cursor);
+           expiry = monthEnd(cursor); 
          } else {
+           // Owe money, no funds. Stop.
            break; 
          }
        } else {
-         expiry = monthEnd(cursor); // Skip gap
+         // NOT BILLABLE (Gap) -> SKIP FOR FREE
+         expiry = monthEnd(cursor); 
        }
     } else {
+       // FUTURE month (Advance Payment)
        if (monthsToPay > 0) {
          monthsToPay--;
          expiry = monthEnd(cursor);
        } else {
-         break;
+         break; 
        }
     }
+    
     cursor = nextMonthStart(cursor);
   }
 
